@@ -76,6 +76,7 @@
       </nav>
     </div>
   {% endif %}
+  <form id="gmg-single-action-form" method="POST" class="d-none">{% csrf_token %}</form>
   <form action="{% url 'viewer:gallery-match-groups-batch' %}" method="POST">{% csrf_token %}
     <ul class="list-group">
       {% for gallery in results %}
@@ -85,7 +86,7 @@
         </span>
             <a href="{{ gallery.get_absolute_url }}">{{ gallery.pk }}</a> >>
           {{ gallery.best_title }} >>
-          <a href="{% url 'viewer:col-gallery-update-tool' gallery.pk 'clear-possible-matches' %}">Clear possible matches</a>
+          <button type="submit" form="gmg-single-action-form" formaction="{% url 'viewer:col-gallery-update-tool' gallery.pk 'clear-possible-matches' %}" class="btn btn-link p-0 align-baseline">Clear possible matches</button>
           <p>{{ gallery.filesize|filesizeformat }}, {{ gallery.filesize }} >>
             {{ gallery.filecount }} >>
             {{ gallery.provider }} >>
@@ -130,7 +131,7 @@
                         {% for match_gallery, gallery_matches in matches_list_sorted %}
                           <tr>
                             <td>
-                              <a href="{% url 'viewer:col-gallery-update-tool-id' gallery.pk 'add-to-match-group' match_gallery.pk %}"><i class="fas fa-check"></i></a>
+                              <button type="submit" form="gmg-single-action-form" formaction="{% url 'viewer:col-gallery-update-tool-id' gallery.pk 'add-to-match-group' match_gallery.pk %}" class="btn btn-link p-0" title="Add to match group"><i class="fas fa-check"></i></button>
                             </td>
                             <td>
                               {{ match_gallery.artist_tags.0.name }}

@@ -1196,7 +1196,10 @@
               {% endif %}
             </td>
             <td>
-              <a href="{% url 'viewer:queue-operations' 'remove_by_index' forloop.counter0 %}">Remove</a>
+              <form method="POST" action="{% url 'viewer:queue-operations' 'remove_by_index' forloop.counter0 %}" class="d-inline">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-link btn-sm p-0">Remove</button>
+              </form>
             </td>
           </tr>
         {% endfor %}

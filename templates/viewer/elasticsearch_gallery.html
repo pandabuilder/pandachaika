@@ -13,22 +13,22 @@
         <ul class="nav flex-column nav-sidebar">
           <li class="nav-item"><a class="nav-link active" href=""><h3>FILTERS</h3><span class="sr-only">(current)</span></a></li>
         </ul>
-        <ul class="nav flex-column nav-sidebar">
+        <ul class="nav flex-column nav-sidebar" data-es-facet-base="{{ es_url }}">
           <li class="nav-item"><a class="nav-link active" href="">Tag<span class="sr-only">(current)</span></a></li>
           {% for tag in aggregations.tags__full %}
-            <li class="nav-item"><a class="nav-link" href="{{ es_url }}?{{tag.url_args}}">{{tag.name}}: {{tag.count}} ({% if tag.is_active %}-{% else %}+{% endif %})</a></li>
+            <li class="nav-item"><button type="button" class="nav-link es-facet-btn" data-facet-field="tags__full" data-facet-value="{{ tag.name }}">{{ tag.name }}: {{ tag.count }} ({% if tag.is_active %}-{% else %}+{% endif %})</button></li>
           {% endfor %}
           <li class="nav-item"><a class="nav-link active" href="">Category<span class="sr-only">(current)</span></a></li>
           {% for category in aggregations.category %}
-            <li class="nav-item"><a class="nav-link" href="{{ es_url }}?{{category.url_args}}">{{category.name}}: {{category.count}} ({% if category.is_active %}-{% else %}+{% endif %})</a></li>
+            <li class="nav-item"><button type="button" class="nav-link es-facet-btn" data-facet-field="category" data-facet-value="{{ category.name }}">{{ category.name }}: {{ category.count }} ({% if category.is_active %}-{% else %}+{% endif %})</button></li>
           {% endfor %}
           <li class="nav-item"><a class="nav-link active" href="">Source<span class="sr-only">(current)</span></a></li>
           {% for provider in aggregations.provider %}
-            <li class="nav-item"><a class="nav-link" href="{{ es_url }}?{{provider.url_args}}">{{provider.name}}: {{provider.count}} ({% if provider.is_active %}-{% else %}+{% endif %})</a></li>
+            <li class="nav-item"><button type="button" class="nav-link es-facet-btn" data-facet-field="provider" data-facet-value="{{ provider.name }}">{{ provider.name }}: {{ provider.count }} ({% if provider.is_active %}-{% else %}+{% endif %})</button></li>
           {% endfor %}
           <li class="nav-item"><a class="nav-link active" href="">Reason<span class="sr-only">(current)</span></a></li>
           {% for reason in aggregations.reason %}
-            <li class="nav-item"><a class="nav-link" href="{{ es_url }}?{{reason.url_args}}">{{reason.name}}: {{reason.count}} ({% if reason.is_active %}-{% else %}+{% endif %})</a></li>
+            <li class="nav-item"><button type="button" class="nav-link es-facet-btn" data-facet-field="reason" data-facet-value="{{ reason.name }}">{{ reason.name }}: {{ reason.count }} ({% if reason.is_active %}-{% else %}+{% endif %})</button></li>
           {% endfor %}
         </ul>
       </div>
@@ -168,7 +168,7 @@
                   <ul class="pagination justify-content-end mb-0">
                   {% for option in extra_view_options %}
                     <li class="page-item{% if option == view_parameters.view %} active{% endif %}">
-                      <a class="page-link" href="?{% url_replace 'view' option %}">{{ option }}</a>
+                      <a class="page-link" rel="nofollow" href="?{% url_replace 'view' option %}">{{ option }}</a>
                     </li>
                   {% endfor %}
                   </ul>
@@ -287,8 +287,9 @@
 {% endblock content %}
 
 {% block afterJQ %}
+  {% include "viewer/include/es_facet_script.html" %}
   <script>
-    document.querySelector("#copy-urls").addEventListener('click',function () {
+    document.querySelector("#copy-urls")?.addEventListener('click',function () {
       const urls = Array.from(document.querySelectorAll(".url-container")).map(function(element) {
           return element.textContent;
       });

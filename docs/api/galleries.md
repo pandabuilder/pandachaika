@@ -106,7 +106,7 @@ When authenticated, the response also includes:
 Returned if the gallery does not exist or is not public for an unauthenticated request:
 ```json
 {
-  "result": "Gallery does not exist."
+  "error": {"code": "not_found", "message": "Gallery does not exist."}
 }
 ```
 
@@ -176,7 +176,7 @@ curl "https://example.chaika.moe/api/?gallery=105"
 ```
 
 ### Response
-Returns the standard gallery object (same schema as `gid`, including `id`, `gid`, and `url`). Returns `404 Not Found` with `{"result": "Gallery does not exist."}` if invalid or inaccessible.
+Returns the standard gallery object (same schema as `gid`, including `id`, `gid`, and `url`). Returns `404 Not Found` (`{"error": {"code": "not_found", "message": "Gallery does not exist."}}`) if invalid or inaccessible.
 
 ---
 

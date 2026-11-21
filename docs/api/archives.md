@@ -8,7 +8,7 @@ All endpoints use the public JSON API at `/api/` (or `/jsearch/`, or slashless `
 
 ## Authentication & Access Control
 
-- **Unauthenticated requests**: Callers only receive archives marked as `public=true`. Any attempt to access a non-public archive directly returns `404 Not Found` with `{"result": "Archive does not exist."}`. In search endpoints, non-public archives are automatically excluded.
+- **Unauthenticated requests**: Callers only receive archives marked as `public=true`. Any attempt to access a non-public archive directly returns `404 Not Found` (`{"error": {"code": "not_found", "message": "Archive does not exist."}}`). In search endpoints, non-public archives are automatically excluded.
 - **Authenticated requests**: Passing an `Authorization: Bearer <API_TOKEN>` header or an active Django session gives access to all archives regardless of public status. Authenticated callers also receive private timestamps (`create_date`).
 - **Archive Downloads**: The `download` field provides direct access to download the zip file (`/archive/<id>/download/`). Download permission is governed by the archive's public status and user session.
 
@@ -81,7 +81,7 @@ curl "https://example.chaika.moe/api/?archive=42" \
 **Error (404 Not Found)**
 ```json
 {
-  "result": "Archive does not exist."
+  "error": {"code": "not_found", "message": "Archive does not exist."}
 }
 ```
 

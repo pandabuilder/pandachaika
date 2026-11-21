@@ -88,3 +88,53 @@ class WorkerHeartbeatAndControlTests(TestCase):
         st = SchedulerState.objects.get(name="download_progress_checker")
         self.assertIn("current_download", st.extra_data)
         self.assertEqual(st.extra_data["current_download"][0]["filename"], "test.zip")
+
+    def test_prune_stale_scheduler_states_on_startup(self):
+        from datetime import timedelta
+        from unittest.mock import MagicMock
+        import django.utils.timezone as django_tz
+        from core.workers.holder import WorkerContext
+        from viewer.models import MonitoredLink
+        from workers.models import SchedulerState
+
+        now = django_tz.now()
+        link = MonitoredLink.objects.create(
+            name="Active Link",
+            url="https://example.com/feed",
+            frequency=timedelta(hours=1),
+        )
+
+        SchedulerState.objects.create(name="download_progress_checker", is_running=False)
+        SchedulerState.objects.create(name="post_downloader", is_running=False)
+        SchedulerState.objects.create(name="link_monitor_999999", is_running=False)
+        SchedulerState.objects.update_or_create(name=f"link_monitor_{link.pk}", defaults={"is_running": False})
+        SchedulerState.objects.create(
+            name="other_worker_sched",
+            is_running=True,
+            worker_pid=77777,
+            last_heartbeat=now,
+        )
+        SchedulerState.objects.create(
+            name="dead_other_worker_sched",
+            is_running=True,
+            worker_pid=88888,
+            last_heartbeat=now - timedelta(minutes=5),
+        )
+        SchedulerState.request_command("worker_runner", "restart")
+
+        ctx = WorkerContext()
+        mock_checker = MagicMock()
+        mock_checker.thread_name = "download_progress_checker"
+        ctx.download_progress_checker = mock_checker
+
+        pruned = ctx.prune_stale_scheduler_states()
+
+        self.assertEqual(pruned, 3)
+        remaining = set(SchedulerState.objects.values_list("name", flat=True))
+        self.assertNotIn("post_downloader", remaining)
+        self.assertNotIn("link_monitor_999999", remaining)
+        self.assertNotIn("dead_other_worker_sched", remaining)
+        self.assertIn("download_progress_checker", remaining)
+        self.assertIn(f"link_monitor_{link.pk}", remaining)
+        self.assertIn("other_worker_sched", remaining)
+        self.assertIn("worker_runner", remaining)

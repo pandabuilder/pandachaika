@@ -10,6 +10,7 @@ from django.shortcuts import render
 from django.urls import reverse
 
 from viewer.utils.actions import event_log
+from viewer.utils.general import PAGE_SIZE_OPTIONS, page_size
 from viewer.forms import (
     GalleryMatchGroupSearchForm,
     GalleryMatchGroupCreateOrEditForm,
@@ -56,6 +57,7 @@ def gallery_match_groups_explorer(request: HttpRequest) -> HttpResponse:
                 messages.success(request, message)
                 logger.info("User {}: {}".format(request.user.username, message))
                 event_log(request.user, "ADD_GALLERY_MATCH_GROUP", content_object=new_gallery_match_group, result="created")
+                return HttpResponseRedirect(request.get_full_path())
             else:
                 messages.error(request, "The provided data is not valid", extra_tags="danger")
         else:
@@ -63,9 +65,13 @@ def gallery_match_groups_explorer(request: HttpRequest) -> HttpResponse:
 
         d.update(edit_form=edit_form)
 
-    order = "create_date"
+    sort = get.get("sort", "create_date")
+    if sort not in ("create_date", "title", "id"):
+        sort = "create_date"
+    asc_desc = get.get("asc_desc", "asc")
+    order_expr = F(sort).desc(nulls_last=True) if asc_desc == "desc" else F(sort).asc(nulls_last=True)
 
-    results = GalleryMatchGroup.objects.order_by(F(order).asc(nulls_last=True))
+    results = GalleryMatchGroup.objects.order_by(order_expr)
 
     # if not request.user.is_authenticated:
     #     results = results.filter(public=True)
@@ -85,13 +91,26 @@ def gallery_match_groups_explorer(request: HttpRequest) -> HttpResponse:
         ),
     )
 
-    paginator = Paginator(results, 50)
+    limit = page_size(get, default=50)
+    paginator = Paginator(results, limit)
     try:
         results_page = paginator.page(page)
     except (InvalidPage, EmptyPage):
         results_page = paginator.page(paginator.num_pages)
 
-    d.update(results=results_page)
+    stats = {
+        "total_groups": GalleryMatchGroup.objects.count(),
+        "total_entries": GalleryMatchGroupEntry.objects.count(),
+    }
+
+    d.update(
+        results=results_page,
+        stats=stats,
+        limit=limit,
+        per_page_options=PAGE_SIZE_OPTIONS,
+        sort=sort,
+        asc_desc=asc_desc,
+    )
 
     return render(request, "viewer/gallery_match_groups.html", d)
 

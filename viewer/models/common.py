@@ -58,9 +58,6 @@ models.FileField.register_lookup(SpacedSearch)
 class ItemProperties(models.Model):
 
     class Meta:
-        indexes = [
-            models.Index(fields=["content_type", "object_id"]),
-        ]
         unique_together = ("content_type", "object_id", "name")
 
     content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)

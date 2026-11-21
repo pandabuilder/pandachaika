@@ -42,6 +42,7 @@ from viewer.models import (
 )
 from viewer.utils.requests import double_check_auth
 from viewer.services.archive_selection import filter_archives
+from viewer.views.api.handlers.tasks import tasks_reference
 from viewer.views.head import (
     archive_filter_keys,
     filter_archives_simple,
@@ -80,6 +81,7 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
         size = 100
 
     if p:
+        queued_task_ids: list[int] = []
         pks = []
         for k, v in p.items():
             if k.startswith("sel-") and isinstance(v, str):
@@ -285,7 +287,7 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
                 logger.info("User {}: {}".format(actual_user.username, message))
                 if not json_request:
                     messages.success(request, message)
-                client.enqueue(
+                task = client.enqueue(
                     args=[archive.pk],
                     task_type="delete_archive_worker",
                     override_options=delete_options,
@@ -293,6 +295,7 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
                     reason=user_reason,
                     event_action="DELETE_ARCHIVE",
                 )
+                queued_task_ids.append(task.pk)
         elif "update_metadata" in p and actual_user.has_perm("viewer.update_metadata"):
 
             galleries_from_archives = Gallery.objects.filter(archive__in=archives).distinct()
@@ -312,11 +315,13 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
 
             gallery_links = [x.get_link() for x in galleries_from_archives]
 
-            client.enqueue_gallery_update(
-                gallery_links,
-                user=actual_user,
-                reason=user_reason,
-            )
+            if gallery_links:
+                task = client.enqueue_gallery_update(
+                    gallery_links,
+                    user=actual_user,
+                    reason=user_reason,
+                )
+                queued_task_ids.append(task.pk)
 
         elif "recalc_fileinfo" in p and actual_user.has_perm("viewer.recalc_fileinfo"):
             for archive in archives:
@@ -439,15 +444,25 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
                 profile_name = p.get("profile") or getattr(
                     crawler_settings.manga_extractor, "background_profile", "default"
                 )
+                archive_pks = list(archives.values_list("pk", flat=True))
                 tasks = client.enqueue_contextual_extraction(
-                    archives,
+                    archive_pks,
                     user=actual_user,
                     reason=user_reason,
                     event_action="EXTRACT_CONTEXTUAL_INFO",
                     profile=profile_name,
                 )
+                queued_task_ids.extend(t.pk for t in tasks)
+                if len(tasks) < len(archive_pks):
+                    # Include any already-active extraction tasks for the selected archives so the client tracks them too.
+                    new_pks = {t.args[0] for t in tasks if isinstance(t.args, list) and t.args}
+                    for apk in archive_pks:
+                        if apk not in new_pks:
+                            existing = client.get_active_archive_task(apk, "contextual_extractor_worker")
+                            if existing is not None:
+                                queued_task_ids.append(existing.pk)
                 message = "Queued contextual extraction for {} archive(s) ({} task(s) created)".format(
-                    archives.count(), len(tasks)
+                    len(archive_pks), len(tasks)
                 )
                 if "reason" in p and p["reason"] != "":
                     message += ", reason: {}".format(p["reason"])
@@ -456,7 +471,12 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
                     messages.success(request, message)
 
         if json_request:
-            return HttpResponse("", content_type="application/json; charset=utf-8")
+            payload: dict[str, Any] = {}
+            if queued_task_ids:
+                # status_url is complete (/api/v1/?tasks=1,2); batch_status_url needs ?ids= appended.
+                payload.update(tasks_reference(request, list(dict.fromkeys(queued_task_ids))))
+                payload["batch_status_url"] = reverse("viewer:task-batch-status")
+            return HttpResponse(json.dumps(payload), content_type="application/json; charset=utf-8")
 
     params = {
         "sort": "create_date",
@@ -1058,7 +1078,14 @@ def archives_similar_by_fields(request: HttpRequest) -> HttpResponse:
                 if "limit-groups" in get and len(by_title.keys()) >= hard_limit_groups:
                     break
 
-    d = {"by_size_count": by_size_count, "by_crc32": by_crc32, "by_title": by_title, "form": form}
+    d = {
+        "by_size_count": by_size_count,
+        "by_crc32": by_crc32,
+        "by_title": by_title,
+        "form": form,
+        "has_grouping": any(k in get for k in ("filter-fileinfo", "filter-crc32", "filter-title")),
+        "total_groups": len(by_size_count) + len(by_crc32) + len(by_title),
+    }
     return render(request, "viewer/archives_similar_by_fields.html", d)
 
 

@@ -23,15 +23,22 @@ def scope_for_method(request) -> str:
     return UserLongLivedToken.SCOPE_WRITE
 
 
-def authenticate_by_token(request, scope: str) -> tuple[bool, User | None]:
-    """Authenticate with a bearer token that is not expired and grants `scope`.
+TOKEN_ABSENT = "absent"
+TOKEN_VALID = "valid"
+TOKEN_INVALID = "invalid"
+TOKEN_MISSING_SCOPE = "missing_scope"
 
-    A valid token without the requested scope is treated like an invalid one. Usage is recorded on the token.
+
+def check_bearer_token(request, scope: str) -> tuple[str, User | None]:
+    """Check the request's bearer token against `scope`.
+
+    Returns one of TOKEN_ABSENT, TOKEN_VALID, TOKEN_INVALID (unknown, expired or revoked) or TOKEN_MISSING_SCOPE, and
+    the token's user when it is valid. Usage is recorded on valid tokens.
     """
     long_token = get_long_token(request)
 
     if long_token is None:
-        return False, None
+        return TOKEN_ABSENT, None
 
     token = (
         UserLongLivedToken.active()
@@ -40,11 +47,22 @@ def authenticate_by_token(request, scope: str) -> tuple[bool, User | None]:
         .first()
     )
 
-    if token is None or not token.has_scope(scope):
-        return False, None
+    if token is None or not token.user.is_active:
+        return TOKEN_INVALID, None
+    if not token.has_scope(scope):
+        return TOKEN_MISSING_SCOPE, None
 
     token.mark_used()
-    return True, token.user
+    return TOKEN_VALID, token.user
+
+
+def authenticate_by_token(request, scope: str) -> tuple[bool, User | None]:
+    """Authenticate with a bearer token that is not expired and grants `scope`.
+
+    A valid token without the requested scope is treated like an invalid one. Usage is recorded on the token.
+    """
+    state, user = check_bearer_token(request, scope)
+    return state == TOKEN_VALID, user
 
 
 def double_check_auth(request, scope: str | None = None) -> tuple[bool, User | None]:

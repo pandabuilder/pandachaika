@@ -247,12 +247,14 @@ class DownloadProgressChecker(BaseScheduler):
 
                 close_old_connections()
 
+                did_work = False
                 try:
-                    self.check_downloads()
+                    did_work = bool(self.check_downloads())
                 except Exception as e:
                     logger.error(f"Error in DownloadProgressChecker job cycle: {e}")
 
-                self.update_last_run(django_tz.now())
+                # Persist immediately only when active; idle ticks stay in memory for batched heartbeat sync.
+                self.update_last_run(django_tz.now(), persist=did_work)
                 try:
                     close_old_connections()
                 except Exception:
@@ -264,7 +266,7 @@ class DownloadProgressChecker(BaseScheduler):
             if executor:
                 executor.shutdown(wait=False, cancel_futures=True)
 
-    def check_downloads(self) -> None:
+    def check_downloads(self) -> bool:
         torrent_events: list[DownloadEvent] = []
         hath_events: list[DownloadEvent] = []
         archive_events: list[DownloadEvent] = []
@@ -284,6 +286,7 @@ class DownloadProgressChecker(BaseScheduler):
             self.check_hath_downloads(hath_events)
         if archive_events:
             self.check_archive_downloads(archive_events)
+        return bool(torrent_events or hath_events or archive_events)
 
     def check_torrent_downloads(self, download_events: list[DownloadEvent]) -> None:
         fail_missing = self.settings.max_torrent_lifespan <= 0

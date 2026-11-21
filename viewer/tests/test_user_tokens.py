@@ -149,11 +149,14 @@ class TokenScopeEnforcementTests(TestCase):
         client = Client()
         url = reverse("viewer:api") + "?unknown_cmd=1"
 
+        # The legacy /api/ treats a token without the scope as no token: the request is anonymous.
         denied = client.post(url, data="{}", content_type="application/json", **bearer(read_secret))
-        self.assertEqual(denied.status_code, 403)
+        self.assertEqual(denied.status_code, 401)
 
+        # Authenticated, so the request gets as far as the (unknown) command.
         allowed = client.post(url, data="{}", content_type="application/json", **bearer(write_secret))
-        self.assertEqual(allowed.status_code, 200)
+        self.assertEqual(allowed.status_code, 400)
+        self.assertEqual(allowed.json()["error"]["code"], "unknown_command")
 
     def test_json_parser_requires_remote_scope(self):
         _, no_remote = UserLongLivedToken.create_for_user(self.user, "no-remote", scopes=["read", "write"])
@@ -177,13 +180,14 @@ class TokenScopeEnforcementTests(TestCase):
         response = Client().post(
             reverse("viewer:api") + "?unknown_cmd=1", data="{}", content_type="application/json", **bearer(secret)
         )
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, 401)
 
     def test_session_login_is_not_limited_by_scopes(self):
         client = Client()
         client.login(username=self.user.username, password="password123")
         response = client.post(reverse("viewer:api") + "?unknown_cmd=1", data="{}", content_type="application/json")
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error"]["code"], "unknown_command")
 
 
 class TokenManagementViewTests(TestCase):

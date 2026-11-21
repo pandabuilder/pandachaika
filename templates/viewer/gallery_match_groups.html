@@ -1,158 +1,240 @@
 {% extends "viewer/base.html" %}
-{% block title %}Gallery match groups | {{ block.super }}{% endblock %}
+{% load static viewer_extras %}
+{% block title %}Gallery Match Groups | {{ block.super }}{% endblock %}
 {% block sidebar %}{% endblock %}
-{% load static %}
 
-{% block content %}
-  {% load viewer_extras %}
-  {% if messages %}
-    {% for message in messages %}
-      <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
-    {% endfor %}
-  {% endif %}
-  <!-- Gallery match groups  -->
-  {% if perms.viewer.add_gallerymatchgroup %}
-  <button class="btn btn-secondary collapse-icon" id="add-gallery-match-group" data-bs-toggle="collapse" data-bs-target="#add-change-gallery-match-group-form" name="add-gallery-match-group" type="button" aria-label="toggle add wanted">Add Gallery Match Group <i class="fas fa-chevron-down"></i></button>
-  {% include 'viewer/include/gallery_match_group_edit.html' %}
-  {% endif %}
-  <div class="page-header">
-    <h2>Gallery match groups (showing the first six galleries)</h2>
-    <p class="lead">Number of gallery match groups (in page, total): {{ results|length }}, {{ results.paginator.count }}</p>
-  </div>
-  <form action="{% url 'viewer:gallery-match-groups' %}" method="GET">
-    {% for field in form %}
-      <div class="page-line">
-        {{ field.errors }}
-        {{ field }}
-      </div>
-    {% endfor %}
-    <div class="page-line row g-1">
-    <div class="col-md-auto">
-      <button type="submit" name="apply" class="btn btn-info">Search</button>
-    </div>
-    <div class="col-md-auto">
-      <a class="btn btn-light" href="{% url 'viewer:gallery-match-groups' %}">Clear</a>
-    </div>
-    </div>
-  </form>
-  <!-- Next/Prev page links  -->
-  {% if results.object_list and results.paginator.num_pages > 1 %}
-    <div>
-      <nav aria-label="Middle navigation">
-        <ul class="pagination justify-content-center my-0">
-          <li class="page-item{% if results.number == 1 %} disabled{% endif %}">
-            <a class="page-link" href="?{% url_replace 'page' '1' %}" aria-label="First">
-              <span aria-hidden="true">&laquo;</span>
-            </a>
-          </li>
-          {% if results.has_previous %}
-            <li class="page-item"><a class="page-link" href="?{% url_replace 'page' results.previous_page_number %}">Previous</a></li>
-          {% else %}
-            <li class="page-item disabled"><a class="page-link" href="#">Previous</a></li>
-          {% endif %}
-          <li class="page-item">
-            <div class="mid-item">Page {{ results.number }} of {{ results.paginator.num_pages }}</div>
-          </li>
-          {% if results.has_next %}
-            <li class="page-item"><a class="page-link" href="?{% url_replace 'page' results.next_page_number %}">Next</a></li>
-          {% else %}
-            <li class="page-item disabled"><a class="page-link" href="#">Next</a></li>
-          {% endif %}
-          <li class="page-item{% if results.number == results.paginator.num_pages %} disabled{% endif %}">
-            <a class="page-link" href="?{% url_replace 'page' results.paginator.num_pages %}" aria-label="Last">
-              <span aria-hidden="true">&raquo;</span>
-            </a>
-          </li>
-        </ul>
-      </nav>
-    </div>
-  {% endif %}
-  <ul class="list-group">
-    {% for gallery_match_group in results %}
-      <hr class="mt-2 mb-2">
-        <div class="arch-cont">
-        <h4><a href="{% url 'viewer:gallery-match-group' gallery_match_group.pk %}">{{ gallery_match_group.title|default:gallery_match_group.pk }}</a></h4>
-        {% for gallery_match_entry in gallery_match_group.gallerymatchgroup_entries|slice:":6" %}
-          {% include 'viewer/include/gallery_match_group_entry.html' with gallery_match_entry=gallery_match_entry %}
-        {% endfor %}
-        </div>
-    {% endfor %}
-  </ul>
-  <!-- Next/Prev page links  -->
-  {% if results.object_list and results.paginator.num_pages > 1 %}
-    <div>
-      <nav aria-label="Middle navigation">
-        <ul class="pagination justify-content-center">
-          <li class="page-item{% if results.number == 1 %} disabled{% endif %}">
-            <a class="page-link" href="?{% url_replace 'page' '1' %}" aria-label="First">
-              <span aria-hidden="true">&laquo;</span>
-            </a>
-          </li>
-          {% if results.has_previous %}
-            <li class="page-item"><a class="page-link" href="?{% url_replace 'page' results.previous_page_number %}">Previous</a></li>
-          {% else %}
-            <li class="page-item disabled"><a class="page-link" href="#">Previous</a></li>
-          {% endif %}
-          <li class="page-item">
-            <div class="mid-item">Page {{ results.number }} of {{ results.paginator.num_pages }}</div>
-          </li>
-          {% if results.has_next %}
-            <li class="page-item"><a class="page-link" href="?{% url_replace 'page' results.next_page_number %}">Next</a></li>
-          {% else %}
-            <li class="page-item disabled"><a class="page-link" href="#">Next</a></li>
-          {% endif %}
-          <li class="page-item{% if results.number == results.paginator.num_pages %} disabled{% endif %}">
-            <a class="page-link" href="?{% url_replace 'page' results.paginator.num_pages %}" aria-label="Last">
-              <span aria-hidden="true">&raquo;</span>
-            </a>
-          </li>
-        </ul>
-      </nav>
-    </div>
-  {% endif %}
-{% endblock %}
-{% block afterJQ %}
+{% block extra_head %}
   {% load compress %}
-  {% if perms.viewer.add_gallerymatchgroup %}
-  {{ edit_form.media }}
-  {% endif %}
   {% compress css %}
     <link href="{% static 'css/vendor/jal/style.css' %}" type="text/css" media="all" rel="stylesheet" />
+    <link href="{% static 'css/dm-pages.css' %}" type="text/css" rel="stylesheet" />
   {% endcompress %}
-    {{ form.media }}
+  <style>
+    .gmg-group { border-bottom: 1px solid var(--pg-border); padding: 0.75rem 1rem; }
+    .gmg-group:last-child { border-bottom: 0; }
+    .gmg-group-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.5rem; }
+    .gmg-title { font-weight: 600; font-size: 1rem; }
+    .gmg-entries { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+    .gmg-entries .gallery { margin: 0; }
+  </style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+  {% include "viewer/include/dm_messages.html" %}
+
+  <!-- Header -->
+  <div class="dm-page-header">
+    <div>
+      <h2 class="h3 mb-1"><i class="fas fa-object-group text-info me-2"></i>Gallery Match Groups</h2>
+      <p class="mb-0 small">
+        Grouped equivalent galleries across providers (showing up to the first 6 galleries per group).
+      </p>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      {% if perms.viewer.add_gallerymatchgroup %}
+        <button class="btn btn-primary btn-sm" id="add-gallery-match-group" data-bs-toggle="collapse"
+                data-bs-target="#add-gallery-match-group-card" name="add-gallery-match-group" type="button"
+                aria-expanded="{% if edit_form and edit_form.errors %}true{% else %}false{% endif %}" aria-controls="add-gallery-match-group-card">
+          <i class="fas fa-plus me-1"></i>Add Match Group
+        </button>
+        <a href="{% url 'viewer:gallery-match-groups-batch' %}" class="btn btn-outline-info btn-sm">
+          <i class="fas fa-tasks me-1"></i>Batch Review
+        </a>
+      {% endif %}
+      {% if perms.viewer.manage_gallery %}
+        <a href="{% url 'viewer:galleries-by-field' %}" class="btn btn-outline-secondary btn-sm">
+          <i class="fas fa-layer-group me-1"></i>Similar Galleries
+        </a>
+        <a href="{% url 'viewer:manage-galleries' %}" class="btn btn-outline-secondary btn-sm">
+          <i class="fas fa-images me-1"></i>Manage Galleries
+        </a>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Summary tiles -->
+  <div class="row g-2 mb-3">
+    <div class="col-4">
+      <div class="dm-stat">
+        <div class="dm-lbl">Match groups</div>
+        <div class="dm-val text-info">{{ stats.total_groups }}</div>
+        <div class="dm-stat-sub">total groups</div>
+      </div>
+    </div>
+    <div class="col-4">
+      <div class="dm-stat">
+        <div class="dm-lbl">Grouped galleries</div>
+        <div class="dm-val text-success">{{ stats.total_entries }}</div>
+        <div class="dm-stat-sub">linked entries</div>
+      </div>
+    </div>
+    <div class="col-4">
+      <div class="dm-stat">
+        <div class="dm-lbl">Matching filter</div>
+        <div class="dm-val text-warning">{{ results.paginator.count }}</div>
+        <div class="dm-stat-sub">groups listed below</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Collapsible Add Form -->
+  {% if perms.viewer.add_gallerymatchgroup and edit_form %}
+    <div id="add-gallery-match-group-card" class="collapse{% if edit_form.errors %} show{% endif %}">
+      <div class="dm-card">
+        <div class="dm-card-header d-flex justify-content-between align-items-center">
+          <span><i class="fas fa-plus-circle text-info me-1"></i>Create Gallery Match Group</span>
+          <button type="button" class="btn-close btn-close-white btn-sm" data-bs-toggle="collapse" data-bs-target="#add-gallery-match-group-card" aria-label="Close"></button>
+        </div>
+        <div class="p-3">
+          <form action="" method="POST">
+            {% csrf_token %}
+            <div class="row g-2 align-items-end">
+              <div class="col-md-8 col-lg-6">
+                <label class="form-label dm-lbl" for="{{ edit_form.title.id_for_label }}">Group title</label>
+                {{ edit_form.title }}
+                {% if edit_form.title.errors %}<div class="text-danger small">{{ edit_form.title.errors }}</div>{% endif %}
+              </div>
+              <div class="col-md-4 col-lg-6 d-flex gap-2">
+                <button type="submit" name="submit-gallery-match-group" value="Submit" class="btn btn-primary btn-sm">
+                  <i class="fas fa-check me-1"></i>Create
+                </button>
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="collapse" data-bs-target="#add-gallery-match-group-card">Cancel</button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+  <!-- Filters -->
+  <form action="{% url 'viewer:gallery-match-groups' %}" method="GET" class="dm-card" id="filter-form">
+    <div class="p-3">
+      <div class="row g-2 align-items-end">
+        <div class="col-lg-6">
+          <label class="form-label dm-lbl" for="{{ form.title.id_for_label }}">Group title</label>
+          {{ form.title.errors }}
+          {{ form.title }}
+        </div>
+        <div class="col-6 col-lg-2">
+          <label class="form-label dm-lbl" for="f-sort">Sort</label>
+          <select id="f-sort" name="sort" class="form-select form-select-sm">
+            <option value="create_date"{% if sort == "create_date" %} selected{% endif %}>Create date</option>
+            <option value="title"{% if sort == "title" %} selected{% endif %}>Title</option>
+            <option value="id"{% if sort == "id" %} selected{% endif %}>ID</option>
+          </select>
+        </div>
+        <div class="col-6 col-lg-2">
+          <label class="form-label dm-lbl" for="f-order">Order</label>
+          <select id="f-order" name="asc_desc" class="form-select form-select-sm">
+            <option value="asc"{% if asc_desc == "asc" %} selected{% endif %}>Ascending</option>
+            <option value="desc"{% if asc_desc == "desc" %} selected{% endif %}>Descending</option>
+          </select>
+        </div>
+        <div class="col-lg-2 d-flex flex-wrap gap-2">
+          <button type="submit" name="apply" class="btn btn-info btn-sm"><i class="fas fa-search me-1"></i>Search</button>
+          <a class="btn btn-outline-light btn-sm" href="{% url 'viewer:gallery-match-groups' %}" title="Clear all filters"><i class="fas fa-times me-1"></i>Clear</a>
+        </div>
+      </div>
+      <div class="mt-3 d-none" data-dm-chips-wrapper>
+        <div class="d-flex flex-wrap align-items-center gap-2">
+          <span class="dm-lbl"><i class="fas fa-filter me-1"></i>Active</span>
+          <div class="dm-chips" id="filter-chips"></div>
+        </div>
+      </div>
+    </div>
+  </form>
+
+  <!-- Groups -->
+  <div class="dm-card">
+    <div class="dm-card-header">
+      {% include "viewer/include/dm_pagination.html" with page_obj=results noun="match groups" per_page_options=per_page_options per_page=limit %}
+    </div>
+    <div id="groups-list">
+      {% for gallery_match_group in results %}
+        <div class="gmg-group">
+          <div class="gmg-group-head">
+            <div class="d-flex flex-wrap align-items-center gap-2">
+              <a class="badge bg-secondary text-decoration-none" href="{% url 'viewer:gallery-match-group' gallery_match_group.pk %}">#{{ gallery_match_group.pk }}</a>
+              <a class="gmg-title text-decoration-none" href="{% url 'viewer:gallery-match-group' gallery_match_group.pk %}">
+                {{ gallery_match_group.title|default:"(untitled group)" }}
+              </a>
+              <span class="badge dm-badge-outline text-info">{{ gallery_match_group.gallerymatchgroup_entries|length }} galler{{ gallery_match_group.gallerymatchgroup_entries|length|pluralize:"y,ies" }}</span>
+              {% if gallery_match_group.gallerymatchgroup_entries|length > 6 %}
+                <a class="small dm-muted" href="{% url 'viewer:gallery-match-group' gallery_match_group.pk %}">+{{ gallery_match_group.gallerymatchgroup_entries|length|add:"-6" }} more</a>
+              {% endif %}
+            </div>
+            <div class="d-flex align-items-center gap-2">
+              {% if gallery_match_group.create_date %}
+                <span class="small dm-muted" data-dm-reltime="{{ gallery_match_group.create_date|date:'c' }}">{{ gallery_match_group.create_date|date:"Y-m-d H:i" }}</span>
+              {% endif %}
+              {% if perms.viewer.change_gallerymatchgroup %}
+                <a class="btn btn-outline-light btn-sm py-0 px-2" href="{% url 'viewer:gallery-match-group-edit' gallery_match_group.pk %}" title="Edit match group">
+                  <i class="fas fa-edit me-1"></i>Edit
+                </a>
+              {% endif %}
+            </div>
+          </div>
+          {% if gallery_match_group.gallerymatchgroup_entries %}
+            <div class="gmg-entries">
+              {% for gallery_match_entry in gallery_match_group.gallerymatchgroup_entries|slice:":6" %}
+                {% include 'viewer/include/gallery_match_group_entry.html' with gallery_match_entry=gallery_match_entry %}
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="small dm-dim">No galleries in this group yet.</div>
+          {% endif %}
+        </div>
+      {% empty %}
+        <div class="dm-empty"><i class="fas fa-object-group"></i>No gallery match groups found.</div>
+      {% endfor %}
+    </div>
+    {% if results.paginator.num_pages > 1 %}
+      <div class="p-2 border-top" style="border-color: var(--pg-border) !important;">
+        {% include "viewer/include/dm_pagination.html" with page_obj=results noun="match groups" compact=1 %}
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block afterJQ %}
+  {% if perms.viewer.add_gallerymatchgroup %}
+    {{ edit_form.media }}
+  {% endif %}
+  {{ form.media }}
+  {% load compress %}
   {% compress js %}
-    <script>
-    let tagData = {};
-    const tagUrl = '{% url 'viewer:api' %}?gt=';
-    function tagToHtml (tag) {
-        return '<div class="tag">' + tag + '</div>'
-    }
-    document.addEventListener("DOMContentLoaded", function() {
-        document.querySelectorAll('.tag-preview')?.forEach((element) => {
-            element.addEventListener("click", function (event) {
-                let el = event.currentTarget;
-                let pk = event.currentTarget.dataset['bsPk'];
-                if (tagData[pk]) {
-                    return tagData[pk];
-                } else {
-                    fetch(tagUrl + pk).then(function (response) {
-                        return response.json();
-                    }).then(function (body) {
-                        if (body.tags) {
-                            tagData[pk] = body.tags.map(tagToHtml);
-
-                            const popover = new bootstrap.Popover(el, {
-                                content: tagData[pk].join(""),
-                                html: true,
-                            })
-                            popover.show();
-
-                        }
-                    });
-                }
-            });
-        });
-    });
-    </script>
+    <script src="{% static 'js/dm-pages.js' %}"></script>
   {% endcompress %}
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      const titleInput = document.getElementById('{{ form.title.id_for_label }}');
+      if (titleInput) titleInput.dataset.dmHotkey = '/';
+
+      DM.filterChips(document.getElementById('filter-form'), document.getElementById('filter-chips'), {
+        ignore: ['limit'],
+        defaults: { sort: 'create_date', asc_desc: 'asc' },
+      });
+
+      const tagCache = {};
+      const list = document.getElementById('groups-list');
+      list.addEventListener('click', function (e) {
+        const el = e.target.closest('.tag-preview');
+        if (!el) return;
+        const pk = el.dataset.bsPk;
+        if (tagCache[pk]) return;
+        fetch('{% url "viewer:api" %}?gt=' + encodeURIComponent(pk))
+          .then(function (r) { return r.json(); })
+          .then(function (body) {
+            if (!body.tags) return;
+            tagCache[pk] = body.tags.map(function (tag) {
+              return '<div class="tag">' + DM.escapeHtml(tag) + '</div>';
+            }).join('');
+            new bootstrap.Popover(el, { content: tagCache[pk], html: true }).show();
+          });
+      });
+    });
+  </script>
 {% endblock %}

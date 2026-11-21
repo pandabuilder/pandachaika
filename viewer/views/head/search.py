@@ -20,6 +20,7 @@ from viewer.forms import ArchiveSearchForm, ArchiveSearchSimpleForm, DivErrorLis
 from viewer.models import (
     Archive,
     ArchiveGroup,
+    ArchiveTag,
     Gallery,
     Image,
     Tag,
@@ -31,6 +32,7 @@ from viewer.utils.functions import archive_search_result_to_json
 from viewer.utils.general import valid_sha1_string
 from viewer.views.head.auth import render_error
 from viewer.views.head.common import (
+    apply_tag_filters,
     archive_filter_keys,
     archive_order_fields,
     archive_public_order_fields,
@@ -89,10 +91,8 @@ def search(request: HttpRequest, mode: str = "none", tag: str | None = None) -> 
 
     display_prms: dict[str, Any] = {}
 
-    if "parameters" in request.session:
-        parameters = request.session["parameters"]
-    else:
-        parameters = {}
+    existing_parameters = request.session.get("parameters")
+    parameters: dict[str, Any] = dict(existing_parameters) if isinstance(existing_parameters, dict) else {}
 
     keys = ("sort", "asc_desc")
 
@@ -132,6 +132,14 @@ def search(request: HttpRequest, mode: str = "none", tag: str | None = None) -> 
                     display_prms[k] = v
         display_prms["title"] = display_prms["title"].replace("\x00", "")
         form = ArchiveSearchForm(initial={"title": display_prms["title"], "tags": display_prms["tags"]})
+    requested_view = get.get("view", "")
+    explicit_view_change = requested_view in view_options
+    if not request.user.is_authenticated:
+        cookie_view = request.COOKIES.get("panda_view", "")
+        if cookie_view in view_options:
+            parameters["view"] = cookie_view
+    if explicit_view_change:
+        parameters["view"] = requested_view
     if "view" not in parameters or parameters["view"] == "":
         parameters["view"] = "list"
     if "asc_desc" not in parameters or parameters["asc_desc"] == "":
@@ -148,7 +156,9 @@ def search(request: HttpRequest, mode: str = "none", tag: str | None = None) -> 
         parameters["main_filters"] = True
         results = filter_archives(request, parameters, display_prms, request.user.is_authenticated)
 
-    request.session["parameters"] = parameters
+    stateless_request = json_request or "gen-ddl" in get or "random" in get
+    if not stateless_request and request.user.is_authenticated and parameters != existing_parameters:
+        request.session["parameters"] = parameters
 
     if "random" in get:
         count = results.count()
@@ -156,11 +166,16 @@ def search(request: HttpRequest, mode: str = "none", tag: str | None = None) -> 
             random_index = randint(0, count - 1)
             return redirect(results[random_index])
     elif "gen-ddl" in get:
-        links = [request.build_absolute_uri(reverse("viewer:archive-download", args=(x.pk,))) for x in results]
+        archive_pks = results.values_list("pk", flat=True).iterator(chunk_size=2000)
+        links = [request.build_absolute_uri(reverse("viewer:archive-download", args=(pk,))) for pk in archive_pks]
         return HttpResponse("\n".join(links), content_type="text/plain; charset=utf-8")
 
     if json_request:
-        results = results.select_related("gallery").prefetch_related("tags").defer("gallery__comment")
+        results = (
+            results.select_related("gallery")
+            .prefetch_related("tags")
+            .defer("gallery__comment", "gallery__provider_metadata")
+        )
 
     # make paginator
     if parameters["view"] == "list" or json_request:
@@ -205,7 +220,14 @@ def search(request: HttpRequest, mode: str = "none", tag: str | None = None) -> 
         "form": form,
         "form_simple": form_simple,
     }
-    return render(request, "viewer/archive_search.html", d)
+    html_response = render(request, "viewer/archive_search.html", d)
+    if not request.user.is_authenticated and explicit_view_change:
+        if parameters["view"] == "list":
+            if "panda_view" in request.COOKIES:
+                html_response.delete_cookie("panda_view", samesite="Lax")
+        elif request.COOKIES.get("panda_view") != parameters["view"]:
+            html_response.set_cookie("panda_view", parameters["view"], max_age=30 * 24 * 3600, samesite="Lax")
+    return html_response
 
 
 def filter_archives(
@@ -282,61 +304,12 @@ def filter_archives(
         results = results.filter(gallery__category__icontains=request_filters["category"])
 
     if request_filters["tags"]:
-        has_positive_tag_filter = False
-        tags = request_filters["tags"].split(",")
-        for tag in tags:
-            tag = tag.strip().replace(" ", "_")
-            tag_clean = re.sub("^[-|^]", "", tag)
-            scope_name = tag_clean.split(":", maxsplit=1)
-            if len(scope_name) > 1:
-                tag_scope = scope_name[0]
-                tag_name = scope_name[1]
-            else:
-                tag_scope = ""
-                tag_name = scope_name[0]
-            if tag.startswith("-^"):
-                if tag_name != "" and tag_scope != "":
-                    tag_query = Q(tags__name__exact=tag_name) & Q(tags__scope__exact=tag_scope)
-                elif tag_name != "":
-                    tag_query = Q(tags__name__exact=tag_name)
-                else:
-                    tag_query = Q(tags__scope__exact=tag_scope)
-
-                results = results.exclude(tag_query)
-            elif tag.startswith("-"):
-                if tag_name != "" and tag_scope != "":
-                    tag_query = Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope)
-                elif tag_name != "":
-                    tag_query = Q(tags__name__contains=tag_name)
-                else:
-                    tag_query = Q(tags__scope__contains=tag_scope)
-
-                results = results.exclude(tag_query)
-            elif tag.startswith("^"):
-                has_positive_tag_filter = True
-                if tag_name != "" and tag_scope != "":
-                    tag_query = Q(tags__name__exact=tag_name) & Q(tags__scope__exact=tag_scope)
-                elif tag_name != "":
-                    tag_query = Q(tags__name__exact=tag_name)
-                else:
-                    tag_query = Q(tags__scope__exact=tag_scope)
-
-                results = results.filter(tag_query)
-            else:
-                has_positive_tag_filter = True
-                if tag_name != "" and tag_scope != "":
-                    tag_query = Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope)
-                elif tag_name != "":
-                    tag_query = Q(tags__name__contains=tag_name)
-                else:
-                    tag_query = Q(tags__scope__contains=tag_scope)
-
-                results = results.filter(tag_query)
-
-        # Examples where distinct is needed:
-        # Same name for a tag with 2 different scopes: artist:syukurin, group:syukurin
-        if has_positive_tag_filter:
-            results = results.distinct()
+        results = apply_tag_filters(
+            results,
+            request_filters["tags"],
+            through_model=ArchiveTag,
+            fk_field="archive_id",
+        )
 
     if (
         "only_favorites" in request_filters
@@ -365,13 +338,11 @@ def filter_archives(
     if "public" in request_filters and request_filters["public"]:
         results = results.filter(public=True)
 
-    results = results.select_related("gallery").prefetch_related("tags").defer(
-        "gallery__comment", "gallery__provider_metadata"
+    results = results.select_related("gallery").defer(
+        "details", "origin", "gallery__comment", "gallery__provider_metadata"
     )
     if session_filters.get("view") == "extended":
-        results = results.prefetch_related("archivetag_set__tag")
-
-    results = results.defer("details", "origin")
+        results = results.prefetch_related("tags", "archivetag_set__tag")
 
     return results
 
@@ -443,14 +414,11 @@ def quick_search(request: HttpRequest, parameters: DataDict, display_parameters:
     if "public" in display_parameters and display_parameters["public"]:
         results = results.filter(public=True)
 
-    if parameters["view"] == "list":
-        results = results.select_related("gallery")
-    elif parameters["view"] == "cover":
-        pass
-    elif parameters["view"] == "extended":
-        results = results.select_related("gallery").prefetch_related("tags")
-
-    results = results.defer("details")
+    results = results.select_related("gallery").defer(
+        "details", "origin", "gallery__comment", "gallery__provider_metadata"
+    )
+    if parameters.get("view") == "extended":
+        results = results.prefetch_related("tags", "archivetag_set__tag")
 
     return results
 
@@ -709,59 +677,12 @@ def filter_archives_simple(params: dict[str, Any], authenticated=False, show_bin
         results = results.filter(gallery__provider__icontains=params["provider"])
 
     if params["tags"]:
-        tags = params["tags"].split(",")
-        has_positive_tag_filter = False
-        for tag in tags:
-            tag = tag.strip().replace(" ", "_")
-            tag_clean = re.sub("^[-|^]", "", tag)
-            scope_name = tag_clean.split(":", maxsplit=1)
-            if len(scope_name) > 1:
-                tag_scope = scope_name[0]
-                tag_name = scope_name[1]
-            else:
-                tag_scope = ""
-                tag_name = scope_name[0]
-            if tag.startswith("-^"):
-                if tag_name != "" and tag_scope != "":
-                    tag_query = Q(tags__name__exact=tag_name) & Q(tags__scope__exact=tag_scope)
-                elif tag_name != "":
-                    tag_query = Q(tags__name__exact=tag_name)
-                else:
-                    tag_query = Q(tags__scope__exact=tag_scope)
-
-                results = results.exclude(tag_query)
-            elif tag.startswith("-"):
-                if tag_name != "" and tag_scope != "":
-                    tag_query = Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope)
-                elif tag_name != "":
-                    tag_query = Q(tags__name__contains=tag_name)
-                else:
-                    tag_query = Q(tags__scope__contains=tag_scope)
-
-                results = results.exclude(tag_query)
-            elif tag.startswith("^"):
-                has_positive_tag_filter = True
-                if tag_name != "" and tag_scope != "":
-                    tag_query = Q(tags__name__exact=tag_name) & Q(tags__scope__exact=tag_scope)
-                elif tag_name != "":
-                    tag_query = Q(tags__name__exact=tag_name)
-                else:
-                    tag_query = Q(tags__scope__exact=tag_scope)
-
-                results = results.filter(tag_query)
-            else:
-                has_positive_tag_filter = True
-                if tag_name != "" and tag_scope != "":
-                    tag_query = Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope)
-                elif tag_name != "":
-                    tag_query = Q(tags__name__contains=tag_name)
-                else:
-                    tag_query = Q(tags__scope__contains=tag_scope)
-
-                results = results.filter(tag_query)
-
-        if has_positive_tag_filter:
-            results = results.distinct()
+        results = apply_tag_filters(
+            results,
+            params["tags"],
+            through_model=ArchiveTag,
+            fk_field="archive_id",
+        )
 
     if "non_public" in params and params["non_public"]:
         results = results.filter(public=False)

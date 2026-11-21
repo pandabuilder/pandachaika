@@ -286,11 +286,15 @@ class GeneralSettings(BaseConfigModel):
     )
     force_log_level: str = Field(
         default="INFO",
-        description="Minimum logging level output to log files and database ('DEBUG', 'INFO', 'WARNING', 'ERROR').",
+        description="Minimum logging level output to rotating log files ('DEBUG', 'INFO', 'WARNING', 'ERROR').",
+    )
+    sql_log_level: str = Field(
+        default="INFO",
+        description="Minimum logging level written to the database StatusLog table via django_db_logger ('DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL').",
     )
     disable_sql_log: bool = Field(
         default=False,
-        description="Suppress Django SQL query logging in console output during debug mode.",
+        description="Disable writing application logs to the database StatusLog table (django_db_logger).",
     )
     max_torrent_lifespan: int = Field(
         default=0,
@@ -995,23 +999,6 @@ class FtpsSettings(BaseConfigModel):
         return protocol
 
 
-class RemoteSiteSettings(BaseConfigModel):
-    """Instance-to-instance synchronization with remote Panda Backup deployments."""
-
-    api_url: str = Field(
-        default="https://panda.chaika.moe/jsonapi",
-        description="Remote instance JSON API endpoint URL.",
-    )
-    user_token: str = Field(
-        default="asdf1234",
-        description="Long-lived user authentication token on the remote instance.",
-    )
-    remote_folder: str = Field(
-        default="/media/galleries/archives",
-        description="Remote folder where archives are stored on the remote instance.",
-    )
-
-
 class ArchiveDownloadQueueSettings(BaseConfigModel):
     """Scheduler settings for background HTTP archive downloads."""
 
@@ -1073,6 +1060,13 @@ class RetentionSettings(BaseConfigModel):
         description=(
             "Retention in days for Gallery/Archive change log entries (0 to disable). "
             "Only real changes are stored, so keeping them for long is cheap."
+        ),
+    )
+    session_days: int = Field(
+        default=1,
+        description=(
+            "Retention in days after expiry for expired Django sessions in django_session (0 to disable). "
+            "Sessions whose expire_date is older than this many days ago are pruned in batches."
         ),
     )
     chunk_size: int = Field(
@@ -1736,10 +1730,6 @@ class PandaGalleryConfig(BaseConfigModel):
         default_factory=UrlSettings,
         description="URL prefixes, proxy headers, CORS, and public endpoints.",
     )
-    remote_site: RemoteSiteSettings = Field(
-        default_factory=RemoteSiteSettings,
-        description="Synchronization credentials for remote Panda Backup instances.",
-    )
     monitored_links: MonitoredLinksSettings = Field(
         default_factory=MonitoredLinksSettings,
         description="Monitored links polling subsystem control.",
@@ -1997,11 +1987,16 @@ general:
   # Default: 1500
   horizontal_image_max_width: 1500
 
-  # Minimum logging level sent to log files and database ('DEBUG', 'INFO', 'WARNING', 'ERROR').
+  # Minimum logging level sent to rotating log files ('DEBUG', 'INFO', 'WARNING', 'ERROR').
   # Default: INFO
   force_log_level: INFO
 
-  # Suppress verbose Django SQL query logs in debug mode.
+  # Minimum logging level written to the database StatusLog table via django_db_logger.
+  # Raise to WARNING on high-volume crawler instances to avoid per-INFO-line database WAL writes while retaining INFO in the file log.
+  # Default: INFO
+  sql_log_level: INFO
+
+  # Disable writing application logs to the database StatusLog table (django_db_logger).
   # Default: false
   disable_sql_log: false
 
@@ -2646,22 +2641,6 @@ urls:
   cors_allow_all_origins: false
 
 # ------------------------------------------------------------------------------
-# Remote Site Synchronization
-# Credentials for synchronizing with another Panda Backup instance.
-# ------------------------------------------------------------------------------
-remote_site:
-  # Remote Panda Backup instance JSON API endpoint URL.
-  # Default: 'https://panda.chaika.moe/jsonapi'
-  api_url: "https://panda.chaika.moe/jsonapi"
-
-  # Long-lived user authentication token generated on the remote server.
-  user_token: asdf1234
-
-  # Directory on remote server where synchronized archives are located.
-  # Default: /media/galleries/archives
-  remote_folder: /media/galleries/archives
-
-# ------------------------------------------------------------------------------
 # Monitored Links Subsystem
 # Controls background polling workers tracking new additions on subscribed URLs.
 # ------------------------------------------------------------------------------
@@ -2669,6 +2648,51 @@ monitored_links:
   # Enable the monitored links polling worker.
   # Default: false
   enable: false
+
+# ------------------------------------------------------------------------------
+# Database Retention and Pruning Subsystem
+# Configurable retention horizons (in days) and automated periodic pruning.
+# ------------------------------------------------------------------------------
+retention:
+  # Enable automatic periodic database pruning scheduler.
+  # Default: false
+  enabled: false
+
+  # Interval (in hours) between automatic prune runs when enabled.
+  # Default: 24.0 (runs once every 24 hours)
+  schedule_interval_hours: 24.0
+
+  # Days to retain finished, failed, or cancelled background tasks (TaskQueue).
+  # 0 to disable pruning for this entity. Default: 30
+  task_queue_days: 30
+
+  # Days to retain completed or failed download events (DownloadEvent).
+  # 0 to disable pruning for this entity. Default: 30
+  download_event_days: 30
+
+  # Days to retain user and system activity event logs (EventLog).
+  # 0 to disable pruning for this entity. Default: 90
+  event_log_days: 90
+
+  # Days to retain server application status logs (StatusLog).
+  # 0 to disable pruning for this entity. Default: 30
+  status_log_days: 30
+
+  # Days to retain crawler processed URLs history (ProcessedLinks).
+  # 0 to disable pruning for this entity. Default: 180
+  processed_links_days: 180
+
+  # Days to retain Gallery/Archive change log entries (recorded field and tag changes).
+  # 0 to disable pruning for this entity. Default: 90
+  history_days: 90
+
+  # Days past expiry to retain expired Django sessions (django_session).
+  # 0 to disable pruning for this entity. Default: 1
+  session_days: 1
+
+  # Maximum rows deleted per batch transaction to avoid database locks.
+  # Default: 5000
+  chunk_size: 5000
 
 # ------------------------------------------------------------------------------
 # Admin Report Emails

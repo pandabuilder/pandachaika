@@ -5,7 +5,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
 from django.core.paginator import Paginator, InvalidPage, EmptyPage
 from django.db.models import Q, Prefetch, F, Case, When
-from django.http import HttpRequest, HttpResponse, Http404, HttpResponseRedirect
+from django.http import HttpRequest, HttpResponse, Http404, HttpResponseNotAllowed, HttpResponseRedirect
 from django.shortcuts import render
 from django.urls import reverse
 
@@ -115,7 +115,10 @@ def archive_group_details(request: HttpRequest, pk: int | None = None, slug: str
 
     get = request.GET
 
-    if "extract_all" in get and request.user.has_perm("viewer.expand_archive"):
+    if "extract_all" in get and request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+
+    if request.method == "POST" and ("extract_all" in request.POST or "extract_all" in get) and request.user.has_perm("viewer.expand_archive"):
         archive_pks = list(
             archive_group_instance.archivegroupentry_set.filter(archive__extracted=False).values_list(
                 "archive_id", flat=True
@@ -184,7 +187,10 @@ def archive_group_edit(request: HttpRequest, pk: int | None = None, slug: str | 
 
     results = ArchiveGroupEntry.objects.filter(archive_group=archive_group_instance).select_related("archive")
 
-    if "extract_all" in get and request.user.has_perm("viewer.expand_archive"):
+    if "extract_all" in get and request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+
+    if request.method == "POST" and ("extract_all" in p or "extract_all" in get) and request.user.has_perm("viewer.expand_archive"):
         archive_pks = list(
             archive_group_instance.archivegroupentry_set.filter(archive__extracted=False).values_list(
                 "archive_id", flat=True

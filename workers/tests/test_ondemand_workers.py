@@ -23,6 +23,30 @@ class OnDemandWorkerTests(TestCase):
         self.runner_settings = Settings(load_from_disk=False)
         self.runner = WorkerRunner(self.runner_settings, enable_schedulers=False)
 
+    def test_completed_task_saves_the_result_its_handler_returned(self):
+        from unittest.mock import patch
+
+        task = TaskQueue.objects.create(task_type="database_prune", options={"entity": "event_log", "dry_run": True})
+        claimed = self.runner.claim_next_job()
+        self.assertEqual(claimed.pk, task.pk)
+        summary = {"dry_run": True, "entity": "event_log", "total_deleted": 0, "entities": {}}
+        with patch("viewer.services.retention.prune_database", return_value=summary):
+            self.runner.execute_job(claimed)
+        task.refresh_from_db()
+        self.assertEqual(task.status, TaskQueue.Status.COMPLETED)
+        self.assertEqual(task.result, summary)
+
+    def test_task_types_without_a_result_leave_it_null(self):
+        from unittest.mock import patch
+
+        task = TaskQueue.objects.create(task_type="folder_crawler", args=["/test/folder"])
+        claimed = self.runner.claim_next_job()
+        with patch("core.local.foldercrawler.FolderCrawler.start_crawling"):
+            self.runner.execute_job(claimed)
+        task.refresh_from_db()
+        self.assertEqual(task.status, TaskQueue.Status.COMPLETED)
+        self.assertIsNone(task.result)
+
     def test_folder_crawler_thread_enqueue_and_execution(self):
         from unittest.mock import patch
         from core.local.foldercrawlerthread import FolderCrawlerThread

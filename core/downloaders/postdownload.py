@@ -30,6 +30,7 @@ from core.base.utilities import (
     convert_7z_to_zip,
     ensure_archive_filename_within_limits,
     find_hath_directory,
+    IMAGES_REGEX,
 )
 from core.providers.chaika import constants as chaika_constants
 from core.providers.panda.parsers import Parser as PandaParser
@@ -757,20 +758,36 @@ ARCHIVE_CONVERTERS: dict[str, Callable[..., int]] = {
 PARTIAL_DOWNLOAD_SUFFIXES = (".!qb", ".part", ".incomplete")
 
 
+def is_accepted_torrent_file(name: str) -> bool:
+    """Files that can be part of a torrent download: supported archives and images. Anything else (.txt, .nfo,
+    .url, ...) is extra content from the uploader and is ignored."""
+    return os.path.splitext(name)[1].lower() in ARCHIVE_EXTENSIONS or bool(IMAGES_REGEX.search(name))
+
+
 def find_torrent_content(
     source: "TransferSource", folder: str
 ) -> "tuple[str, SourceEntry | None, list[SourceEntry]] | TransferResult":
     """Decide what to transfer from a torrent's save folder, without relying on file names.
 
-    Returns (path, entry, []) for a single archive file at ``path``, (path, None, files) for a folder whose files
-    must be zipped, or a TransferResult when there is nothing usable. A folder holding only one subfolder (the
-    torrent's root folder) is followed into. Raises FileNotFoundError when ``folder`` doesn't exist.
+    Only accepted files (archives and images, see ``is_accepted_torrent_file``) and subfolders are considered,
+    other files are ignored. Returns (path, entry, []) for a single archive file at ``path``, (path, None, files)
+    for a folder whose images must be zipped, or a TransferResult when there is nothing usable. A folder holding
+    only one subfolder (the torrent's root folder) is followed into. Raises FileNotFoundError when ``folder``
+    doesn't exist.
     """
     entries = source.entries(folder)
-    files = [x for x in entries if not x.is_dir]
+    all_files = [x for x in entries if not x.is_dir]
     dirs = [x for x in entries if x.is_dir]
-    if any(x.name.lower().endswith(PARTIAL_DOWNLOAD_SUFFIXES) for x in files):
+    if any(x.name.lower().endswith(PARTIAL_DOWNLOAD_SUFFIXES) for x in all_files):
         return TransferResult.INCOMPLETE
+    files = [x for x in all_files if is_accepted_torrent_file(x.name)]
+    ignored = [x for x in all_files if not is_accepted_torrent_file(x.name)]
+    if ignored:
+        logger.debug(
+            "Torrent folder {}: ignoring files that aren't archives or images: {}".format(
+                folder, ", ".join(x.name for x in ignored)
+            )
+        )
     if not files:
         if len(dirs) == 1:
             return find_torrent_content(source, posixpath.join(folder, dirs[0].name))

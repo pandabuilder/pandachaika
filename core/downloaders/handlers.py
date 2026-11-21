@@ -178,6 +178,11 @@ class BaseDownloader[T_ProviderSettings: ProviderSettings](metaclass=Meta):
 
         download_event.save()
 
+        if download_url and download_event.status == DownloadEvent.Status.QUEUED:
+            adq = getattr(getattr(self.settings, "workers", None), "archive_download_queue", None)
+            if adq is not None and hasattr(adq, "wake") and adq.is_running_locally():
+                adq.wake()
+
         return download_event
         # result, torrent_id
 

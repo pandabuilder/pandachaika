@@ -2,6 +2,7 @@
 {% block title %}Tools | {{ block.super }}{% endblock %}
 {% block sidebar %}{% endblock %}
 {% load static %}
+{% load viewer_extras %}
 {% block content %}
   {% if messages %}
     {% for message in messages %}
@@ -18,106 +19,183 @@
 
       <div class="list-group col-lg-3 col-md-4 col-sm-6 col-xs-12">
         <div class="list-group-item active">Archives and galleries</div>
-        <form action="{% url 'viewer:tools-id' 'generate_missing_thumbs' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Generate missing thumbnails</button></form>
-        <form action="{% url 'viewer:tools-id' 'calculate_missing_info' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Calculate missing file info</button></form>
-        <form action="{% url 'viewer:tools-id' 'recalc_all_file_info' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Recalculate all file info</button></form>
-        <form action="{% url 'viewer:tools-id' 'set_all_hidden_as_public' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Set all hidden as public</button></form>
-        <form action="{% url 'viewer:tools-id' 'regenerate_all_thumbs' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Regenerate all thumbnails (might be slow)</button></form>
-        <form action="{% url 'viewer:tools-id' 'search_wanted_galleries_provider_titles' %}" method="POST" role="form">
-          {% csrf_token %}
-          <div class="list-group-item">
-              <div class="row g-1">
-                <div class="col-md-auto">
-                    <input size="10" class="form-control" name="provider" value="" placeholder="Provider filter"/>
+        {% if active_tasks.generate_missing_thumbs %}
+          {% task_status active_tasks.generate_missing_thumbs "block" %}
+        {% else %}
+          <form action="{% url 'viewer:tools-id' 'generate_missing_thumbs' %}" method="POST" class="task-action"
+                data-task-fluid="true" hx-post="{% url 'viewer:tools-id' 'generate_missing_thumbs' %}" hx-target="this" hx-swap="outerHTML">
+            {% csrf_token %}<input type="hidden" name="_task_variant" value="block">
+            <button type="submit" class="list-group-item list-group-item-action text-start w-100">Generate missing thumbnails</button>
+          </form>
+        {% endif %}
+        {% if active_tasks.calculate_missing_info %}
+          {% task_status active_tasks.calculate_missing_info "block" %}
+        {% else %}
+          <form action="{% url 'viewer:tools-id' 'calculate_missing_info' %}" method="POST" class="task-action"
+                data-task-fluid="true" hx-post="{% url 'viewer:tools-id' 'calculate_missing_info' %}" hx-target="this" hx-swap="outerHTML">
+            {% csrf_token %}<input type="hidden" name="_task_variant" value="block">
+            <button type="submit" class="list-group-item list-group-item-action text-start w-100">Calculate missing file info</button>
+          </form>
+        {% endif %}
+        {% if active_tasks.recalc_all_file_info %}
+          {% task_status active_tasks.recalc_all_file_info "block" %}
+        {% else %}
+          <form action="{% url 'viewer:tools-id' 'recalc_all_file_info' %}" method="POST" class="task-action"
+                data-task-fluid="true" hx-post="{% url 'viewer:tools-id' 'recalc_all_file_info' %}" hx-target="this" hx-swap="outerHTML">
+            {% csrf_token %}<input type="hidden" name="_task_variant" value="block">
+            <button type="submit" class="list-group-item list-group-item-action text-start w-100">Recalculate all file info</button>
+          </form>
+        {% endif %}
+        {% if active_tasks.set_all_hidden_as_public %}
+          {% task_status active_tasks.set_all_hidden_as_public "block" %}
+        {% else %}
+          <form action="{% url 'viewer:tools-id' 'set_all_hidden_as_public' %}" method="POST" class="task-action"
+                data-task-fluid="true" hx-post="{% url 'viewer:tools-id' 'set_all_hidden_as_public' %}" hx-target="this" hx-swap="outerHTML">
+            {% csrf_token %}<input type="hidden" name="_task_variant" value="block">
+            <button type="submit" class="list-group-item list-group-item-action text-start w-100">Set all hidden as public</button>
+          </form>
+        {% endif %}
+        {% if active_tasks.regenerate_all_thumbs %}
+          {% task_status active_tasks.regenerate_all_thumbs "block" %}
+        {% else %}
+          <form action="{% url 'viewer:tools-id' 'regenerate_all_thumbs' %}" method="POST" class="task-action"
+                data-task-fluid="true" hx-post="{% url 'viewer:tools-id' 'regenerate_all_thumbs' %}" hx-target="this" hx-swap="outerHTML">
+            {% csrf_token %}<input type="hidden" name="_task_variant" value="block">
+            <button type="submit" class="list-group-item list-group-item-action text-start w-100">Regenerate all thumbnails (might be slow)</button>
+          </form>
+        {% endif %}
+        {% if active_tasks.search_wanted_galleries_provider_titles %}
+          {% task_status active_tasks.search_wanted_galleries_provider_titles "block" %}
+        {% else %}
+          <form action="{% url 'viewer:tools-id' 'search_wanted_galleries_provider_titles' %}" method="POST" role="form" class="task-action"
+                data-task-fluid="true" hx-post="{% url 'viewer:tools-id' 'search_wanted_galleries_provider_titles' %}" hx-target="this" hx-swap="outerHTML">
+            {% csrf_token %}<input type="hidden" name="_task_variant" value="block">
+            <div class="list-group-item">
+                <div class="row g-1">
+                  <div class="col-md-auto">
+                      <input size="10" class="form-control" name="provider" value="" placeholder="Provider filter"/>
+                  </div>
+                  <div class="col-md-auto">
+                      <button type="submit" class="btn btn-light">Search wanted galleries by provider titles</button>
+                  </div>
                 </div>
-                <div class="col-md-auto">
-                    <button type="submit" class="btn btn-light">Search wanted galleries by provider titles</button>
+            </div>
+          </form>
+        {% endif %}
+        {% if active_tasks.wanted_galleries_possible_matches %}
+          {% task_status active_tasks.wanted_galleries_possible_matches "block" %}
+        {% else %}
+          <form action="{% url 'viewer:tools-id' 'wanted_galleries_possible_matches' %}" method="POST" role="form" class="task-action"
+                data-task-fluid="true" hx-post="{% url 'viewer:tools-id' 'wanted_galleries_possible_matches' %}" hx-target="this" hx-swap="outerHTML">
+            {% csrf_token %}<input type="hidden" name="_task_variant" value="block">
+            <div class="list-group-item">
+                <div class="row g-1">
+                    <div class="col-md-auto">
+              <input title="Cutoff" size="10" type="number" step="0.01" class="form-control" name="cutoff" value="" placeholder="Cutoff"/>
+                    </div>
+                    <div class="col-md-auto">
+              <input title="Max matches" size="10" type="number" step="1" class="form-control" name="max-matches" value="10" placeholder="Max Matches"/>
+                    </div>
+                    <div class="col-md-auto">
+              <input size="10" class="form-control" name="provider" value="" placeholder="Provider filter"/>
+                    </div>
+                    <div class="col-md-auto">
+              <button type="submit" class="btn btn-light">Search wanted galleries by internal galleries</button>
+                    </div>
                 </div>
-              </div>
-          </div>
-        </form>
-        <form action="{% url 'viewer:tools-id' 'wanted_galleries_possible_matches' %}" method="POST" role="form">
-          {% csrf_token %}
-          <div class="list-group-item">
-              <div class="row g-1">
-                  <div class="col-md-auto">
-            <input title="Cutoff" size="10" type="number" step="0.01" class="form-control" name="cutoff" value="" placeholder="Cutoff"/>
-                  </div>
-                  <div class="col-md-auto">
-            <input title="Max matches" size="10" type="number" step="1" class="form-control" name="max-matches" value="10" placeholder="Max Matches"/>
-                  </div>
-                  <div class="col-md-auto">
-            <input size="10" class="form-control" name="provider" value="" placeholder="Provider filter"/>
-                  </div>
-                  <div class="col-md-auto">
-            <button type="submit" class="btn btn-light">Search wanted galleries by internal galleries</button>
-                  </div>
-              </div>
-          </div>
-        </form>
-        <form action="{% url 'viewer:tools-id' 'retry_failed' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Retry failed downloads</button></form>
+            </div>
+          </form>
+        {% endif %}
+        {% if active_tasks.retry_failed %}
+          {% task_status active_tasks.retry_failed "block" %}
+        {% else %}
+          <form action="{% url 'viewer:tools-id' 'retry_failed' %}" method="POST" class="task-action"
+                data-task-fluid="true" hx-post="{% url 'viewer:tools-id' 'retry_failed' %}" hx-target="this" hx-swap="outerHTML">
+            {% csrf_token %}<input type="hidden" name="_task_variant" value="block">
+            <button type="submit" class="list-group-item list-group-item-action text-start w-100">Retry failed downloads</button>
+          </form>
+        {% endif %}
         <form action="{% url 'viewer:tools-id' 'reconcile_downloads' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Reconcile downloads and archives (sync missing CRC32)</button></form>
-        <form action="{% url 'viewer:tools-id' 'update_newer_than' %}" method="POST" role="form">
-            {% csrf_token %}
-            <div class="list-group-item">
-                <div class="row g-1">
-                    <div class="col-md-auto">
-                        <label for="newer-than">Update gallery metadata newer than date</label>
-                    </div>
-                    <div class="col-md-auto">
-                        <input id="newer-than" size="20" type="text" class="form-control" name="newer_than" value="" placeholder="Newer than date"/>
-                    </div>
-                    <div class="col-md-auto">
-                        <button type="submit" name="apply" class="btn btn-light">Start</button>
-                    </div>
-                </div>
-            </div>
-        </form>
-        <form action="{% url 'viewer:tools-id' 'update_missing_thumbnails' %}" method="POST" role="form">
-            {% csrf_token %}
-            <div class="list-group-item">
-                <div class="row g-1">
-                    <div class="col-md-auto">
-                        <label for="limit-number">Update gallery with missing thumbnails</label>
-                    </div>
-                    <div class="col-md-auto">
-                        <input size="10" id="limit-number" type="number" step="1" class="form-control"  name="limit_number" value="0" placeholder="Limit galleries"/>
-                    </div>
-                    <div class="col-md-auto">
-                        <input size="10" class="form-control" name="provider" value="" placeholder="Provider filter"/>
-                    </div>
-                    <div class="col-md-auto">
-                        <button type="submit" name="apply" class="btn btn-light">Start</button>
-                    </div>
-                </div>
-            </div>
-        </form>
-        <form action="{% url 'viewer:tools-id' 'generate_possible_matches_internally' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Generate possible matches for non-matches (all providers)</button></form>
-        <form action="{% url 'viewer:tools-id' 'generate_possible_matches_internally' %}" method="POST" role="form">
-            {% csrf_token %}
-            <div class="list-group-item">
-                <div class="row g-1">
-                    <div class="col-md-auto">
-                        <input size="10" type="text" class="form-control" name="provider" value="" placeholder="Provider filter"/>
-                    </div>
-                    <div class="col-md-auto">
-                        <input title="Cutoff" size="10" type="number" step="0.01" class="form-control" name="cutoff" value="" placeholder="Cutoff"/>
-                    </div>
-                    <div class="col-md-auto">
-                        <input title="Max matches" size="10" type="number" step="1" class="form-control" name="max-matches" value="10" placeholder="Max Matches"/>
-                    </div>
-                    <div class="col-md-auto">
-                        <div class="form-check mt-2">
-                            <input class="form-check-input" type="checkbox" name="auto_link" id="tools_auto_link" title="Link each archive to its best local match when it's good enough, instead of only storing possible matches">
-                            <label class="form-check-label" for="tools_auto_link">Auto-link</label>
-                        </div>
-                    </div>
-                    <div class="col-md-auto">
-                        <button type="submit" class="btn btn-light">Generate possible matches for non-matches (filter providers)</button>
-                    </div>
-                </div>
-            </div>
-        </form>
+        {% if active_tasks.update_newer_than %}
+          {% task_status active_tasks.update_newer_than "block" %}
+        {% else %}
+          <form action="{% url 'viewer:tools-id' 'update_newer_than' %}" method="POST" role="form" class="task-action"
+                data-task-fluid="true" hx-post="{% url 'viewer:tools-id' 'update_newer_than' %}" hx-target="this" hx-swap="outerHTML">
+              {% csrf_token %}<input type="hidden" name="_task_variant" value="block">
+              <div class="list-group-item">
+                  <div class="row g-1">
+                      <div class="col-md-auto">
+                          <label for="newer-than">Update gallery metadata newer than date</label>
+                      </div>
+                      <div class="col-md-auto">
+                          <input id="newer-than" size="20" type="text" class="form-control" name="newer_than" value="" placeholder="Newer than date"/>
+                      </div>
+                      <div class="col-md-auto">
+                          <button type="submit" name="apply" class="btn btn-light">Start</button>
+                      </div>
+                  </div>
+              </div>
+          </form>
+        {% endif %}
+        {% if active_tasks.update_missing_thumbnails %}
+          {% task_status active_tasks.update_missing_thumbnails "block" %}
+        {% else %}
+          <form action="{% url 'viewer:tools-id' 'update_missing_thumbnails' %}" method="POST" role="form" class="task-action"
+                data-task-fluid="true" hx-post="{% url 'viewer:tools-id' 'update_missing_thumbnails' %}" hx-target="this" hx-swap="outerHTML">
+              {% csrf_token %}<input type="hidden" name="_task_variant" value="block">
+              <div class="list-group-item">
+                  <div class="row g-1">
+                      <div class="col-md-auto">
+                          <label for="limit-number">Update gallery with missing thumbnails</label>
+                      </div>
+                      <div class="col-md-auto">
+                          <input size="10" id="limit-number" type="number" step="1" class="form-control"  name="limit_number" value="0" placeholder="Limit galleries"/>
+                      </div>
+                      <div class="col-md-auto">
+                          <input size="10" class="form-control" name="provider" value="" placeholder="Provider filter"/>
+                      </div>
+                      <div class="col-md-auto">
+                          <button type="submit" name="apply" class="btn btn-light">Start</button>
+                      </div>
+                  </div>
+              </div>
+          </form>
+        {% endif %}
+        {% if active_tasks.generate_possible_matches_internally %}
+          {% task_status active_tasks.generate_possible_matches_internally "block" %}
+        {% else %}
+          <form action="{% url 'viewer:tools-id' 'generate_possible_matches_internally' %}" method="POST" class="task-action"
+                data-task-fluid="true" hx-post="{% url 'viewer:tools-id' 'generate_possible_matches_internally' %}" hx-target="this" hx-swap="outerHTML">
+            {% csrf_token %}<input type="hidden" name="_task_variant" value="block">
+            <button type="submit" class="list-group-item list-group-item-action text-start w-100">Generate possible matches for non-matches (all providers)</button>
+          </form>
+          <form action="{% url 'viewer:tools-id' 'generate_possible_matches_internally' %}" method="POST" role="form" class="task-action"
+                data-task-fluid="true" hx-post="{% url 'viewer:tools-id' 'generate_possible_matches_internally' %}" hx-target="this" hx-swap="outerHTML">
+              {% csrf_token %}<input type="hidden" name="_task_variant" value="block">
+              <div class="list-group-item">
+                  <div class="row g-1">
+                      <div class="col-md-auto">
+                          <input size="10" type="text" class="form-control" name="provider" value="" placeholder="Provider filter"/>
+                      </div>
+                      <div class="col-md-auto">
+                          <input title="Cutoff" size="10" type="number" step="0.01" class="form-control" name="cutoff" value="" placeholder="Cutoff"/>
+                      </div>
+                      <div class="col-md-auto">
+                          <input title="Max matches" size="10" type="number" step="1" class="form-control" name="max-matches" value="10" placeholder="Max Matches"/>
+                      </div>
+                      <div class="col-md-auto">
+                          <div class="form-check mt-2">
+                              <input class="form-check-input" type="checkbox" name="auto_link" id="tools_auto_link" title="Link each archive to its best local match when it's good enough, instead of only storing possible matches">
+                              <label class="form-check-label" for="tools_auto_link">Auto-link</label>
+                          </div>
+                      </div>
+                      <div class="col-md-auto">
+                          <button type="submit" class="btn btn-light">Generate possible matches for non-matches (filter providers)</button>
+                      </div>
+                  </div>
+              </div>
+          </form>
+        {% endif %}
         <form action="{% url 'viewer:tools-id' 'clear_all_archive_possible_matches' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Clear all archive possible matches</button></form>
       </div>
       {% if user.is_superuser %}
@@ -137,4 +215,8 @@
 
     </div>
   {% endif %}
+{% endblock %}
+{% block afterJQ %}
+  <script type="text/javascript" src="{% static 'js/vendor/htmx.min.js' %}"></script>
+  <script type="text/javascript" src="{% static 'js/task_actions.js' %}"></script>
 {% endblock %}

@@ -38,7 +38,9 @@
     top: 51px;
     bottom: 0;
     left: 0;
-    z-index: 1000;
+    /* Below Bootstrap's dropdown layer (1000) so top-nav menus and the
+       quick-search autocomplete render over the sidebar, not under it. */
+    z-index: 990;
     display: block;
     padding: 20px;
     overflow-x: hidden;
@@ -55,9 +57,19 @@
   margin-left: -20px;
 }
 
-.nav-sidebar > li > a {
+.nav-sidebar > li > a,
+.nav-sidebar > li > button.es-facet-btn {
   padding-right: 20px;
   padding-left: 20px;
+}
+
+.nav-sidebar > li > button.es-facet-btn {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
 }
 
 .nav-sidebar > .nav-item > a.active,

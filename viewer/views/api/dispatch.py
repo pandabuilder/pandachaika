@@ -1,26 +1,28 @@
-"""Dispatch GET/POST/PUT/DELETE requests to registered API handlers."""
+"""Route GET/POST/PUT/DELETE requests to the registered API command.
 
-from collections.abc import Sequence
+``authenticate_api_request()`` must have run first (the entry views in routes.py do that). Errors are raised as
+ApiError and rendered by the entry view for its surface.
+"""
+
 import json
+import logging
+from collections.abc import Sequence
 from typing import Any
 
-from django.contrib.auth.models import User, AnonymousUser
-from django.http import (
-    HttpResponse,
-    HttpRequest,
-    HttpResponseBadRequest,
-    HttpResponseForbidden,
-    HttpResponseNotFound,
-)
+from django.contrib.auth.models import AnonymousUser, User
+from django.http import HttpRequest, HttpResponse
+from django.http.request import QueryDict
 
-from viewer.views.api.registry import (
-    DELETE_HANDLERS,
-    GET_HANDLERS,
-    POST_HANDLERS,
-    PUT_HANDLERS,
-)
+from viewer.views.api.auth import get_api_context
+from viewer.views.api.errors import ApiError
+from viewer.views.api.registry import COMMANDS, Command
 
-def _user_has_required_perm(
+logger = logging.getLogger(__name__)
+
+SUPPORTED_METHODS = ["GET", "POST", "PUT", "DELETE"]
+
+
+def user_has_required_perm(
     user: User | AnonymousUser | None,
     required_perm: str | Sequence[str] | None,
 ) -> bool:
@@ -33,69 +35,61 @@ def _user_has_required_perm(
     return any(user.has_perm(perm) for perm in required_perm)
 
 
-def json_api_handle_get(request: HttpRequest, user_is_authenticated: bool):
-    data = request.GET
-    for key, handler in GET_HANDLERS:
-        if key in data:
-            return handler(request, data, user_is_authenticated)
-    return HttpResponse(json.dumps({"result": "Unknown command"}), content_type="application/json; charset=utf-8")
+def find_command(method: str, data: QueryDict) -> Command | None:
+    for command in COMMANDS.get(method, []):
+        if command.key in data:
+            return command
+    return None
 
 
-def json_api_handle_post(request: HttpRequest, user: User | AnonymousUser | None):
-    data = request.GET
+FORM_CONTENT_TYPES = ("multipart/form-data", "application/x-www-form-urlencoded")
+
+
+def parse_json_body(request: HttpRequest) -> dict[str, Any]:
+    """The request's JSON object body ({} when empty). Form-encoded bodies are only accepted when they are empty."""
+    if request.content_type in FORM_CONTENT_TYPES:
+        if request.POST or request.FILES:
+            raise ApiError(415, "unsupported_media_type", "Send the request body as JSON (application/json).")
+        return {}
     try:
         body = json.loads(request.body) if request.body else {}
     except (json.JSONDecodeError, UnicodeDecodeError):
-        return HttpResponseBadRequest(
-            json.dumps({"result": "Invalid JSON body"}), content_type="application/json; charset=utf-8"
-        )
-    for key, required_perm, handler in POST_HANDLERS:
-        if key in data:
-            if _user_has_required_perm(user, required_perm):
-                return handler(request, data, body, user)
-            else:
-                return HttpResponseForbidden(
-                    json.dumps({"result": "Not authorized"}), content_type="application/json; charset=utf-8"
-                )
-    return HttpResponse(json.dumps({"result": "Unknown command"}), content_type="application/json; charset=utf-8")
+        raise ApiError.invalid_json() from None
+    if not isinstance(body, dict):
+        raise ApiError.invalid_json("The JSON body must be an object.")
+    return body
 
 
-def json_api_handle_put(request: HttpRequest, user: User | AnonymousUser | None):
+def dispatch_command(request: HttpRequest) -> HttpResponse:
+    method = request.method or "GET"
+    if method not in SUPPORTED_METHODS:
+        raise ApiError.method_not_allowed(SUPPORTED_METHODS, "Unsupported request method")
+
+    context = get_api_context(request)
     data = request.GET
+
+    if method == "GET":
+        command = find_command(method, data)
+        if command is None:
+            raise ApiError.unknown_command()
+        if command.requires_auth and not context.authenticated:
+            raise ApiError.not_authenticated()
+        if command.perm and not user_has_required_perm(context.user, command.perm):
+            raise ApiError.forbidden()
+        return command.handler(request, data, context.authenticated)
+
+    # Write commands: who is asking and whether the body parses come before which command it is.
+    if not context.authenticated:
+        raise ApiError.not_authenticated()
+    body = parse_json_body(request)
+    command = find_command(method, data)
+    if command is None:
+        raise ApiError.unknown_command()
+    if not user_has_required_perm(context.user, command.perm):
+        raise ApiError.forbidden()
     try:
-        body = json.loads(request.body) if request.body else {}
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        return HttpResponseBadRequest(
-            json.dumps({"result": "Invalid JSON body"}), content_type="application/json; charset=utf-8"
-        )
-    for key, required_perm, handler in PUT_HANDLERS:
-        if key in data:
-            if _user_has_required_perm(user, required_perm):
-                return handler(request, data, body, user)
-            else:
-                return HttpResponseForbidden(
-                    json.dumps({"result": "Not authorized"}), content_type="application/json; charset=utf-8"
-                )
-    return HttpResponse(json.dumps({"result": "Unknown command"}), content_type="application/json; charset=utf-8")
-
-
-def json_api_handle_delete(request: HttpRequest, user: User | AnonymousUser | None):
-    data = request.GET
-    try:
-        body: dict[str, Any] = json.loads(request.body) if request.body else {}
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        return HttpResponseBadRequest(
-            json.dumps({"result": "Invalid JSON body"}), content_type="application/json; charset=utf-8"
-        )
-    for key, required_perm, handler in DELETE_HANDLERS:
-        if key in data:
-            if _user_has_required_perm(user, required_perm):
-                return handler(request, data, body, user)
-            else:
-                return HttpResponseForbidden(
-                    json.dumps({"result": "Not authorized"}), content_type="application/json; charset=utf-8"
-                )
-    return HttpResponseNotFound(
-        json.dumps({"result": "Unknown command"}), content_type="application/json; charset=utf-8"
-    )
-
+        return command.handler(request, data, body, context.user)
+    except KeyError as e:
+        # The archive group handlers read required body fields with body["..."].
+        logger.warning("API %s ?%s: missing body field %s", method, command.key, e, exc_info=True)
+        raise ApiError.bad_request(f"Missing required field: {e.args[0]}", code="missing_field") from None

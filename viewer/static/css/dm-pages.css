@@ -1,7 +1,8 @@
 /*
  * Shared look for the streamlined admin/collaborator pages (submit queue, archive matching,
- * activity event log, downloads, server logs). Same palette and components as the database
- * maintenance, workers dashboard and archive file check pages.
+ * activity event log, downloads, server logs, monitored links, gallery/wanted management,
+ * match groups, missing archives, and similar/repeated field tables). Same palette and
+ * components as the database maintenance, workers dashboard and archive file check pages.
  */
 
 :root {

@@ -134,7 +134,16 @@ INSTALLED_APPS = [
 ]
 
 if not crawler_settings.disable_sql_log:
-    LOGGING["handlers"]["db_log"] = {"level": "DEBUG", "class": "django_db_logger.db_log_handler.DatabaseLogHandler"}
+    raw_sql_log_level = str(getattr(crawler_settings, "sql_log_level", "INFO") or "INFO").upper()
+    sql_log_level = (
+        raw_sql_log_level
+        if raw_sql_log_level in ("CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG", "NOTSET")
+        else "INFO"
+    )
+    LOGGING["handlers"]["db_log"] = {
+        "level": sql_log_level,
+        "class": "django_db_logger.db_log_handler.DatabaseLogHandler",
+    }
     LOGGING["loggers"]["viewer"]["handlers"].append("db_log")
     LOGGING["loggers"]["workers"]["handlers"].append("db_log")
     LOGGING["loggers"]["core"]["handlers"].append("db_log")

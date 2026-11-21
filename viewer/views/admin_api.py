@@ -421,7 +421,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
                 except (OSError, ProcessLookupError, PermissionError) as e:
                     logger.warning("Could not send SIGHUP to worker PID %d: %s", wp.pid, e)
 
-        SchedulerState.request_command("worker_runner", "restart")
+        SchedulerState.request_command("worker_runner", "restart", schedule_type=SchedulerState.TYPE_CONTROL)
         logger.info("Requested worker restart (active: %d, signaled: %s)", len(active_workers), signaled_pids)
 
         if active_workers:

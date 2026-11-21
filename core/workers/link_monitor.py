@@ -61,8 +61,10 @@ class LinkMonitor(BaseScheduler):
         link = self.monitored_link
         return self._seconds_until(self.last_process_run or self.last_run, link.frequency)
 
-    def update_last_run(self, last_run: datetime) -> None:
+    def update_last_run(self, last_run: datetime, persist: bool = True) -> None:
         self.last_run = last_run
+        if not persist:
+            return
         if self.monitored_link.uses_separate_frequencies:
             next_in = min(self.seconds_until_capture(), self.seconds_until_process())
         else:

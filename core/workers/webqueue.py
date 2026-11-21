@@ -97,6 +97,7 @@ class WebQueue(object):
             event_action=task_action,
             priority=priority,
             deduplicate=deduplicate,
+            base_settings=self.settings,
         )
 
     def start_running(self) -> None:

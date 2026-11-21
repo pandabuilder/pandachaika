@@ -1,5 +1,6 @@
 from collections import defaultdict
 from datetime import datetime, timezone
+import logging
 from unittest.mock import patch
 
 from django.test import TestCase
@@ -209,11 +210,15 @@ class WantedGalleryTest(TestCase):
 
         gallery_wanted_lists: dict[str, list["WantedGallery"]] = defaultdict(list)
 
-        # 5 viewer related queries, 1 log related query
-        if settings.disable_sql_log:
-            expected_queries = 5
-        else:
-            expected_queries = 6
+        # 5 viewer related queries, plus 1 StatusLog query when db_log records INFO
+        raw_db_level = str(getattr(settings, "sql_log_level", "INFO") or "INFO").upper()
+        db_level_num = logging.getLevelName(raw_db_level)
+        logs_info_to_db = (
+            not settings.disable_sql_log
+            and isinstance(db_level_num, int)
+            and db_level_num <= logging.INFO
+        )
+        expected_queries = 6 if logs_info_to_db else 5
         with self.assertNumQueries(expected_queries):
             parser.compare_gallery_with_wanted_filters(
                 incoming_gallery, gallery_link, wanted_galleries, gallery_wanted_lists

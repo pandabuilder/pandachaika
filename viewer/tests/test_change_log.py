@@ -256,15 +256,15 @@ class ArchiveCustomTagTrackingTests(TestCase):
         ArchiveTag.objects.create(archive=self.archive, tag=self.custom, origin=ArchiveTag.ORIGIN_USER)
         ArchiveChange.objects.all().delete()
         self.client.force_login(self.user)
-        url = reverse("viewer:archive-update", args=[self.archive.pk])
+        url = reverse("viewer:archive", args=[self.archive.pk])
         form = {
-            "title": "A", "title_jpn": "", "source_type": "", "reason": "backup", "details": "",
-            "images-TOTAL_FORMS": "0", "images-INITIAL_FORMS": "0",
+            "change-archive": "Submit", "title": "A", "title_jpn": "", "source_type": "", "reason": "backup",
+            "details": "", "zipped": "a.zip",
         }
-        # Same custom tags: the view deletes and re-creates them, nothing is logged
-        self.client.post(url, {**form, "tags": [self.custom.pk]})
+        # Same custom tags: nothing is logged
+        self.client.post(url, {**form, "custom_tags": [self.custom.pk]})
         self.assertEqual(self.rows(), [])
-        self.client.post(url, {**form, "title": "B", "tags": [self.other.pk]})
+        self.client.post(url, {**form, "title": "B", "custom_tags": [self.other.pk]})
         (change,) = ArchiveChange.objects.filter(archive=self.archive)
         self.assertEqual(change.changes, {"title": ["A", "B"]})
         self.assertEqual((change.custom_tags_added, change.custom_tags_removed), (["custom:other"], ["custom:mine"]))

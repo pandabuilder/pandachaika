@@ -5,7 +5,7 @@ from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
 from django.core.paginator import Paginator, InvalidPage, EmptyPage
 from django.db.models import Prefetch, Count, Q, Case, When
-from django.http import HttpRequest, HttpResponse
+from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import render
 from django.conf import settings
 
@@ -30,7 +30,7 @@ from viewer.models import (
     GalleryMatchGroupEntry,
 )
 from viewer.utils.actions import event_log
-from viewer.utils.general import safe_redirect_back
+from viewer.utils.general import PAGE_SIZE_OPTIONS, page_size, safe_redirect_back
 from workers import client
 from viewer.views.head import (
     render_error,
@@ -246,9 +246,13 @@ def repeated_galleries_by_field(request: HttpRequest) -> HttpResponse:
         inline_thumbnails = False
 
     d = {
-        "by_title": by_title, "by_filesize": by_filesize, "form": form,
+        "by_title": by_title,
+        "by_filesize": by_filesize,
+        "form": form,
         "fields_form": fields_form,
-        "inline_thumbnails": inline_thumbnails
+        "inline_thumbnails": inline_thumbnails,
+        "has_grouping": "by-title" in get or "by-filesize" in get,
+        "total_groups": len(by_title) + len(by_filesize),
     }
 
     return render(request, "viewer/galleries_repeated_by_fields.html", d)
@@ -529,6 +533,7 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
                 messages.success(request, message)
                 logger.info("User {}: {}".format(request.user.username, message))
                 event_log(request.user, "ADD_WANTED_GALLERY", content_object=new_wanted_gallery, result="created")
+                return HttpResponseRedirect(request.get_full_path())
             else:
                 messages.error(request, "The provided data is not valid", extra_tags="danger")
         else:
@@ -663,6 +668,9 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
             logger.info(message)
             messages.success(request, message)
 
+        if not p.get("submit-wanted-gallery"):
+            return HttpResponseRedirect(request.get_full_path())
+
     params = {}
 
     for k, v in get.items():
@@ -699,11 +707,28 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
             "mentions",
         )
 
-    paginator = Paginator(results_filtered, 100)
+    limit = page_size(get, default=100)
+    paginator = Paginator(results_filtered, limit)
     try:
         results_page = paginator.page(page)
     except (InvalidPage, EmptyPage):
         results_page = paginator.page(paginator.num_pages)
+
+    base_wanted = WantedGallery.objects.all() if is_collaborator_or_staff else WantedGallery.objects.filter(public=True)
+    raw_stats = base_wanted.aggregate(
+        total_count=Count("id"),
+        searching_count=Count("id", filter=Q(should_search=True, found=False)),
+        found_count=Count("id", filter=Q(found=True)),
+        unfound_count=Count("id", filter=Q(found=False)),
+    )
+    stats = {
+        "total": raw_stats["total_count"],
+        "searching": raw_stats["searching_count"],
+        "found": raw_stats["found_count"],
+        "unfound": raw_stats["unfound_count"],
+    }
+    if is_collaborator_or_staff:
+        stats["with_matches"] = base_wanted.filter(possible_matches__isnull=False).distinct().count()
 
     d = {
         "results": results_page,
@@ -711,6 +736,9 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
         "edit_form": edit_form,
         "can_add": can_add,
         "can_view_internal": is_collaborator_or_staff,
+        "stats": stats,
+        "limit": limit,
+        "per_page_options": PAGE_SIZE_OPTIONS,
     }
     return render(request, "viewer/wanted_galleries.html", d)
 

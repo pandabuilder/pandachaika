@@ -391,7 +391,7 @@ def _health_section(options: ReportOptions, crawler_settings: Any) -> dict[str, 
     stale_workers = [w for w in workers if w.last_heartbeat < now - WORKER_HEARTBEAT_STALE]
 
     schedulers: list[dict[str, Any]] = []
-    for state in SchedulerState.objects.all():
+    for state in SchedulerState.schedulers():
         problem = ""
         if state.is_running:
             if state.last_heartbeat is None or state.last_heartbeat < now - SCHEDULER_HEARTBEAT_STALE:

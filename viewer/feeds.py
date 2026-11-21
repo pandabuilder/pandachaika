@@ -4,6 +4,7 @@ from typing import Any
 from datetime import datetime
 from django.contrib.syndication.views import Feed
 from django.core.paginator import Paginator
+from django.db.models import F
 from django.http import HttpRequest
 
 from viewer.models import Archive
@@ -38,7 +39,7 @@ class LatestArchivesFeed(Feed):
         results = filter_archives_simple(params, authenticated=request.user.is_authenticated)
 
         if not request.user.is_authenticated:
-            results = results.filter(public=True).order_by("-public_date")
+            results = results.filter(public=True).order_by(F("public_date").desc(nulls_last=True))
 
         results = results.prefetch_related("tags")
 

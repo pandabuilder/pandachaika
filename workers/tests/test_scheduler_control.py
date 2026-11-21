@@ -41,6 +41,15 @@ class SchedulerStateAndControlTests(TestCase):
         state.refresh_from_db()
         self.assertEqual(state.command_requested, "start")
         self.assertEqual(state.command_arg, "5.0")
+        self.assertEqual(state.schedule_type, SchedulerState.TYPE_SCHEDULER)
+
+        # Control commands get schedule_type="control" and are excluded from get_all_statuses()
+        SchedulerState.request_command("worker_runner", "restart")
+        ctrl = SchedulerState.objects.get(name="worker_runner")
+        self.assertEqual(ctrl.schedule_type, SchedulerState.TYPE_CONTROL)
+        all_statuses = SchedulerState.get_all_statuses()
+        self.assertIn("test_sched", all_statuses)
+        self.assertNotIn("worker_runner", all_statuses)
 
     def test_base_scheduler_ipc_commands_from_web(self):
         from core.workers.schedulers import BaseScheduler
@@ -228,6 +237,12 @@ class SchedulerStateAndControlTests(TestCase):
         self.assertEqual(progress_checker_status.worker_pid, 1337)
         self.assertTrue(progress_checker_status.is_running)
         self.assertIn("3600", progress_checker_status.cycle_timer)
+
+        # Ensure control rows are excluded from get_active_initialized_workers_from_db()
+        SchedulerState.request_command("worker_runner", "restart")
+        db_workers = self.settings.workers.get_active_initialized_workers_from_db()
+        db_worker_names = {getattr(w, "name", getattr(w, "thread_name", "")) for w in db_workers}
+        self.assertNotIn("worker_runner", db_worker_names)
 
         # Ensure in-memory get_active_initialized_workers used by worker runner still returns in-memory workers
         in_memory = self.settings.workers.get_active_initialized_workers()

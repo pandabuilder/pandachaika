@@ -14,7 +14,7 @@ from django.views.decorators.http import require_POST
 
 from core.base.utilities import get_schedulers_status
 from viewer.management.commands import update_provider_wanted
-from viewer.utils.general import safe_redirect_back
+from viewer.utils.general import PAGE_SIZE_OPTIONS, page_size, safe_redirect_back
 from viewer.utils.actions import event_log
 from viewer.forms import (
     WantedGalleryCreateOrEditForm,
@@ -312,11 +312,22 @@ def monitored_links(request: HttpRequest) -> HttpResponse:
     except ValueError:
         page = 1
 
-    paginator = Paginator(results, 50)
+    limit = page_size(get, default=50)
+    paginator = Paginator(results, limit)
     try:
         results_page = paginator.page(page)
     except (InvalidPage, EmptyPage):
         results_page = paginator.page(paginator.num_pages)
+
+    enabled_count = sum(1 for ml in all_links if ml.enabled)
+    stats = {
+        "total": len(all_links),
+        "running": len(running_pks),
+        "stopped": len(all_links) - len(running_pks),
+        "enabled": enabled_count,
+        "disabled": len(all_links) - enabled_count,
+        "auto_start": sum(1 for ml in all_links if ml.auto_start),
+    }
 
     d = {
         "results": results_page,
@@ -325,6 +336,9 @@ def monitored_links(request: HttpRequest) -> HttpResponse:
         "edit_form": edit_form,
         "filter_form": filter_form,
         "can_manage": _can_manage_monitored_links(request.user),
+        "stats": stats,
+        "limit": limit,
+        "per_page_options": PAGE_SIZE_OPTIONS,
     }
     return render(request, "viewer/collaborators/monitored_links.html", d)
 

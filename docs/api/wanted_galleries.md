@@ -8,11 +8,11 @@ All endpoints use the public JSON API at `/api/` (or `/jsearch/`, or slashless `
 
 ## Authentication & Access Control
 
-- **Unauthenticated GET requests**: Unauthenticated callers only receive entries where `public=true`. If an unauthenticated caller requests a non-public entry, `404 Not Found` with `{"result": "WantedGallery does not exist."}` is returned.
+- **Unauthenticated GET requests**: Unauthenticated callers only receive entries where `public=true`. If an unauthenticated caller requests a non-public entry, `404 Not Found` (`{"error": {"code": "not_found", "message": "WantedGallery does not exist."}}`) is returned.
 - **Authenticated GET requests**: Passing an `Authorization: Bearer <API_TOKEN>` header or active Django session allows access to both public and non-public wanted galleries.
-- **Creating Wanted Galleries (`POST`)**: Requires an authenticated user with the `viewer.add_wantedgallery` permission. Unauthenticated or unauthorized callers receive `403 Forbidden` (`{"result": "Not authorized"}`).
-- **Modifying Wanted Galleries (`PUT`)**: Requires an authenticated user with the `viewer.change_wantedgallery` permission. Unauthenticated or unauthorized callers receive `403 Forbidden` (`{"result": "Not authorized"}`).
-- **Deleting Wanted Galleries (`DELETE`)**: Requires an authenticated user with the `viewer.delete_wantedgallery` permission. Unauthenticated or unauthorized callers receive `403 Forbidden` (`{"result": "Not authorized"}`).
+- **Creating Wanted Galleries (`POST`)**: Requires an authenticated user with the `viewer.add_wantedgallery` permission. Unauthenticated callers receive `401 Unauthorized`; callers without the permission receive `403 Forbidden`.
+- **Modifying Wanted Galleries (`PUT`)**: Requires an authenticated user with the `viewer.change_wantedgallery` permission. Unauthenticated callers receive `401 Unauthorized`; callers without the permission receive `403 Forbidden`.
+- **Deleting Wanted Galleries (`DELETE`)**: Requires an authenticated user with the `viewer.delete_wantedgallery` permission. Unauthenticated callers receive `401 Unauthorized`; callers without the permission receive `403 Forbidden`.
 
 ---
 
@@ -104,7 +104,7 @@ Returns a JSON object with the fields listed in [Response Field Definitions](#re
 Returned if the ID does not exist, or the entry is not public and the caller is unauthenticated:
 ```json
 {
-  "result": "WantedGallery does not exist."
+  "error": {"code": "not_found", "message": "WantedGallery does not exist."}
 }
 ```
 
@@ -412,7 +412,7 @@ curl -X POST "https://example.chaika.moe/api/?wanted-gallery=" \
 Missing authentication or `viewer.add_wantedgallery` permission:
 ```json
 {
-  "result": "Not authorized"
+  "error": {"code": "forbidden", "message": "Not authorized"}
 }
 ```
 
@@ -535,7 +535,7 @@ Returns the full updated WantedGallery object and `"result": "success"`:
 Returned if the ID does not exist:
 ```json
 {
-  "result": "WantedGallery does not exist."
+  "error": {"code": "not_found", "message": "WantedGallery does not exist."}
 }
 ```
 
@@ -543,7 +543,7 @@ Returned if the ID does not exist:
 Missing authentication or `viewer.change_wantedgallery` permission:
 ```json
 {
-  "result": "Not authorized"
+  "error": {"code": "forbidden", "message": "Not authorized"}
 }
 ```
 
@@ -579,14 +579,14 @@ curl -X DELETE "https://example.chaika.moe/api/?wanted-gallery=123" \
 **Error (404 Not Found)**
 ```json
 {
-  "result": "WantedGallery does not exist."
+  "error": {"code": "not_found", "message": "WantedGallery does not exist."}
 }
 ```
 
 **Error (403 Forbidden)**
 ```json
 {
-  "result": "Not authorized"
+  "error": {"code": "forbidden", "message": "Not authorized"}
 }
 ```
 

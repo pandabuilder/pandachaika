@@ -1,413 +1,423 @@
 {% extends "viewer/base.html" %}
-{% load dict_key %}
-{% load static %}
-{% load viewer_extras %}
+{% load dict_key static viewer_extras %}
 
-{% block title %}Wanted galleries | {{ block.super }}{% endblock %}
+{% block title %}Wanted Galleries | {{ block.super }}{% endblock %}
 {% block sidebar %}{% endblock %}
 
+{% block extra_head %}
+  {% load compress %}
+  {% compress css %}
+    <link href="{% static 'css/vendor/jal/style.css' %}" type="text/css" media="all" rel="stylesheet" />
+    <link href="{% static 'css/dm-pages.css' %}" type="text/css" rel="stylesheet" />
+  {% endcompress %}
+  <style>
+    .wg-item { border-bottom: 1px solid var(--pg-border); }
+    .wg-item:last-child { border-bottom: 0; }
+    .wg-item.dm-selected > .wg-head { background: var(--pg-bg-selected); }
+    .wg-head { padding: 0.7rem 0.85rem; }
+    .wg-head.wg-selectable { cursor: pointer; }
+    .wg-head.wg-selectable:hover { background: #002450; }
+    .wg-title { font-weight: 600; font-size: 0.98rem; }
+    .wg-jpn { font-size: 0.82rem; color: var(--pg-accent-blue); }
+    .wg-meta { font-size: 0.82rem; color: var(--pg-text-secondary); }
+    .wg-sub { padding: 0 0.85rem 0.75rem 2.5rem; }
+    .wg-acc { min-width: 8rem; }
+    .wg-acc-row { display: flex; align-items: center; gap: 0.4rem; font-size: 0.78rem; }
+    .wg-acc-row .progress { flex: 1; height: 6px; background: var(--pg-bg-darkest); }
+    .wg-acc-val { font-family: monospace; min-width: 2.6rem; text-align: right; }
+  </style>
+{% endblock %}
+
 {% block content %}
-{% if messages %}
-  {% for message in messages %}
-    <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %} alert-dismissible fade show" role="alert">
-      {{ message }}
-      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+<div class="container-fluid py-3">
+  {% include "viewer/include/dm_messages.html" %}
+
+  <!-- Header -->
+  <div class="dm-page-header">
+    <div>
+      <h2 class="h3 mb-1"><i class="fas fa-binoculars text-info me-2"></i>Wanted Galleries</h2>
+      {% if not can_view_internal %}
+        <p class="mb-0 small">
+          Galleries being watched for new releases. If you have the file or find a matching release, please submit the URL.
+        </p>
+      {% else %}
+        <p class="mb-0 small">
+          Wanted gallery watch rules, candidate matches, and provider mentions.
+        </p>
+      {% endif %}
     </div>
-  {% endfor %}
-{% endif %}
-
-<!-- Page Header & Action Buttons -->
-<div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
-  <div>
-    <h2 class="h3 fw-bold text-white mb-1">
-      <i class="fas fa-binoculars text-info me-2"></i>Wanted Galleries
-      <span class="badge bg-primary fs-6 align-middle ms-2">
-        {% if results.paginator %}{{ results.paginator.count }}{% else %}{{ results|length }}{% endif %}
-      </span>
-    </h2>
-    {% if not can_view_internal %}
-      <p class="text-light opacity-75 small mb-0">
-        Galleries being watched for new releases. If you have the file or find a matching release, please submit the URL!
-      </p>
-    {% else %}
-      <p class="text-light opacity-75 small mb-0">
-        Showing {{ results|length }} galleries on page {{ results.number }} of {{ results.paginator.num_pages }}.
-      </p>
-    {% endif %}
-  </div>
-
-  <div class="d-flex flex-wrap align-items-center gap-2">
-    {% if can_add %}
-      <button class="btn btn-primary btn-sm collapse-icon" id="add-wanted" data-bs-toggle="collapse"
-              data-bs-target="#add-change-wanted-form" name="add-wanted" type="button" aria-label="toggle add wanted">
-        <i class="fas fa-plus me-1"></i>Add Wanted Gallery <i class="fas fa-chevron-down ms-1"></i>
-      </button>
-      <a class="btn btn-secondary btn-sm" href="{% url 'viewer:col-create-wanted-gallery' %}" role="button">
-        <i class="fas fa-plus-circle me-1"></i>Add Page
-      </a>
-      <a class="btn btn-secondary btn-sm" href="{% url 'viewer:col-create-wanted-galleries-from-command' %}" role="button">
-        <i class="fas fa-terminal me-1"></i>Add From Command
-      </a>
-    {% endif %}
-
-    {% if user.is_staff %}
-      <a class="btn btn-outline-info btn-sm" href="{% url 'viewer:tools-id' 'wanted_galleries_possible_matches' %}">
-        <i class="fas fa-search me-1"></i>Search internal matches
-      </a>
-      <form action="{{ request.get_full_path }}" method="POST" class="d-inline">
-        {% csrf_token %}
-        <button name="clear_all_matches" class="btn btn-outline-danger btn-sm" onclick="return confirm('Clear all matches from every wanted gallery?');">
-          <i class="fas fa-trash-alt me-1"></i>Clear all matches
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      {% if not can_view_internal %}
+        <a class="btn btn-outline-info btn-sm" href="{% url 'viewer:url-submit' %}">
+          <i class="fas fa-paper-plane me-1"></i>Submit URL
+        </a>
+      {% endif %}
+      {% if can_add %}
+        <button class="btn btn-primary btn-sm" id="add-wanted" data-bs-toggle="collapse"
+                data-bs-target="#add-wanted-card" name="add-wanted" type="button"
+                aria-expanded="{% if edit_form and edit_form.errors %}true{% else %}false{% endif %}" aria-controls="add-wanted-card">
+          <i class="fas fa-plus me-1"></i>Add Wanted Gallery
         </button>
-      </form>
-    {% endif %}
-  </div>
-</div>
-
-<!-- Collapsible Add Form (if can_add) -->
-{% if can_add and edit_form %}
-<div id="add-change-wanted-form" class="collapse mb-3">
-  <div class="card bg-dark border-info shadow">
-    <div class="card-header bg-secondary text-white py-2 d-flex justify-content-between align-items-center">
-      <h5 class="card-title h6 mb-0"><i class="fas fa-plus-circle me-1"></i>Add Wanted Gallery</h5>
-      <button type="button" class="btn-close btn-close-white btn-sm" data-bs-toggle="collapse" data-bs-target="#add-change-wanted-form" aria-label="Close"></button>
+        <a class="btn btn-outline-light btn-sm" href="{% url 'viewer:col-create-wanted-gallery' %}">
+          <i class="fas fa-external-link-alt me-1"></i>Add Page
+        </a>
+        <a class="btn btn-outline-secondary btn-sm" href="{% url 'viewer:col-create-wanted-galleries-from-command' %}">
+          <i class="fas fa-terminal me-1"></i>From Command
+        </a>
+      {% endif %}
+      {% if user.is_staff %}
+        <form action="{% url 'viewer:tools-id' 'wanted_galleries_possible_matches' %}" method="POST" class="d-inline">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-outline-info btn-sm">
+            <i class="fas fa-search me-1"></i>Search internal matches
+          </button>
+        </form>
+        <form action="{{ request.get_full_path }}" method="POST" class="d-inline">
+          {% csrf_token %}
+          <button name="clear_all_matches" class="btn btn-outline-danger btn-sm"
+                  data-dm-confirm="Clear all possible matches from every wanted gallery?">
+            <i class="fas fa-trash-alt me-1"></i>Clear all matches
+          </button>
+        </form>
+      {% endif %}
     </div>
-    <div class="card-body p-3">
-      {% include 'viewer/include/wanted_gallery_edit.html' %}
+  </div>
+
+  <!-- Summary tiles -->
+  <div class="row g-2 mb-3">
+    <div class="col-6 col-md-3">
+      <a class="dm-stat{% if not request.GET %} active{% endif %}" href="{% url 'viewer:wanted-galleries' %}">
+        <div class="dm-lbl">Total wanted</div>
+        <div class="dm-val text-info">{{ stats.total }}</div>
+        <div class="dm-stat-sub">{{ results.paginator.count }} matching filter</div>
+      </a>
+    </div>
+    <div class="col-6 col-md-3">
+      <a class="dm-stat{% if 'wanted-should-search' in request.GET and 'wanted-not-found' in request.GET %} active{% endif %}"
+         href="{% url 'viewer:wanted-galleries' %}?wanted-should-search=1&wanted-not-found=1">
+        <div class="dm-lbl">Actively searching</div>
+        <div class="dm-val text-warning">{{ stats.searching }}</div>
+        <div class="dm-stat-sub">unfound &amp; enabled</div>
+      </a>
+    </div>
+    <div class="col-6 col-md-3">
+      <a class="dm-stat{% if 'wanted-found' in request.GET %} active{% endif %}"
+         href="{% url 'viewer:wanted-galleries' %}?wanted-found=1">
+        <div class="dm-lbl">Found</div>
+        <div class="dm-val text-success">{{ stats.found }}</div>
+        <div class="dm-stat-sub">matched releases</div>
+      </a>
+    </div>
+    <div class="col-6 col-md-3">
+      {% if can_view_internal %}
+        <a class="dm-stat{% if 'with-possible-matches' in request.GET %} active{% endif %}"
+           href="{% url 'viewer:wanted-galleries' %}?with-possible-matches=1">
+          <div class="dm-lbl">With possible matches</div>
+          <div class="dm-val text-info">{{ stats.with_matches }}</div>
+          <div class="dm-stat-sub">ready to review</div>
+        </a>
+      {% else %}
+        <a class="dm-stat{% if 'wanted-not-found' in request.GET and 'wanted-should-search' not in request.GET %} active{% endif %}"
+           href="{% url 'viewer:wanted-galleries' %}?wanted-not-found=1">
+          <div class="dm-lbl">Still wanted</div>
+          <div class="dm-val text-info">{{ stats.unfound }}</div>
+          <div class="dm-stat-sub">not yet found</div>
+        </a>
+      {% endif %}
     </div>
   </div>
-</div>
-{% endif %}
 
-<!-- Search and Filter Panel -->
-<div class="card bg-dark border-secondary mb-3 shadow-sm">
-  <div class="card-body p-3">
-    <form action="{{ request.get_full_path }}" method="GET">
-      <div class="row g-2 mb-2">
-        <div class="col-md-6">
-          <label class="form-label card-field-title small mb-1">Title / Japanese Title</label>
+  <!-- Collapsible Add Form -->
+  {% if can_add and edit_form %}
+    <div id="add-wanted-card" class="collapse{% if edit_form.errors %} show{% endif %}">
+      <div class="dm-card">
+        <div class="dm-card-header d-flex justify-content-between align-items-center">
+          <span><i class="fas fa-plus-circle text-info me-1"></i>Add Wanted Gallery</span>
+          <button type="button" class="btn-close btn-close-white btn-sm" data-bs-toggle="collapse" data-bs-target="#add-wanted-card" aria-label="Close"></button>
+        </div>
+        <div class="p-3">
+          {% include 'viewer/include/wanted_gallery_edit.html' with collapsed=1 %}
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+  <!-- Filters -->
+  <form action="{% url 'viewer:wanted-galleries' %}" method="GET" class="dm-card" id="filter-form">
+    <div class="p-3">
+      <div class="row g-2 align-items-end">
+        <div class="col-lg-4">
+          <label class="form-label dm-lbl" for="{{ form.title.id_for_label }}">Title / Japanese title</label>
           {{ form.title.errors }}
           {{ form.title }}
         </div>
-        <div class="col-md-6">
-          <label class="form-label card-field-title small mb-1">Tags (scope:name, comma-separated)</label>
+        <div class="col-lg-3">
+          <label class="form-label dm-lbl" for="{{ form.tags.id_for_label }}">Tags</label>
           {{ form.tags.errors }}
           {{ form.tags }}
         </div>
-      </div>
-
-      <div class="row g-2 align-items-center">
-        <div class="col-auto">
-          <div class="input-group input-group-sm">
-            <span class="input-group-text bg-secondary text-white border-secondary">Sort</span>
-            <select id="sort" name="sort" class="form-select form-select-sm bg-dark text-light border-secondary">
-              <option value="release_date" {% if request.GET.sort == "release_date" or not request.GET.sort %}selected{% endif %}>Release date</option>
-              <option value="create_date" {% if request.GET.sort == "create_date" %}selected{% endif %}>Create date</option>
-              <option value="last_modified" {% if request.GET.sort == "last_modified" %}selected{% endif %}>Last modified</option>
-              <option value="date_found" {% if request.GET.sort == "date_found" %}selected{% endif %}>Date found</option>
-              <option value="title" {% if request.GET.sort == "title" %}selected{% endif %}>Title</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="col-auto">
-          <select id="asc_desc" name="asc_desc" class="form-select form-select-sm bg-dark text-light border-secondary" title="Sort order">
-            <option value="desc" {% if request.GET.asc_desc == "desc" or not request.GET.asc_desc %}selected{% endif %}>Descending</option>
-            <option value="asc" {% if request.GET.asc_desc == "asc" %}selected{% endif %}>Ascending</option>
+        <div class="col-6 col-lg-2">
+          <label class="form-label dm-lbl" for="sort">Sort</label>
+          <select id="sort" name="sort" class="form-select form-select-sm">
+            <option value="release_date"{% if request.GET.sort == "release_date" or not request.GET.sort %} selected{% endif %}>Release date</option>
+            <option value="create_date"{% if request.GET.sort == "create_date" %} selected{% endif %}>Create date</option>
+            <option value="last_modified"{% if request.GET.sort == "last_modified" %} selected{% endif %}>Last modified</option>
+            <option value="date_found"{% if request.GET.sort == "date_found" %} selected{% endif %}>Date found</option>
+            <option value="title"{% if request.GET.sort == "title" %} selected{% endif %}>Title</option>
           </select>
         </div>
-
-        <div class="col-auto">
-          <button type="submit" name="apply" class="btn btn-info btn-sm">
-            <i class="fas fa-search me-1"></i>Search
-          </button>
-          <a class="btn btn-outline-light btn-sm" href="{% url 'viewer:wanted-galleries' %}">
-            <i class="fas fa-undo me-1"></i>Clear
-          </a>
+        <div class="col-6 col-lg-1">
+          <label class="form-label dm-lbl" for="asc_desc">Order</label>
+          <select id="asc_desc" name="asc_desc" class="form-select form-select-sm" title="Sort order" aria-label="Sort order">
+            <option value="desc"{% if request.GET.asc_desc == "desc" or not request.GET.asc_desc %} selected{% endif %}>Desc</option>
+            <option value="asc"{% if request.GET.asc_desc == "asc" %} selected{% endif %}>Asc</option>
+          </select>
         </div>
-
-        <div class="col-auto ms-auto">
-          <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#advanced-filters" aria-expanded="false" aria-controls="advanced-filters">
-            <i class="fas fa-sliders-h me-1"></i>More Filters <i class="fas fa-chevron-down ms-1"></i>
+        <div class="col-lg-2 d-flex flex-wrap gap-2">
+          <button type="submit" name="apply" class="btn btn-info btn-sm"><i class="fas fa-search me-1"></i>Search</button>
+          <a class="btn btn-outline-light btn-sm" href="{% url 'viewer:wanted-galleries' %}" title="Clear all filters"><i class="fas fa-times me-1"></i>Clear</a>
+          <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#more-filters" aria-expanded="false" aria-controls="more-filters">
+            <i class="fas fa-sliders-h me-1"></i>More
           </button>
         </div>
       </div>
 
-      <!-- Advanced Filters (Collapsible) -->
-      <div class="collapse {% if request.GET.book_type or request.GET.publisher or request.GET.reason or request.GET.provider or request.GET|dict_key:'mention-source' or 'wanted-should-search' in request.GET or 'wanted-should-search-not' in request.GET or 'restricted-to-links' in request.GET or 'with-possible-matches' in request.GET or 'wanted-found' in request.GET or 'wanted-not-found' in request.GET or 'wanted-no-found-galleries' in request.GET %}show{% endif %} mt-3 pt-3 border-top border-secondary" id="advanced-filters">
-        <!-- Checkbox filters -->
-        <div class="row g-2 mb-2">
-          <div class="col-auto">
-            <div class="form-check form-check-inline">
-              <input id="checkbox-f2" class="form-check-input" type="checkbox" name="wanted-should-search" value="1" {% if "wanted-should-search" in request.GET %}checked{% endif %}>
-              <label class="form-check-label text-light small" for="checkbox-f2">Should search</label>
-            </div>
-          </div>
-          <div class="col-auto">
-            <div class="form-check form-check-inline">
-              <input id="checkbox-f3" class="form-check-input" type="checkbox" name="wanted-should-search-not" value="1" {% if "wanted-should-search-not" in request.GET %}checked{% endif %}>
-              <label class="form-check-label text-light small" for="checkbox-f3">Should not search</label>
-            </div>
-          </div>
-          <div class="col-auto">
-            <div class="form-check form-check-inline">
-              <input id="checkbox-f3a" class="form-check-input" type="checkbox" name="restricted-to-links" value="1" {% if "restricted-to-links" in request.GET %}checked{% endif %}>
-              <label class="form-check-label text-light small" for="checkbox-f3a">Restricted to Links</label>
-            </div>
-          </div>
+      <!-- Quick toggles -->
+      <div class="d-flex flex-wrap align-items-center gap-2 mt-3">
+        <span class="dm-lbl">Filter</span>
+        <div class="dm-toggles">
+          <input id="f-should-search" class="btn-check" type="checkbox" name="wanted-should-search" value="1" autocomplete="off"{% if "wanted-should-search" in request.GET %} checked{% endif %}>
+          <label class="btn btn-outline-secondary" for="f-should-search">Should search</label>
+          <input id="f-should-search-not" class="btn-check" type="checkbox" name="wanted-should-search-not" value="1" autocomplete="off"{% if "wanted-should-search-not" in request.GET %} checked{% endif %}>
+          <label class="btn btn-outline-secondary" for="f-should-search-not">Should not search</label>
+          <input id="f-restricted" class="btn-check" type="checkbox" name="restricted-to-links" value="1" autocomplete="off"{% if "restricted-to-links" in request.GET %} checked{% endif %}>
+          <label class="btn btn-outline-secondary" for="f-restricted">Restricted to links</label>
           {% if can_view_internal %}
-          <div class="col-auto">
-            <div class="form-check form-check-inline">
-              <input id="checkbox-f4" class="form-check-input" type="checkbox" name="with-possible-matches" value="1" {% if "with-possible-matches" in request.GET %}checked{% endif %}>
-              <label class="form-check-label text-light small" for="checkbox-f4">With possible matches</label>
-            </div>
-          </div>
+            <input id="f-possible" class="btn-check" type="checkbox" name="with-possible-matches" value="1" autocomplete="off"{% if "with-possible-matches" in request.GET %} checked{% endif %}>
+            <label class="btn btn-outline-secondary" for="f-possible">With possible matches</label>
           {% endif %}
-          <div class="col-auto">
-            <div class="form-check form-check-inline">
-              <input id="checkbox-f6" class="form-check-input" type="checkbox" name="wanted-found" value="1" {% if "wanted-found" in request.GET %}checked{% endif %}>
-              <label class="form-check-label text-light small" for="checkbox-f6">Found</label>
-            </div>
-          </div>
-          <div class="col-auto">
-            <div class="form-check form-check-inline">
-              <input id="checkbox-f7" class="form-check-input" type="checkbox" name="wanted-not-found" value="1" {% if "wanted-not-found" in request.GET %}checked{% endif %}>
-              <label class="form-check-label text-light small" for="checkbox-f7">Not found</label>
-            </div>
-          </div>
-          <div class="col-auto">
-            <div class="form-check form-check-inline">
-              <input id="checkbox-f8" class="form-check-input" type="checkbox" name="wanted-no-found-galleries" value="1" {% if "wanted-no-found-galleries" in request.GET %}checked{% endif %}>
-              <label class="form-check-label text-light small" for="checkbox-f8">No found galleries</label>
-            </div>
-          </div>
+          <input id="f-found" class="btn-check" type="checkbox" name="wanted-found" value="1" autocomplete="off"{% if "wanted-found" in request.GET %} checked{% endif %}>
+          <label class="btn btn-outline-secondary" for="f-found">Found</label>
+          <input id="f-not-found" class="btn-check" type="checkbox" name="wanted-not-found" value="1" autocomplete="off"{% if "wanted-not-found" in request.GET %} checked{% endif %}>
+          <label class="btn btn-outline-secondary" for="f-not-found">Not found</label>
+          <input id="f-no-found-g" class="btn-check" type="checkbox" name="wanted-no-found-galleries" value="1" autocomplete="off"{% if "wanted-no-found-galleries" in request.GET %} checked{% endif %}>
+          <label class="btn btn-outline-secondary" for="f-no-found-g">No found galleries</label>
         </div>
+      </div>
 
-        <!-- Additional parameter inputs -->
-        <div class="row g-2">
-          <div class="col-md-2 col-sm-4">
-            <input title="Book type" class="form-control form-control-sm bg-dark text-light border-secondary" name="book_type" placeholder="Book type" value="{{ request.GET.book_type }}">
+      <!-- More filters -->
+      <div class="collapse" id="more-filters">
+        <div class="row g-2 mt-2 pt-2 border-top" style="border-color: var(--pg-border-subtle) !important;">
+          <div class="col-sm-4 col-lg-2">
+            <label class="form-label dm-lbl" for="f-book-type">Book type</label>
+            <input id="f-book-type" class="form-control form-control-sm" name="book_type" placeholder="Book type" value="{{ request.GET.book_type }}">
           </div>
-          <div class="col-md-2 col-sm-4">
-            <input title="Publisher" class="form-control form-control-sm bg-dark text-light border-secondary" name="publisher" placeholder="Publisher" value="{{ request.GET.publisher }}">
+          <div class="col-sm-4 col-lg-2">
+            <label class="form-label dm-lbl" for="f-publisher">Publisher</label>
+            <input id="f-publisher" class="form-control form-control-sm" name="publisher" placeholder="Publisher" value="{{ request.GET.publisher }}">
           </div>
-          <div class="col-md-3 col-sm-4">
-            <input title="Reason" class="form-control form-control-sm bg-dark text-light border-secondary" name="reason" placeholder="Reason" value="{{ request.GET.reason }}">
+          <div class="col-sm-4 col-lg-3">
+            <label class="form-label dm-lbl" for="f-reason">Reason</label>
+            <input id="f-reason" class="form-control form-control-sm" name="reason" placeholder="Reason" value="{{ request.GET.reason }}">
           </div>
-          <div class="col-md-2 col-sm-6">
-            <input title="Provider" class="form-control form-control-sm bg-dark text-light border-secondary" name="provider" placeholder="Provider" value="{{ request.GET.provider }}">
+          <div class="col-sm-6 col-lg-2">
+            <label class="form-label dm-lbl" for="f-provider">Provider</label>
+            <input id="f-provider" class="form-control form-control-sm" name="provider" placeholder="Provider" value="{{ request.GET.provider }}">
           </div>
-          <div class="col-md-3 col-sm-6">
-            <input title="Mention source" class="form-control form-control-sm bg-dark text-light border-secondary" name="mention-source" placeholder="Mention source" value="{{ request.GET|dict_key:'mention-source' }}">
+          <div class="col-sm-6 col-lg-3">
+            <label class="form-label dm-lbl" for="f-mention-source">Mention source</label>
+            <input id="f-mention-source" class="form-control form-control-sm" name="mention-source" placeholder="Mention source" value="{{ request.GET|dict_key:'mention-source' }}">
           </div>
         </div>
       </div>
-    </form>
-  </div>
-</div>
 
-<!-- Results & Batch Actions Form -->
-{% if user.is_staff %}<form action="{{ request.get_full_path }}" method="POST">{% csrf_token %}{% endif %}
+      <div class="mt-3 d-none" data-dm-chips-wrapper>
+        <div class="d-flex flex-wrap align-items-center gap-2">
+          <span class="dm-lbl"><i class="fas fa-filter me-1"></i>Active</span>
+          <div class="dm-chips" id="filter-chips"></div>
+        </div>
+      </div>
+    </div>
+  </form>
 
-  <!-- Top Pagination & Controls -->
-  <div class="d-flex flex-wrap justify-content-between align-items-center mb-2">
-    <div>
-      {% if user.is_staff %}
-        <button id="toggle-all" class="btn btn-outline-secondary btn-sm" type="button">
-          <i class="far fa-check-square me-1"></i>Toggle All
-        </button>
-      {% endif %}
+  <!-- Results & Staff Batch Actions -->
+  <form id="wanted-action-form" method="POST" class="d-none">{% csrf_token %}</form>
+  {% if user.is_staff %}<form action="{{ request.get_full_path }}" method="POST" id="wanted-form">{% csrf_token %}{% endif %}
+
+  <div class="dm-card">
+    <div class="dm-card-header">
+      <div class="d-flex flex-wrap align-items-center gap-2">
+        {% if user.is_staff %}
+          <input type="checkbox" class="form-check-input mt-0" id="toggle-all" title="Select all on this page" aria-label="Select all on this page">
+        {% endif %}
+        <div class="flex-grow-1">
+          {% include "viewer/include/dm_pagination.html" with page_obj=results noun="wanted galleries" per_page_options=per_page_options per_page=limit %}
+        </div>
+      </div>
     </div>
 
-    {% if results.object_list and results.paginator.num_pages > 1 %}
-      <nav aria-label="Top pagination">
-        <ul class="pagination pagination-sm my-0">
-          <li class="page-item{% if results.number == 1 %} disabled{% endif %}">
-            <a class="page-link" href="?{% url_replace 'page' '1' %}" aria-label="First">&laquo;</a>
-          </li>
-          {% if results.has_previous %}
-            <li class="page-item"><a class="page-link" href="?{% url_replace 'page' results.previous_page_number %}">Prev</a></li>
-          {% else %}
-            <li class="page-item disabled"><span class="page-link">Prev</span></li>
-          {% endif %}
-          <li class="page-item disabled">
-            <span class="page-link text-white bg-secondary border-secondary">Page {{ results.number }} of {{ results.paginator.num_pages }}</span>
-          </li>
-          {% if results.has_next %}
-            <li class="page-item"><a class="page-link" href="?{% url_replace 'page' results.next_page_number %}">Next</a></li>
-          {% else %}
-            <li class="page-item disabled"><span class="page-link">Next</span></li>
-          {% endif %}
-          <li class="page-item{% if results.number == results.paginator.num_pages %} disabled{% endif %}">
-            <a class="page-link" href="?{% url_replace 'page' results.paginator.num_pages %}" aria-label="Last">&raquo;</a>
-          </li>
-        </ul>
-      </nav>
-    {% endif %}
-  </div>
-
-  <!-- Galleries List -->
-  <div class="list-group mb-3">
-    {% for gallery in results %}
-      <div class="list-group-item bg-dark border-secondary p-3 mb-2 rounded shadow-sm">
-        <!-- Gallery Top Row: Selection Checkbox, Title, Badges -->
-        <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
-          <div class="d-flex align-items-center flex-grow-1 flex-wrap">
-            {% if user.is_staff %}
-              <div class="form-check me-2 mb-0">
-                <input id="sel-{{ gallery.id }}" class="toggle-list form-check-input" type="checkbox" name="sel-{{ gallery.id }}" value="{{ gallery.pk }}">
-                <label for="sel-{{ gallery.id }}" class="form-check-label"></label>
+    <div id="wanted-list">
+      {% for gallery in results %}
+        <div class="wg-item">
+          <div class="wg-head{% if user.is_staff %} wg-selectable{% endif %}">
+            <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+              <div class="d-flex align-items-center flex-grow-1 flex-wrap gap-2">
+                {% if user.is_staff %}
+                  <input id="sel-{{ gallery.id }}" class="form-check-input wg-checkbox mt-0 flex-shrink-0" type="checkbox" name="sel-{{ gallery.id }}" value="{{ gallery.pk }}" aria-label="Select wanted gallery {{ gallery.pk }}">
+                {% endif %}
+                <a href="{{ gallery.get_absolute_url }}" class="badge bg-secondary text-decoration-none">#{{ gallery.id }}</a>
+                <a href="{{ gallery.get_absolute_url }}" class="wg-title text-decoration-none">{{ gallery.title }}</a>
+                {% if gallery.title_jpn %}
+                  <span class="wg-jpn fst-italic">({{ gallery.title_jpn }})</span>
+                {% endif %}
               </div>
-            {% endif %}
-
-            <a href="{{ gallery.get_absolute_url }}" class="badge bg-secondary text-decoration-none me-2">
-              #{{ gallery.id }}
-            </a>
-
-            <a href="{{ gallery.get_absolute_url }}" class="fw-bold fs-6 text-white text-decoration-none me-2">
-              {{ gallery.title }}
-            </a>
-
-            {% if gallery.title_jpn %}
-              <span class="text-info small fst-italic me-2">({{ gallery.title_jpn }})</span>
-            {% endif %}
-          </div>
-
-          <!-- Status Badges -->
-          <div class="d-flex flex-wrap gap-1 align-items-center">
-            {% if gallery.found %}
-              <span class="badge bg-success">Found</span>
-            {% else %}
-              <span class="badge bg-warning text-dark">Wanted</span>
-            {% endif %}
-
-            {% if gallery.should_search %}
-              <span class="badge bg-info text-dark">Searching</span>
-            {% else %}
-              <span class="badge bg-secondary">Paused</span>
-            {% endif %}
-
-            {% if gallery.keep_searching %}
-              <span class="badge bg-secondary">Keep Searching</span>
-            {% endif %}
-
-            {% if gallery.public %}
-              <span class="badge bg-primary">Public</span>
-            {% else %}
-              <span class="badge bg-dark border border-secondary text-light">Private</span>
-            {% endif %}
-
-            {% if gallery.restricted_to_links %}
-              <span class="badge bg-dark border border-info text-info">Restricted to Links</span>
-            {% endif %}
-          </div>
-        </div>
-
-        <!-- Gallery Metadata Row -->
-        <div class="d-flex flex-wrap align-items-center gap-3 small mb-2 pt-1 border-top border-secondary">
-          <div>
-            <i class="fas fa-paint-brush text-info me-1"></i>
-            <span class="text-light">{{ gallery.artists.all|join:", "|default:"Unknown" }}</span>
-          </div>
-
-          <div>
-            <i class="far fa-calendar-alt text-warning me-1"></i>
-            <span class="text-light">Release: {{ gallery.release_date|date|default:"-" }}</span>
-          </div>
-
-          <div>
-            <i class="far fa-file-image text-info me-1"></i>
-            <span class="text-light">{{ gallery.page_count }} pages</span>
-          </div>
-
-          {% if gallery.book_type %}
-            <div>
-              <span class="badge bg-dark border border-secondary text-light">{{ gallery.book_type }}</span>
+              <div class="d-flex flex-wrap gap-1 align-items-center">
+                {% if gallery.found %}
+                  <span class="badge bg-success">Found</span>
+                {% else %}
+                  <span class="badge bg-warning text-dark">Wanted</span>
+                {% endif %}
+                {% if gallery.should_search %}
+                  <span class="badge bg-info text-dark">Searching</span>
+                {% else %}
+                  <span class="badge bg-secondary">Paused</span>
+                {% endif %}
+                {% if gallery.keep_searching %}
+                  <span class="badge dm-badge-outline text-info">Keep searching</span>
+                {% endif %}
+                {% if gallery.public %}
+                  <span class="badge dm-badge-outline text-success">Public</span>
+                {% else %}
+                  <span class="badge dm-badge-outline text-secondary">Private</span>
+                {% endif %}
+                {% if gallery.restricted_to_links %}
+                  <span class="badge dm-badge-outline text-warning">Restricted to links</span>
+                {% endif %}
+              </div>
             </div>
-          {% endif %}
 
-          {% if gallery.publisher %}
-            <div>
-              <span class="card-field-title">Pub:</span> <span class="text-light">{{ gallery.publisher }}</span>
+            <div class="wg-meta d-flex flex-wrap align-items-center gap-3 mt-2">
+              <span><i class="fas fa-paint-brush text-info me-1"></i>{{ gallery.artists.all|join:", "|default:"Unknown" }}</span>
+              <span><i class="far fa-calendar-alt text-warning me-1"></i>Release: {{ gallery.release_date|date:"Y-m-d"|default:"-" }}</span>
+              <span><i class="far fa-file-image text-info me-1"></i>{{ gallery.page_count }} pages</span>
+              {% if gallery.book_type %}<span class="badge bg-secondary">{{ gallery.book_type }}</span>{% endif %}
+              {% if gallery.publisher %}<span><span class="dm-dim">Pub:</span> {{ gallery.publisher }}</span>{% endif %}
+              {% if gallery.reason %}<span class="text-truncate" style="max-width: 24rem;" title="{{ gallery.reason }}"><i class="fas fa-info-circle text-info me-1"></i>{{ gallery.reason }}</span>{% endif %}
             </div>
-          {% endif %}
+          </div>
 
-          {% if gallery.reason %}
-            <div class="flex-grow-1 text-truncate" title="{{ gallery.reason }}">
-              <i class="fas fa-info-circle text-info me-1"></i>
-              <span class="text-light opacity-75">{{ gallery.reason }}</span>
-            </div>
-          {% endif %}
-        </div>
-
-        <!-- Possible Matches Sub-table (if can_view_internal) -->
-        {% if can_view_internal %}
-          {% with matches=gallery.possible_galleries %}
-            {% if matches|length > 0 %}
-              <div class="mt-2 pt-2 border-top border-secondary">
-                <div class="d-flex justify-content-between align-items-center mb-1">
-                  <span class="text-info small fw-bold">
-                    <i class="fas fa-search-plus me-1"></i>Possible matches ({{ matches|length }})
-                  </span>
-                  {% if user.is_staff %}
-                    <a class="text-danger small text-decoration-none" href="{% url 'viewer:wanted-gallery' gallery.pk %}?tool=clear-possible-matches">
-                      <i class="fas fa-times me-1"></i>Clear matches
-                    </a>
-                  {% endif %}
+          {% if can_view_internal %}
+            {% with matches=gallery.possible_galleries %}
+              {% if matches|length > 0 %}
+                <div class="wg-sub dm-no-row-toggle">
+                  <div class="d-flex justify-content-between align-items-center mb-1">
+                    <span class="small fw-semibold text-info">
+                      <i class="fas fa-search-plus me-1"></i>Possible matches ({{ matches|length }})
+                    </span>
+                    {% if user.is_staff %}
+                      <button type="submit" form="wanted-action-form"
+                              formaction="{% url 'viewer:wanted-gallery' gallery.pk %}?tool=clear-possible-matches"
+                              class="btn btn-link text-danger small text-decoration-none p-0"
+                              data-dm-confirm="Clear possible matches for '{{ gallery.title|escapejs }}'?">
+                        <i class="fas fa-eraser me-1"></i>Clear matches
+                      </button>
+                    {% endif %}
+                  </div>
+                  <div class="table-responsive dm-card mb-0">
+                    <table class="table table-dm table-hover table-sm mb-0 small">
+                      <thead>
+                        <tr>
+                          <th style="width: 4.5rem;"></th>
+                          <th>First Artist</th>
+                          <th>Gallery</th>
+                          <th class="wg-acc">Accuracy</th>
+                          <th>Posted</th>
+                          <th class="text-end">Images</th>
+                          <th>Archives</th>
+                          <th>Contained</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {% for match in matches %}
+                          <tr>
+                            <td>
+                              <button type="submit" form="wanted-action-form"
+                                      formaction="{% url 'viewer:wanted-gallery' gallery.pk %}?tool=select-as-match&tool-id={{ match.gallery.pk }}"
+                                      class="btn btn-success btn-sm py-0 px-2" title="Select as correct match">
+                                <i class="fas fa-check me-1"></i>Match
+                              </button>
+                            </td>
+                            <td>{{ match.gallery.artist_tags.0.name|default:"-" }}</td>
+                            <td class="dm-wrap">
+                              <a href="{% url 'viewer:gallery' match.gallery.pk %}"
+                                 data-image-url="{% if match.gallery.thumbnail.name %}{{ match.gallery.thumbnail.url }}{% else %}{% static 'imgs/no_cover.png' %}{% endif %}"
+                                 class="img-preview">{{ match.gallery.title|truncatechars:65 }}</a>
+                              <a href="{{ match.gallery.get_link }}" class="dm-muted ms-1" rel="noopener noreferrer nofollow" title="Open source URL">
+                                <i class="fas fa-external-link-alt"></i>
+                              </a>
+                            </td>
+                            <td class="wg-acc">
+                              <div class="wg-acc-row">
+                                <div class="progress">
+                                  <div class="progress-bar {% if match.match_accuracy >= 0.9 %}bg-success{% elif match.match_accuracy >= 0.7 %}bg-info{% else %}bg-secondary{% endif %}"
+                                       style="width: {% widthratio match.match_accuracy 1 100 %}%"></div>
+                                </div>
+                                <span class="wg-acc-val {{ match.match_accuracy|color_percent:1 }}">{{ match.match_accuracy|floatformat:3 }}</span>
+                              </div>
+                            </td>
+                            <td class="text-nowrap">{{ match.gallery.posted|date:"Y-m-d" }}</td>
+                            <td class="text-end font-monospace {{ match.gallery.filecount|color_percent:gallery.page_count }}">{{ match.gallery.filecount }}</td>
+                            <td>
+                              {% if match.gallery.archive_set.all %}
+                                <span class="badge bg-success">Yes</span>
+                              {% else %}
+                                <span class="badge bg-secondary">No</span>
+                              {% endif %}
+                            </td>
+                            <td>{{ match.gallery.gallery_container|yesno:"Yes,No" }}</td>
+                          </tr>
+                        {% endfor %}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-                <div class="table-responsive">
-                  <table class="table table-dark table-hover table-sm table-bordered border-secondary align-middle mb-0 small">
-                    <thead class="table-secondary text-dark">
+              {% endif %}
+            {% endwith %}
+          {% endif %}
+
+          {% with mentions=gallery.mentions.all %}
+            {% if mentions %}
+              <div class="wg-sub dm-no-row-toggle">
+                <span class="text-warning small fw-semibold d-block mb-1">
+                  <i class="fas fa-bullhorn me-1"></i>Mentions ({{ mentions|length }})
+                </span>
+                <div class="table-responsive dm-card mb-0">
+                  <table class="table table-dm table-sm mb-0 small">
+                    <thead>
                       <tr>
-                        <th style="width: 50px;">Select</th>
-                        <th>First Artist</th>
-                        <th>Title</th>
-                        <th style="width: 60px;">Link</th>
-                        <th>Accuracy</th>
-                        <th>Posted</th>
-                        <th>Count</th>
-                        <th>Archives</th>
-                        <th>Contained</th>
+                        <th style="width: 3rem;">Thumb</th>
+                        <th>Source</th>
+                        <th>Mention Date</th>
+                        <th>Release Date</th>
+                        <th>Type</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {% for match in matches %}
+                      {% for mention in mentions %}
                         <tr>
                           <td class="text-center">
-                            <a class="btn btn-success btn-sm py-0 px-1" title="Select as correct match" href="{% url 'viewer:wanted-gallery' gallery.pk %}?tool=select-as-match&tool-id={{ match.gallery.pk }}">
-                              <i class="fas fa-check"></i>
-                            </a>
-                          </td>
-                          <td>{{ match.gallery.artist_tags.0.name|default:"-" }}</td>
-                          <td>
-                            <a href="{% url 'viewer:gallery' match.gallery.pk %}" class="text-light text-decoration-none">
-                              {{ match.gallery.title|truncatechars:50 }}
-                            </a>
-                          </td>
-                          <td class="text-center">
-                            <a href="{{ match.gallery.get_link }}" data-image-url="{% if match.gallery.thumbnail.name %}{{ match.gallery.thumbnail.url }}{% else %}{% static 'imgs/no_cover.png' %}{% endif %}" class="img-preview text-info" rel="popover noopener noreferrer nofollow">
-                              <i class="fas fa-external-link-alt"></i>
-                            </a>
-                          </td>
-                          <td>
-                            <span class="badge bg-dark border border-info text-info {{ match.match_accuracy|color_percent:1 }}">
-                              {{ match.match_accuracy|floatformat:3 }}
-                            </span>
-                          </td>
-                          <td>{{ match.gallery.posted|date:"SHORT_DATE_FORMAT" }}</td>
-                          <td class="{{ match.gallery.filecount|color_percent:gallery.page_count }}">
-                            {{ match.gallery.filecount }}
-                          </td>
-                          <td>
-                            {% if match.gallery.archive_set.all %}
-                              <span class="badge bg-success">Yes</span>
+                            {% if mention.thumbnail.name %}
+                              <a href="#" data-image-url="{{ mention.thumbnail.url }}" class="img-preview text-info" rel="popover" aria-label="Preview mention thumbnail">
+                                <i class="far fa-image"></i>
+                              </a>
                             {% else %}
-                              <span class="badge bg-secondary">No</span>
+                              <span class="dm-dim">-</span>
                             {% endif %}
                           </td>
-                          <td>
-                            {{ match.gallery.gallery_container|yesno:"Yes,No" }}
-                          </td>
+                          <td>{{ mention.source }}</td>
+                          <td class="text-nowrap">{{ mention.mention_date|date:"Y-m-d"|default:mention.mention_date }}</td>
+                          <td class="text-nowrap">{{ mention.release_date|date:"Y-m-d"|default:mention.release_date }}</td>
+                          <td><span class="badge dm-badge-outline text-secondary">{{ mention.type }}</span></td>
                         </tr>
                       {% endfor %}
                     </tbody>
@@ -416,141 +426,56 @@
               </div>
             {% endif %}
           {% endwith %}
-        {% endif %}
+        </div>
+      {% empty %}
+        <div class="dm-empty"><i class="fas fa-binoculars"></i>No wanted galleries match these filters.</div>
+      {% endfor %}
+    </div>
 
-        <!-- Mentions Sub-table -->
-        {% with mentions=gallery.mentions.all %}
-          {% if mentions.count > 0 %}
-            <div class="mt-2 pt-2 border-top border-secondary">
-              <span class="text-warning small fw-bold d-block mb-1">
-                <i class="fas fa-bullhorn me-1"></i>Mentions ({{ mentions.count }})
-              </span>
-              <div class="table-responsive">
-                <table class="table table-dark table-sm table-bordered border-secondary align-middle mb-0 small">
-                  <thead class="table-secondary text-dark">
-                    <tr>
-                      <th style="width: 50px;">Thumb</th>
-                      <th>Source</th>
-                      <th>Mention Date</th>
-                      <th>Release Date</th>
-                      <th>Type</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {% for mention in mentions %}
-                      <tr>
-                        <td class="text-center">
-                          {% if mention.thumbnail.name %}
-                            <a href="#" data-image-url="{{ mention.thumbnail.url }}" class="img-preview text-info" rel="popover">
-                              <i class="far fa-image"></i>
-                            </a>
-                          {% else %}
-                            <span class="text-light opacity-50 small">-</span>
-                          {% endif %}
-                        </td>
-                        <td>{{ mention.source }}</td>
-                        <td>{{ mention.mention_date|date:"SHORT_DATE_FORMAT"|default:mention.mention_date }}</td>
-                        <td>{{ mention.release_date|date:"SHORT_DATE_FORMAT"|default:mention.release_date }}</td>
-                        <td><span class="badge bg-dark border border-secondary text-light">{{ mention.type }}</span></td>
-                      </tr>
-                    {% endfor %}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          {% endif %}
-        {% endwith %}
+    {% if results.paginator.num_pages > 1 %}
+      <div class="p-2 border-top" style="border-color: var(--pg-border) !important;">
+        {% include "viewer/include/dm_pagination.html" with page_obj=results noun="wanted galleries" compact=1 %}
       </div>
-    {% empty %}
-      <div class="alert alert-secondary text-center py-4 my-3">
-        <i class="fas fa-search me-2"></i>No wanted galleries found.
-      </div>
-    {% endfor %}
+    {% endif %}
   </div>
 
-  <!-- Bottom Pagination -->
-  {% if results.object_list and results.paginator.num_pages > 1 %}
-    <div class="d-flex justify-content-center mb-3">
-      <nav aria-label="Bottom navigation">
-        <ul class="pagination pagination-sm my-0">
-          <li class="page-item{% if results.number == 1 %} disabled{% endif %}">
-            <a class="page-link" href="?{% url_replace 'page' '1' %}" aria-label="First">&laquo;</a>
-          </li>
-          {% if results.has_previous %}
-            <li class="page-item"><a class="page-link" href="?{% url_replace 'page' results.previous_page_number %}">Prev</a></li>
-          {% else %}
-            <li class="page-item disabled"><span class="page-link">Prev</span></li>
-          {% endif %}
-          <li class="page-item disabled">
-            <span class="page-link text-white bg-secondary border-secondary">Page {{ results.number }} of {{ results.paginator.num_pages }}</span>
-          </li>
-          {% if results.has_next %}
-            <li class="page-item"><a class="page-link" href="?{% url_replace 'page' results.next_page_number %}">Next</a></li>
-          {% else %}
-            <li class="page-item disabled"><span class="page-link">Next</span></li>
-          {% endif %}
-          <li class="page-item{% if results.number == results.paginator.num_pages %} disabled{% endif %}">
-            <a class="page-link" href="?{% url_replace 'page' results.paginator.num_pages %}" aria-label="Last">&raquo;</a>
-          </li>
-        </ul>
-      </nav>
-    </div>
-  {% endif %}
-
-  <!-- Staff Batch Operations Panel -->
+  <!-- Staff Bulk Actions -->
   {% if user.is_staff %}
-    <div class="card bg-dark border-secondary shadow-sm mb-4">
-      <div class="card-header bg-secondary text-white py-2 fw-bold">
-        <i class="fas fa-tasks me-1 text-info"></i>Staff Actions for Selected Galleries
-      </div>
-      <div class="card-body p-3">
-        <!-- Provider search row -->
-        <div class="row g-2 align-items-center mb-3">
-          <div class="col-md-auto">
-            <input size="12" class="form-control form-control-sm bg-dark text-light border-secondary" name="provider" value="" placeholder="Provider filter" />
-          </div>
-          <div class="col-md-auto">
-            <input title="Cutoff" size="8" type="number" step="0.01" class="form-control form-control-sm bg-dark text-light border-secondary" name="cutoff" value="" placeholder="Cutoff (0.4)" />
-          </div>
-          <div class="col-md-auto">
-            <input title="Max matches" size="8" type="number" step="1" class="form-control form-control-sm bg-dark text-light border-secondary" name="max-matches" value="10" placeholder="Max" />
-          </div>
-          <div class="col-md-auto">
-            <div class="form-check form-check-inline">
-              <input id="checkbox-p1" class="form-check-input" type="checkbox" name="must-be-used" value="1">
-              <label class="form-check-label text-light small" for="checkbox-p1">Must be used</label>
-            </div>
-          </div>
-          <div class="col-md-auto">
-            <button name="search_provider_galleries" class="btn btn-sm btn-outline-info">
-              <i class="fas fa-globe me-1"></i>Search on providers
-            </button>
-          </div>
-          <div class="col-md-auto">
-            <button name="search_provider_galleries_internal" class="btn btn-sm btn-outline-info">
-              <i class="fas fa-search me-1"></i>Search internally
-            </button>
-          </div>
+    <div class="dm-actionbar">
+      <div class="d-flex flex-wrap align-items-center gap-2">
+        <span class="dm-sel-count" data-dm-sel-count>None selected</span>
+        <input class="form-control form-control-sm dm-actionbar-extra" style="width: 9rem;" name="provider" value="" placeholder="Provider filter" aria-label="Provider filter">
+        <input title="Cutoff" type="number" step="0.01" min="0" max="1" class="form-control form-control-sm dm-actionbar-extra" style="width: 6.5rem;" name="cutoff" value="" placeholder="Cutoff 0.4">
+        <input title="Max matches" type="number" step="1" min="1" class="form-control form-control-sm dm-actionbar-extra" style="width: 5.5rem;" name="max-matches" value="10" placeholder="Max">
+        <div class="form-check form-switch mb-0 dm-actionbar-extra">
+          <input id="checkbox-p1" class="form-check-input" type="checkbox" name="must-be-used" value="1">
+          <label class="form-check-label small" for="checkbox-p1">Must be used</label>
         </div>
 
-        <!-- Bulk state row -->
-        <div class="d-flex flex-wrap gap-2">
-          <button name="search_for_galleries" class="btn btn-sm btn-outline-light">
-            <i class="fas fa-check-circle me-1 text-success"></i>Mark selected as search for
+        <div class="ms-auto d-flex flex-wrap gap-2">
+          <button name="search_provider_galleries" class="btn btn-sm btn-primary" data-dm-needs-selection disabled>
+            <i class="fas fa-globe me-1"></i>Search providers
           </button>
-          <button name="set-public" class="btn btn-sm btn-outline-light">
-            <i class="fas fa-globe me-1 text-primary"></i>Mark selected as public
+          <button name="search_provider_galleries_internal" class="btn btn-sm btn-outline-info" data-dm-needs-selection disabled>
+            <i class="fas fa-search me-1"></i>Search internal
           </button>
-          <button name="delete_galleries" class="btn btn-sm btn-outline-danger" onclick="return confirm('Are you sure you want to DELETE selected wanted galleries?');">
-            <i class="fas fa-trash-alt me-1"></i>Delete selected
+          <button name="search_for_galleries" class="btn btn-sm btn-outline-success" data-dm-needs-selection disabled>
+            <i class="fas fa-check-circle me-1"></i>Mark search
+          </button>
+          <button name="set-public" class="btn btn-sm btn-outline-light" data-dm-needs-selection disabled>
+            <i class="fas fa-globe me-1"></i>Mark public
+          </button>
+          <button name="delete_galleries" class="btn btn-sm btn-outline-danger" data-dm-needs-selection disabled
+                  data-dm-confirm="DELETE {n} selected wanted galler(ies)?">
+            <i class="fas fa-trash-alt me-1"></i>Delete
           </button>
         </div>
       </div>
     </div>
   {% endif %}
 
-{% if user.is_staff %}</form>{% endif %}
-
+  {% if user.is_staff %}</form>{% endif %}
+</div>
 {% endblock %}
 
 {% block afterJQ %}
@@ -558,12 +483,35 @@
     {{ edit_form.media }}
   {% endif %}
   {% load compress %}
-  {% compress css %}
-    <link href="{% static 'css/vendor/jal/style.css' %}" type="text/css" media="all" rel="stylesheet" />
-  {% endcompress %}
   {% compress js %}
     <script src="{% static 'js/vendor/jal.js' %}"></script>
+    <script src="{% static 'js/dm-pages.js' %}"></script>
   {% endcompress %}
-  <script type="text/javascript" src="{% static 'js/list_operations.js' %}"></script>
   {{ form.media }}
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      const titleInput = document.getElementById('{{ form.title.id_for_label }}');
+      if (titleInput) titleInput.dataset.dmHotkey = '/';
+
+      {% if user.is_staff %}
+        DM.selection({
+          root: document.getElementById('wanted-list'),
+          checkbox: '.wg-checkbox',
+          toggleAll: document.getElementById('toggle-all'),
+          row: '.wg-item',
+          rowClick: true,
+        });
+      {% endif %}
+
+      DM.filterChips(document.getElementById('filter-form'), document.getElementById('filter-chips'), {
+        ignore: ['limit'],
+        defaults: { sort: 'release_date', asc_desc: 'desc' },
+      });
+
+      const more = document.getElementById('more-filters');
+      if (Array.from(more.querySelectorAll('input, select')).some(function (el) { return el.value; })) {
+        more.classList.add('show');
+      }
+    });
+  </script>
 {% endblock %}

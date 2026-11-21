@@ -93,6 +93,7 @@ def get_database_info() -> dict[str, Any]:
 
 def get_entity_definitions() -> list[dict[str, Any]]:
     """Return entity definitions specifying model, date fields, and query builders."""
+    from django.contrib.sessions.models import Session
     from django_db_logger.models import StatusLog
     from viewer.models import DownloadEvent, EventLog, ProcessedLinks
     from viewer.models.change_log import ArchiveChange, GalleryChange
@@ -194,6 +195,20 @@ def get_entity_definitions() -> list[dict[str, Any]]:
             "policy": "All server status logs older than retention period",
             "build_prunable_qs": lambda cutoff: StatusLog.objects.filter(create_datetime__lt=cutoff),
             "get_active_count": None,
+        },
+        {
+            "key": "sessions",
+            "label": "Expired Sessions",
+            "model_name": "Session",
+            "app_label": "sessions",
+            "model": Session,
+            "description": "Expired Django HTTP sessions stored in django_session",
+            "date_field": "expire_date",
+            "fallback_date_field": None,
+            "config_field": "session_days",
+            "policy": "Expired sessions past expiry grace period",
+            "build_prunable_qs": lambda cutoff: Session.objects.filter(expire_date__lt=cutoff),
+            "get_active_count": lambda: Session.objects.filter(expire_date__gte=timezone.now()).count(),
         },
     ]
 
@@ -363,10 +378,10 @@ def prune_database(
         cutoff = now - datetime.timedelta(days=days)
         model: Any = ed["model"]
         qs: QuerySet = ed["build_prunable_qs"](cutoff)
-        prunable_count = qs.count()
 
         deleted_count = 0
         if dry_run:
+            prunable_count = qs.count()
             deleted_count = prunable_count
             status_text = f"dry-run (would delete {prunable_count})"
         else:

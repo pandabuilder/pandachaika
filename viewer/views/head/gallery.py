@@ -4,14 +4,13 @@ from urllib.parse import quote
 import logging
 import operator
 from random import randint
-import re
 from typing import Any
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import EmptyPage, InvalidPage, Paginator
 from django.db.models import Count, F, Prefetch, Q, QuerySet
-from django.http import Http404, HttpRequest, HttpResponse, HttpResponseRedirect
+from django.http import Http404, HttpRequest, HttpResponse, HttpResponseNotAllowed, HttpResponseRedirect
 from django.http.request import QueryDict
 from django.shortcuts import redirect, render
 from django.templatetags.static import static
@@ -27,9 +26,11 @@ from viewer.models import (
 )
 from viewer.utils.actions import event_log
 from viewer.utils.functions import gallery_search_results_to_json
-from viewer.utils.general import safe_redirect_back
+from viewer.utils.general import get_safe_referer, safe_redirect_back
 from viewer.utils.tags import sort_tags
+from viewer.utils.task_actions import task_action_response
 from viewer.views.head.common import (
+    apply_tag_filters,
     crawler_settings,
     gallery_filter_keys,
     gallery_list_filters_keys,
@@ -43,31 +44,38 @@ def process_gallery_page(
     request: HttpRequest, gallery: Gallery, tool: str | None = None, view_style: str = "old"
 ) -> HttpResponse:
 
+    if tool is not None and request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+
+    target_url = get_safe_referer(request, gallery.get_absolute_url())
     response = safe_redirect_back(request, gallery.get_absolute_url())
 
     if request.user.has_perm("viewer.download_gallery") and tool == "download":
-        if "downloader" in request.GET and request.user.is_staff:
+        downloader = request.POST.get("downloader") or request.GET.get("downloader")
+        if downloader and request.user.is_staff:
             current_settings = Settings(load_from_config=crawler_settings.config)
-            current_settings.allow_downloaders_only([request.GET["downloader"]], True, True, True)
-            client.enqueue(
+            current_settings.allow_downloaders_only([downloader], True, True, True)
+            task = client.enqueue(
                 args=[gallery.get_link()],
                 task_type="web_crawler",
                 override_options=current_settings,
                 user=request.user,
             )
+            message = f"Queued gallery download with {downloader}."
         else:
             # Since this is used from the gallery page mainly to download an already added gallery using
             # downloader settings, force replace_metadata and retry_failed
             current_settings = Settings(load_from_config=crawler_settings.config)
             current_settings.replace_metadata = True
             current_settings.retry_failed = True
-            client.enqueue(
+            task = client.enqueue(
                 args=[gallery.get_link()],
                 task_type="web_crawler",
                 override_options=current_settings,
                 user=request.user,
             )
-        return response
+            message = "Queued gallery download."
+        return task_action_response(request, task, target_url, message)
 
     if request.user.is_staff and tool == "toggle-hidden":
         gallery.hidden = not gallery.hidden
@@ -102,7 +110,7 @@ def process_gallery_page(
 
         if gallery.provider:
 
-            client.enqueue_gallery_update(
+            task = client.enqueue_gallery_update(
                 [gallery.get_link()],
                 user=request.user,
             )
@@ -110,30 +118,29 @@ def process_gallery_page(
             logger.info(
                 "Updating gallery API data for gallery: {} and related archives".format(gallery.get_absolute_url())
             )
+            return task_action_response(request, task, target_url, "Queued gallery metadata update.")
 
-        return response
+        return task_action_response(request, None, target_url, "This gallery has no provider.", messages.WARNING)
 
     if request.user.has_perm("viewer.update_metadata") and tool == "refetch-thumbnail":
 
         if gallery.thumbnail_url:
 
-            success = gallery.fetch_thumbnail(force_redownload=True)
-
-            event_log(
-                request.user,
-                "REFETCH_THUMBNAIL",
-                content_object=gallery,
-                result="sucess" if success else "failed",
-                data=gallery.thumbnail_url,
+            task = client.enqueue(
+                args=[gallery.pk],
+                task_type="gallery_thumbnail_worker",
+                user=request.user,
+                event_action="REFETCH_THUMBNAIL",
             )
 
             logger.info(
-                "Refetching gallery: {} thumbnail from url: {}".format(
+                "Queueing gallery: {} thumbnail refetch from url: {}".format(
                     gallery.get_absolute_url(), gallery.thumbnail_url
                 )
             )
+            return task_action_response(request, task, target_url, "Queued gallery thumbnail refetch.")
 
-        return response
+        return task_action_response(request, None, target_url, "This gallery has no thumbnail URL.", messages.WARNING)
 
     tag_lists = sort_tags(gallery.tags.all())
 
@@ -145,6 +152,9 @@ def process_gallery_page(
         "settings": crawler_settings,
         "gallery_provider_data": gallery_provider_data,
     }
+
+    if request.user.is_authenticated:
+        d["active_tasks"] = client.get_active_gallery_tasks(gallery.pk, gallery.get_link())
 
     if gallery.first_gallery:
         gallery_filters = (
@@ -338,22 +348,20 @@ def gallery_enter_reason(request: HttpRequest, pk: int, tool: str | None = None)
 
                 if gallery.thumbnail_url:
 
-                    success = gallery.fetch_thumbnail(force_redownload=True)
-
-                    event_log(
-                        request.user,
-                        "REFETCH_THUMBNAIL",
-                        content_object=gallery,
-                        result="sucess" if success else "failed",
-                        data=gallery.thumbnail_url,
+                    client.enqueue(
+                        args=[gallery.pk],
+                        task_type="gallery_thumbnail_worker",
+                        user=request.user,
                         reason=user_reason,
+                        event_action="REFETCH_THUMBNAIL",
                     )
 
                     logger.info(
-                        "Refetching gallery: {} thumbnail from url: {}".format(
+                        "Queueing gallery: {} thumbnail refetch from url: {}".format(
                             gallery.get_absolute_url(), gallery.thumbnail_url
                         )
                     )
+                    messages.success(request, "Queued gallery thumbnail refetch.")
 
                 return HttpResponseRedirect(gallery.get_absolute_url())
 
@@ -419,11 +427,11 @@ def gallery_list(request: HttpRequest, mode: str = "none", tag: str | None = Non
 
     display_prms: dict[str, Any] = {}
 
+    view_options = ("list", "extended")
+
     # init parameters
-    if "gallery_parameters" in request.session:
-        parameters = request.session["gallery_parameters"]
-    else:
-        parameters = {}
+    existing_parameters = request.session.get("gallery_parameters")
+    parameters: dict[str, Any] = dict(existing_parameters) if isinstance(existing_parameters, dict) else {}
 
     keys = ("sort", "asc_desc")
 
@@ -457,6 +465,14 @@ def gallery_list(request: HttpRequest, mode: str = "none", tag: str | None = Non
                     parameters[k] = v
                 elif k in display_prms:
                     display_prms[k] = v
+    requested_view = get.get("view", "")
+    explicit_view_change = requested_view in view_options
+    if not request.user.is_authenticated:
+        cookie_view = request.COOKIES.get("panda_gallery_view", "")
+        if cookie_view in view_options:
+            parameters["view"] = cookie_view
+    if explicit_view_change:
+        parameters["view"] = requested_view
     # Fill default parameters
     if "view" not in parameters or parameters["view"] == "":
         parameters["view"] = "list"
@@ -466,7 +482,9 @@ def gallery_list(request: HttpRequest, mode: str = "none", tag: str | None = Non
         parameters["sort"] = "posted"
 
     parameters["main_filters"] = True
-    request.session["gallery_parameters"] = parameters
+    stateless_request = json_request or "random" in get
+    if not stateless_request and request.user.is_authenticated and parameters != existing_parameters:
+        request.session["gallery_parameters"] = parameters
     results = filter_galleries(request, parameters, display_prms, json_request=json_request)
 
     if json_request:
@@ -476,7 +494,9 @@ def gallery_list(request: HttpRequest, mode: str = "none", tag: str | None = Non
             used_prefetch = Prefetch(
                 "archive_set", queryset=Archive.objects.filter(public=True), to_attr="available_archives"
             )
-        results = results.prefetch_related("tags", used_prefetch).distinct()
+        results = results.prefetch_related("tags", used_prefetch).defer("provider_metadata")
+        if display_prms.get("only_used"):
+            results = results.distinct()
 
     if "random" in get:
         count = results.count()
@@ -522,8 +542,6 @@ def gallery_list(request: HttpRequest, mode: str = "none", tag: str | None = Non
 
     gallery_search_form = GallerySearchForm(initial={"title": display_prms["title"], "tags": display_prms["tags"]}, form_name="filter-gallery-form")
 
-    view_options = ("list", "extended")
-
     d = {
         "results": results_page,
         "prm": parameters,
@@ -532,7 +550,16 @@ def gallery_list(request: HttpRequest, mode: str = "none", tag: str | None = Non
         "extra_options": view_options,
     }
 
-    return render(request, "viewer/gallery_search.html", d)
+    html_response = render(request, "viewer/gallery_search.html", d)
+    if not request.user.is_authenticated and explicit_view_change:
+        if parameters["view"] == "list":
+            if "panda_gallery_view" in request.COOKIES:
+                html_response.delete_cookie("panda_gallery_view", samesite="Lax")
+        elif request.COOKIES.get("panda_gallery_view") != parameters["view"]:
+            html_response.set_cookie(
+                "panda_gallery_view", parameters["view"], max_age=30 * 24 * 3600, samesite="Lax"
+            )
+    return html_response
 
 
 filter_galleries_defer = (
@@ -546,6 +573,7 @@ filter_galleries_defer = (
     "rating",
     "expunged",
     "comment",
+    "provider_metadata",
     "gallery_container",
     "magazine",
     "uploader",
@@ -649,81 +677,13 @@ def filter_galleries(
         results = results.eligible_for_use()
 
     if request_filters["tags"]:
-        tags = request_filters["tags"].split(",")
-
-        has_positive_tag_filter = False
-        q_objects = Q()
-        if request_filters["tags_or"]:
-            tags_or = True
-        else:
-            tags_or = False
-
-        for tag in tags:
-            tag = tag.strip().replace(" ", "_")
-            tag_clean = re.sub("^[-|^]", "", tag)
-            scope_name = tag_clean.split(":", maxsplit=1)
-            if len(scope_name) > 1:
-                tag_scope = scope_name[0]
-                tag_name = scope_name[1]
-            else:
-                tag_scope = ""
-                tag_name = scope_name[0]
-            if tag.startswith("-^"):
-                if tag_name != "" and tag_scope != "":
-                    tag_query = Q(Q(tags__name__exact=tag_name) & Q(tags__scope__exact=tag_scope))
-                elif tag_name != "":
-                    tag_query = Q(tags__name__exact=tag_name)
-                else:
-                    tag_query = Q(tags__scope__exact=tag_scope)
-
-                if tags_or:
-                    q_objects.add(~tag_query, Q.OR)
-                else:
-                    results = results.exclude(tag_query)
-            elif tag.startswith("-"):
-                if tag_name != "" and tag_scope != "":
-                    tag_query = Q(Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope))
-                elif tag_name != "":
-                    tag_query = Q(tags__name__contains=tag_name)
-                else:
-                    tag_query = Q(tags__scope__contains=tag_scope)
-
-                if tags_or:
-                    q_objects.add(~tag_query, Q.OR)
-                else:
-                    results = results.exclude(tag_query)
-            elif tag.startswith("^"):
-                has_positive_tag_filter = True
-                if tag_name != "" and tag_scope != "":
-                    tag_query = Q(Q(tags__name__exact=tag_name) & Q(tags__scope__exact=tag_scope))
-                elif tag_name != "":
-                    tag_query = Q(tags__name__exact=tag_name)
-                else:
-                    tag_query = Q(tags__scope__exact=tag_scope)
-
-                if tags_or:
-                    q_objects.add(tag_query, Q.OR)
-                else:
-                    results = results.filter(tag_query)
-            else:
-                has_positive_tag_filter = True
-                if tag_name != "" and tag_scope != "":
-                    tag_query = Q(Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope))
-                elif tag_name != "":
-                    tag_query = Q(tags__name__contains=tag_name)
-                else:
-                    tag_query = Q(tags__scope__contains=tag_scope)
-
-                if tags_or:
-                    q_objects.add(tag_query, Q.OR)
-                else:
-                    results = results.filter(tag_query)
-
-        if tags_or:
-            results = results.filter(q_objects)
-            has_positive_tag_filter = True
-        if has_positive_tag_filter:
-            results = results.distinct()
+        results = apply_tag_filters(
+            results,
+            request_filters["tags"],
+            through_model=Gallery.tags.through,
+            fk_field="gallery_id",
+            tags_or=bool(request_filters["tags_or"]),
+        )
 
     if session_filters["view"] == "extended":
         results = (
@@ -848,76 +808,13 @@ def filter_galleries_simple(params: dict[str, Any]) -> GalleryQuerySet:
             results = results.filter(comment__contains=params["comment"])
 
     if "tags" in params and params["tags"]:
-        tags = params["tags"].split(",")
-
-        q_objects = Q()
-        if params["tags_or"]:
-            tags_or = True
-        else:
-            tags_or = False
-
-        for tag in tags:
-            tag = tag.strip().replace(" ", "_")
-            tag_clean = re.sub("^[-|^]", "", tag)
-            scope_name = tag_clean.split(":", maxsplit=1)
-            if len(scope_name) > 1:
-                tag_scope = scope_name[0]
-                tag_name = scope_name[1]
-            else:
-                tag_scope = ""
-                tag_name = scope_name[0]
-            if tag.startswith("-^"):
-                if tag_name != "" and tag_scope != "":
-                    tag_query = Q(tags__name__exact=tag_name) & Q(tags__scope__exact=tag_scope)
-                elif tag_name != "":
-                    tag_query = Q(tags__name__exact=tag_name)
-                else:
-                    tag_query = Q(tags__scope__exact=tag_scope)
-
-                if tags_or:
-                    q_objects.add(~tag_query, Q.OR)
-                else:
-                    results = results.exclude(tag_query)
-            elif tag.startswith("-"):
-                if tag_name != "" and tag_scope != "":
-                    tag_query = Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope)
-                elif tag_name != "":
-                    tag_query = Q(tags__name__contains=tag_name)
-                else:
-                    tag_query = Q(tags__scope__contains=tag_scope)
-
-                if tags_or:
-                    q_objects.add(~tag_query, Q.OR)
-                else:
-                    results = results.exclude(tag_query)
-            elif tag.startswith("^"):
-                if tag_name != "" and tag_scope != "":
-                    tag_query = Q(tags__name__exact=tag_name) & Q(tags__scope__exact=tag_scope)
-                elif tag_name != "":
-                    tag_query = Q(tags__name__exact=tag_name)
-                else:
-                    tag_query = Q(tags__scope__exact=tag_scope)
-
-                if tags_or:
-                    q_objects.add(tag_query, Q.OR)
-                else:
-                    results = results.filter(tag_query)
-            else:
-                if tag_name != "" and tag_scope != "":
-                    tag_query = Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope)
-                elif tag_name != "":
-                    tag_query = Q(tags__name__contains=tag_name)
-                else:
-                    tag_query = Q(tags__scope__contains=tag_scope)
-
-                if tags_or:
-                    q_objects.add(tag_query, Q.OR)
-                else:
-                    results = results.filter(tag_query)
-
-        if tags_or:
-            results = results.filter(q_objects)
-        results = results.distinct()
+        results = apply_tag_filters(
+            results,
+            params["tags"],
+            through_model=Gallery.tags.through,
+            fk_field="gallery_id",
+            tags_or=bool(params.get("tags_or")),
+        )
 
     if "non_public" in params and params["non_public"]:
         results = results.filter(public=False)

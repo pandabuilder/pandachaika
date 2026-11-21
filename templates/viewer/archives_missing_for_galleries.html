@@ -1,54 +1,136 @@
 {% extends "viewer/base.html" %}
-{% block title %}Missing archives | {{ block.super }}{% endblock %}
+{% load static viewer_extras %}
+{% block title %}Missing Archives | {{ block.super }}{% endblock %}
 {% block sidebar %}{% endblock %}
-{% load static %}
+
+{% block extra_head %}
+  {% load compress %}
+  {% compress css %}
+    <link href="{% static 'css/dm-pages.css' %}" type="text/css" rel="stylesheet" />
+  {% endcompress %}
+  <style>
+    .pma-title { font-weight: 600; }
+    .pma-source { font-size: 0.78rem; }
+  </style>
+{% endblock %}
 
 {% block content %}
-    {% load viewer_extras %}
-    {% if messages %}
-        {% for message in messages %}
-        <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
-        {% endfor %}
-    {% endif %}
-    <div class="page-header">
-    <h2>Galleries without associated archives or archives with non-matching filesize (total: {{ results.count }})</h2>
-      <p class="lead">If you have any of these galleries, and their <b>unpacked filesize MATCHES the one displayed here</b> (for panda links), please get in touch.</p>
+<div class="container-fluid py-3">
+  {% include "viewer/include/dm_messages.html" %}
+
+  <!-- Header -->
+  <div class="dm-page-header">
+    <div>
+      <h2 class="h3 mb-1">
+        <i class="fas fa-box-open text-warning me-2"></i>Missing Archives
+        <span class="badge bg-warning text-dark fs-6 align-middle ms-1">{{ results.count }}</span>
+      </h2>
+      <p class="mb-0 small">
+        Galleries without associated archives or with non-matching filesize. If you have any of these and their
+        <strong class="text-light">unpacked filesize matches</strong> (for panda links), please get in touch or submit the URL.
+      </p>
     </div>
-    {% if results.count > 0 %}
-      <table class="table table-bordered table-sm generic-table">
+    <div class="d-flex flex-wrap gap-2">
+      <a href="{% url 'viewer:url-submit' %}" class="btn btn-outline-info btn-sm">
+        <i class="fas fa-paper-plane me-1"></i>Submit URL
+      </a>
+      {% if perms.viewer.manage_missing_archives %}
+        <a href="{% url 'viewer:col-missing-archives' %}" class="btn btn-outline-secondary btn-sm">
+          <i class="fas fa-wrench me-1"></i>Collaborator View
+        </a>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Table -->
+  <div class="dm-card">
+    <div class="dm-card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <div class="small dm-muted">
+        Showing <strong class="text-light" id="visible-count">{{ results.count }}</strong> of <strong class="text-light">{{ results.count }}</strong> galleries
+      </div>
+      {% if results.count > 0 %}
+        <input id="quick-filter" type="search" class="form-control form-control-sm" style="max-width: 18rem;"
+               placeholder="Quick filter title, category, URL…" aria-label="Quick filter" data-dm-hotkey="/">
+      {% endif %}
+    </div>
+    <div class="table-responsive">
+      <table class="table table-dm table-hover table-sm mb-0" id="public-missing-table">
         <thead>
-        <tr>
-          <th>URL</th><th>Title</th><th>Size</th><th>Images</th><th>Source URL | Image</th><th>Category</th>
-        </tr>
+          <tr>
+            <th></th>
+            <th>Gallery</th>
+            <th class="text-end">Size</th>
+            <th class="text-end">Images</th>
+            <th>Category</th>
+          </tr>
         </thead>
         <tbody>
-        {% for gallery in results %}
-          <tr>
-            <td>
-              <a href="{% url 'viewer:gallery' gallery.pk %}">{{ gallery.pk }}</a>
-            </td>
-            <td>
-              {{ gallery.title }}
-            </td>
-            <td>
-              {{ gallery.filesize }} ({{ gallery.filesize|filesizeformat }})
-            </td>
-            <td>
-              {{ gallery.filecount }}
-            </td>
-            <td>
-              {% if gallery.thumbnail.name %}
-                <a href="{{ gallery.get_link }}" class="img-preview" data-image-url="{{ gallery.thumbnail.url }}" rel="popover noopener noreferrer nofollow">{{ gallery.get_link }}</a>
-              {% else %}
-                {{ gallery.get_link|urlize_all_rel }}
-              {% endif %}
-            </td>
-            <td>
-              {{ gallery.category }}
-            </td>
-          </tr>
-        {% endfor %}
+          {% for gallery in results %}
+            <tr>
+              <td style="width: 52px;">
+                {% if gallery.thumbnail.name %}
+                  <a href="{% url 'viewer:gallery' gallery.pk %}" class="img-preview" data-image-url="{{ gallery.thumbnail.url }}">
+                    <img class="dm-thumb" src="{{ gallery.thumbnail.url }}" alt="" loading="lazy">
+                  </a>
+                {% else %}
+                  <span class="dm-thumb dm-thumb-placeholder"><i class="fas fa-image"></i></span>
+                {% endif %}
+              </td>
+              <td class="dm-wrap" style="min-width: 18rem;">
+                <div>
+                  <a class="pma-title" href="{% url 'viewer:gallery' gallery.pk %}">{{ gallery.title|default:"(no title)" }}</a>
+                  <span class="dm-dim small ms-1">#{{ gallery.pk }}</span>
+                </div>
+                <div class="pma-source dm-break-all">{{ gallery.get_link|urlize_all_rel }}</div>
+              </td>
+              <td class="text-end text-nowrap small" {% if gallery.filesize %}title="{{ gallery.filesize }} bytes"{% endif %}>
+                {% if gallery.filesize %}
+                  <div>{{ gallery.filesize|filesizeformat }}</div>
+                  <div class="dm-dim font-monospace" style="font-size: 0.72rem;">{{ gallery.filesize }}</div>
+                {% else %}
+                  <span class="dm-dim">-</span>
+                {% endif %}
+              </td>
+              <td class="text-end font-monospace small">{{ gallery.filecount|default:"-" }}</td>
+              <td class="small text-nowrap">
+                {% if gallery.category %}
+                  <span class="badge dm-badge-outline text-info">{{ gallery.category }}</span>
+                {% else %}
+                  <span class="dm-dim">-</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="5" class="dm-empty"><i class="fas fa-check-circle"></i>No missing archives right now.</td></tr>
+          {% endfor %}
         </tbody>
       </table>
-    {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block afterJQ %}
+  {% load compress %}
+  {% compress js %}
+    <script src="{% static 'js/dm-pages.js' %}"></script>
+  {% endcompress %}
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      const input = document.getElementById('quick-filter');
+      const table = document.getElementById('public-missing-table');
+      const counter = document.getElementById('visible-count');
+      if (!input || !table) return;
+      input.addEventListener('input', function () {
+        const q = input.value.trim().toLowerCase();
+        let shown = 0;
+        table.querySelectorAll('tbody tr').forEach(function (tr) {
+          const match = !q || tr.textContent.toLowerCase().indexOf(q) !== -1;
+          tr.classList.toggle('d-none', !match);
+          if (match) shown += 1;
+        });
+        if (counter) counter.textContent = String(shown);
+      });
+    });
+  </script>
 {% endblock %}

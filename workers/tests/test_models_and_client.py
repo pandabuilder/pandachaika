@@ -250,11 +250,10 @@ class WorkersModelAndClientTests(TestCase):
         settings.MEDIA_ROOT = "/secret/path"
         settings.ftps = {"passwd": "ftp_password"}
         settings.torrent = {"pass": "torrent_password"}
-        settings.remote_site = {"user_token": "token123"}
         settings.config = {"database": {"postgresql_password": "db_password"}}
 
         data = serialize_settings_options(settings)
-        for sensitive_key in ("django_secret_key", "database", "MEDIA_ROOT", "ftps", "torrent", "remote_site", "config"):
+        for sensitive_key in ("django_secret_key", "database", "MEDIA_ROOT", "ftps", "torrent", "config"):
             self.assertNotIn(sensitive_key, data)
 
     def test_dict_options_dynamic_override(self):

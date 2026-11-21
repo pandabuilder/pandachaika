@@ -6,7 +6,6 @@ from viewer.views import (
     head,
     browser,
     wanted,
-    exp,
     api,
     archive,
     admin,
@@ -26,6 +25,7 @@ from viewer.views import (
     admin_report,
 )
 
+from viewer.views.api import legacy as api_legacy
 from viewer.feeds import LatestArchivesFeed
 from viewer.views.elasticsearch import (
     ESHomePageView,
@@ -83,6 +83,10 @@ urlpatterns = [
     path("dir-browser/", browser.directory_parser, name="directory-parser"),
     path("api-login/", api.api_login, name="api-login"),
     path("api-logout/", api.api_logout, name="api-logout"),
+    path("api/v1/", api.api_v1, name="api-v1"),
+    path("api/v1/remote/", api.api_v1_remote, name="api-v1-remote"),
+    path("api/v1/openapi.json", api.api_v1_openapi, name="api-v1-openapi"),
+    path("api/v1/docs/", api.api_v1_docs, name="api-v1-docs"),
     path("jsearch/", api.json_api, name="json-search"),
     re_path(r"^jsearch$", api.json_api, name="json-search-slashless"),
     path("api/", api.json_api, name="api"),
@@ -96,6 +100,7 @@ urlpatterns = [
     path("archive_new/<int:pk>/<edit_mode:mode>/", archive.archive_details, _new_style, name="archive-new-edit"),
     path("archive_old/<int:pk>/", archive.archive_details, _old_style, name="archive-old"),
     path("archive_old/<int:pk>/<edit_mode:mode>/", archive.archive_details, _old_style, name="archive-old-edit"),
+    path("archive/<int:pk>/images-edit/", archive.archive_images_edit, name="archive-images-edit"),
     path("archive/<int:pk>/extract/", archive.extract, name="archive-extract"),
     path("archive/<int:pk>/reduce/", archive.reduce, name="archive-reduce"),
     path("archive/<int:pk>/public/", archive.public, name="archive-public"),
@@ -231,7 +236,7 @@ urlpatterns += [
 
 # Image viewer.
 urlpatterns += [
-    path("new-image-viewer/<int:archive>/img/<int:image>/", exp.new_image_viewer, name="new-image-viewer"),
+    path("new-image-viewer/<int:archive>/img/<int:image>/", archive.new_image_viewer, name="new-image-viewer"),
 ]
 
 # Admin URLs
@@ -262,6 +267,7 @@ urlpatterns += [
     path("api/stats/", stats.stats_api, name="api-stats"),
     path("api/workers/status/", workers_dashboard.workers_status_api, name="api-workers-status"),
     path("api/workers/action/", workers_dashboard.workers_action_api, name="api-workers-action"),
+    path("api/tasks/status/", workers_dashboard.task_batch_status, name="task-batch-status"),
     path("api/tasks/<int:pk>/status/", workers_dashboard.task_status, name="task-status"),
     path("api/archive-picker/", archive_picker.archive_picker_api, name="api-archive-picker"),
     path(
@@ -368,9 +374,10 @@ urlpatterns += [
 ]
 
 urlpatterns += [
-    path("r-api/<str:model>/<int:obj_id>/<str:action>/", exp.api, name="model-obj-action"),
-    path("r-api/<str:model>/<int:obj_id>/", exp.api, name="model-obj"),
-    path("r-api/<str:model>/", exp.api, name="model-all"),
+    # Deprecated, see viewer/views/api/legacy.py for their /api/v1/ successors.
+    path("r-api/<str:model>/<int:obj_id>/<str:action>/", api_legacy.legacy_rapi, name="model-obj-action"),
+    path("r-api/<str:model>/<int:obj_id>/", api_legacy.legacy_rapi, name="model-obj"),
+    path("r-api/<str:model>/", api_legacy.legacy_rapi, name="model-all"),
 ]
 
 urlpatterns += [

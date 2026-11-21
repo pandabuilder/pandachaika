@@ -85,16 +85,6 @@ class ArchiveQuerySet(models.QuerySet["Archive"]):
     def none(self) -> typing.Self:
         return super().none()
 
-    def filter_non_existent(self, root: str, **kwargs: typing.Any) -> list["Archive"]:
-        archives = self.filter(**kwargs, file_deleted=False, binned=False).order_by("-id")
-
-        return [
-            archive
-            for archive in archives
-            if (not archive.zipped or not archive.zipped.name)
-            or (not os.path.isfile(os.path.join(root, archive.zipped.path)))
-        ]
-
 
 class ArchiveManager(models.Manager["Archive"]):
     def get_queryset(self) -> ArchiveQuerySet:
@@ -117,9 +107,6 @@ class ArchiveManager(models.Manager["Archive"]):
 
     def filter_and_order_by_posted(self, **kwargs: typing.Any) -> ArchiveQuerySet:
         return self.get_queryset().filter(**kwargs).order_by("gallery__posted")
-
-    def filter_non_existent(self, root: str, **kwargs: typing.Any) -> list["Archive"]:
-        return self.get_queryset().filter_non_existent(root, **kwargs)
 
     def filter_by_missing_file_info(self) -> ArchiveQuerySet:
         return self.get_queryset().filter(crc32="")
@@ -332,20 +319,7 @@ class Archive(TrackedChangesMixin, models.Model):
         )
 
         indexes = [
-            models.Index(
-                F("create_date").desc(nulls_last=True),
-                F("public").asc(nulls_last=True),
-                "binned",
-                name="archive_pub_binned",
-            ),
             models.Index(F("create_date").desc(nulls_last=True), "binned", name="archive_binned"),
-            models.Index("binned", name="archive_binned_only"),
-            models.Index(
-                F("public_date").desc(nulls_last=True),
-                F("public").asc(nulls_last=True),
-                "binned",
-                name="archive_pub2_binned",
-            ),
             models.Index(
                 "binned",
                 "public",

@@ -1,0 +1,89 @@
+{% load viewer_extras %}{% comment %}Reusable group card table for archives_similar_by_fields.html.{% endcomment %}
+{% for archive_group_key, archive_group_value in groups.items %}
+  <div class="dm-card">
+    <div class="dm-card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <div class="d-flex align-items-center gap-2">
+        <span class="badge {{ badge_class }}">{{ section_label }}</span>
+        <span>Group #{{ archive_group_key }}</span>
+        <span class="badge dm-badge-outline text-info">{{ archive_group_value|length }} archive{{ archive_group_value|length|pluralize }}</span>
+      </div>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-dm table-hover table-sm mb-0">
+        <thead>
+          <tr>
+            <th class="dm-check-col" title="Mark archive for deletion">Del</th>
+            <th class="dm-check-col" title="Keep as main archive (inherits deleted archives' galleries as alternative sources)">Main</th>
+            <th></th>
+            <th>Archive</th>
+            <th>Source</th>
+            <th>Reason</th>
+            <th class="text-end">Images</th>
+            <th class="text-end">Size</th>
+            <th>Created / Posted</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for archive in archive_group_value %}
+            <tr>
+              <td class="dm-check-col">
+                <input id="del-{{ section_id }}-{{ archive_group_key }}-{{ archive.id }}" class="form-check-input archive-del-checkbox"
+                       data-source_type="{{ archive.source_type }}" data-reason="{{ archive.reason }}"
+                       type="checkbox" name="del-{{ archive.id }}" value="{{ archive_group_key }}"
+                       aria-label="Delete archive {{ archive.pk }}">
+              </td>
+              <td class="dm-check-col dm-no-row-toggle">
+                <input id="main-{{ section_id }}-{{ archive_group_key }}-{{ archive.id }}" class="form-check-input archive-main-checkbox"
+                       type="checkbox" name="main-{{ archive.id }}" value="{{ archive_group_key }}"
+                       aria-label="Keep archive {{ archive.pk }} as main">
+              </td>
+              <td style="width: 52px;">
+                {% if archive.thumbnail.name %}
+                  <a href="{% url 'viewer:archive' archive.pk %}" class="img-preview" data-image-url="{{ archive.thumbnail.url }}">
+                    <img class="dm-thumb" src="{{ archive.thumbnail.url }}" alt="" loading="lazy">
+                  </a>
+                {% else %}
+                  <span class="dm-thumb dm-thumb-placeholder"><i class="fas fa-file-archive"></i></span>
+                {% endif %}
+              </td>
+              <td class="dm-wrap" style="min-width: 18rem;">
+                <div>
+                  <a href="{% url 'viewer:archive' archive.pk %}" class="sa-title{% if not archive.crc32 %} archive-incomplete{% endif %}">
+                    {{ archive.title|default:"(no title)" }}
+                  </a>
+                  <span class="dm-dim small ms-1">#{{ archive.pk }}</span>
+                  {% if not archive.crc32 %}<span class="badge bg-warning text-dark ms-1" title="Missing CRC32">Incomplete</span>{% endif %}
+                </div>
+                <div class="sa-file dm-break-all">{{ archive.zipped }}</div>
+              </td>
+              <td class="small text-nowrap">
+                {% if archive.source_type %}<span class="badge bg-secondary">{{ archive.source_type }}</span>{% else %}<span class="dm-dim">-</span>{% endif %}
+              </td>
+              <td class="small dm-wrap" style="max-width: 12rem;">{{ archive.reason|default:"" }}</td>
+              <td class="text-end font-monospace small">{{ archive.filecount|default:"-" }}</td>
+              <td class="text-end text-nowrap small" {% if archive.filesize %}title="{{ archive.filesize }} bytes"{% endif %}>
+                {% if archive.filesize %}
+                  <div>{{ archive.filesize|filesizeformat }}</div>
+                  <div class="dm-dim font-monospace" style="font-size: 0.72rem;">{{ archive.filesize }}</div>
+                {% else %}
+                  <span class="dm-dim">-</span>
+                {% endif %}
+              </td>
+              <td class="small text-nowrap">
+                <div title="Created: {{ archive.create_date|date:'Y-m-d H:i:s' }}">
+                  <span class="dm-muted">C:</span>
+                  <span data-dm-reltime="{{ archive.create_date|date:'c' }}">{{ archive.create_date|date:"Y-m-d H:i" }}</span>
+                </div>
+                {% if archive.gallery and archive.gallery.posted %}
+                  <div title="Posted: {{ archive.gallery.posted|date:'Y-m-d H:i:s' }}">
+                    <span class="dm-muted">P:</span> {{ archive.gallery.posted|date:"Y-m-d" }}
+                  </div>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% endfor %}

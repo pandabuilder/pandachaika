@@ -45,7 +45,8 @@
         <ul class="dropdown-menu dropdown-menu-end p-2 bg-dark border-secondary" aria-labelledby="dropdownTools" style="min-width: 280px;">
           <li class="dropdown-header text-info fw-bold py-1 px-2">Match tools</li>
           <li>
-            <form action="{% url 'viewer:wanted-gallery' wanted_gallery.pk %}" method="GET" class="px-2 py-1">
+            <form action="{% url 'viewer:wanted-gallery' wanted_gallery.pk %}" method="POST" class="px-2 py-1">
+              {% csrf_token %}
               <div class="input-group input-group-sm mb-2">
                 <input class="form-control form-control-sm" name="provider" value="" placeholder="Provider filter" />
               </div>
@@ -60,7 +61,8 @@
           <li><hr class="dropdown-divider border-secondary my-1"></li>
           <li class="dropdown-header text-info fw-bold py-1 px-2">Change state</li>
           <li>
-            <form action="{% url 'viewer:wanted-gallery' wanted_gallery.pk %}" method="GET" class="px-2 py-1">
+            <form action="{% url 'viewer:wanted-gallery' wanted_gallery.pk %}" method="POST" class="px-2 py-1">
+              {% csrf_token %}
               <button class="btn btn-sm btn-outline-light w-100 mb-1 text-start" name="tool" value="stop-searching">
                 <i class="fas fa-stop me-1"></i>Stop searching
               </button>
@@ -76,7 +78,8 @@
             <li><hr class="dropdown-divider border-secondary my-1"></li>
             <li class="dropdown-header text-info fw-bold py-1 px-2">Backlog Search</li>
             <li>
-              <form action="{% url 'viewer:wanted-gallery' wanted_gallery.pk %}" method="GET" class="px-2 py-1">
+              <form action="{% url 'viewer:wanted-gallery' wanted_gallery.pk %}" method="POST" class="px-2 py-1">
+                {% csrf_token %}
                 <input type="hidden" name="tool" value="backlog-search">
                 {% for entry in backlog_search_urls %}
                   <div class="form-check form-check-sm mb-1">
@@ -488,14 +491,22 @@
                 <td><span class="badge bg-secondary">{{ found_entry.gallery.filecount }}</span></td>
                 <td class="small">{{ found_entry.gallery.filesize|filesizeformat }}</td>
                 <td>
-                  <div class="btn-group btn-group-sm">
-                    <a class="btn btn-outline-info" title="Download gallery" href="{% url 'viewer:gallery-tool' found_entry.gallery.pk 'download' %}">
-                      <i class="fas fa-download"></i>
-                    </a>
+                  <div class="d-inline-flex gap-1">
+                    <form method="POST" action="{% url 'viewer:gallery-tool' found_entry.gallery.pk 'download' %}" class="d-inline">
+                      {% csrf_token %}
+                      <button type="submit" class="btn btn-sm btn-outline-info" title="Download gallery">
+                        <i class="fas fa-download"></i>
+                      </button>
+                    </form>
                     {% if can_change %}
-                      <a class="btn btn-outline-danger" title="Remove match" href="{% url 'viewer:wanted-gallery' wanted_gallery.pk %}?tool=remove-match&tool-id={{ found_entry.gallery.pk }}">
-                        <i class="fas fa-times"></i>
-                      </a>
+                      <form method="POST" action="{% url 'viewer:wanted-gallery' wanted_gallery.pk %}" class="d-inline">
+                        {% csrf_token %}
+                        <input type="hidden" name="tool" value="remove-match">
+                        <input type="hidden" name="tool-id" value="{{ found_entry.gallery.pk }}">
+                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Remove match">
+                          <i class="fas fa-times"></i>
+                        </button>
+                      </form>
                     {% endif %}
                   </div>
                 </td>
@@ -610,9 +621,13 @@
         </nav>
       {% endif %}
       {% if user.is_staff and possible_matches and possible_matches.paginator.count > 0 %}
-        <a class="btn btn-outline-light btn-sm" href="{% url 'viewer:wanted-gallery' wanted_gallery.pk %}?tool=clear-possible-matches">
-          <i class="fas fa-trash-alt me-1"></i>Clear all possible matches
-        </a>
+        <form method="POST" action="{% url 'viewer:wanted-gallery' wanted_gallery.pk %}" class="d-inline">
+          {% csrf_token %}
+          <input type="hidden" name="tool" value="clear-possible-matches">
+          <button type="submit" class="btn btn-outline-light btn-sm">
+            <i class="fas fa-trash-alt me-1"></i>Clear all possible matches
+          </button>
+        </form>
       {% endif %}
     </div>
   </div>
@@ -637,9 +652,14 @@
               <tr>
                 <td class="text-center">
                   {% if can_change %}
-                    <a class="btn btn-success btn-sm" title="Select as match" href="{% url 'viewer:wanted-gallery' wanted_gallery.pk %}?tool=select-as-match&tool-id={{ match.gallery.pk }}">
-                      <i class="fas fa-check me-1"></i>Select
-                    </a>
+                    <form method="POST" action="{% url 'viewer:wanted-gallery' wanted_gallery.pk %}" class="d-inline">
+                      {% csrf_token %}
+                      <input type="hidden" name="tool" value="select-as-match">
+                      <input type="hidden" name="tool-id" value="{{ match.gallery.pk }}">
+                      <button type="submit" class="btn btn-success btn-sm" title="Select as match">
+                        <i class="fas fa-check me-1"></i>Select
+                      </button>
+                    </form>
                   {% else %}
                     <span class="badge bg-secondary">-</span>
                   {% endif %}

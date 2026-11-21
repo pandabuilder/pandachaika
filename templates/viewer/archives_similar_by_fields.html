@@ -1,269 +1,226 @@
 {% extends "viewer/base.html" %}
+{% load static viewer_extras %}
 {% block title %}Similar Archives | {{ block.super }}{% endblock %}
 {% block sidebar %}{% endblock %}
-{% load static %}
+
+{% block extra_head %}
+  {% load compress %}
+  {% compress css %}
+    <link href="{% static 'css/vendor/jal/style.css' %}" type="text/css" media="all" rel="stylesheet" />
+    <link href="{% static 'css/dm-pages.css' %}" type="text/css" rel="stylesheet" />
+  {% endcompress %}
+  <style>
+    .sa-title { font-weight: 600; }
+    .sa-file { font-size: 0.78rem; color: var(--pg-text-secondary); }
+  </style>
+{% endblock %}
+
 {% block content %}
-  {% load viewer_extras %}
-  {% if messages %}
-    {% for message in messages %}
-      <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
-    {% endfor %}
-  {% endif %}
-  <!-- Non matched archives  -->
-  <div class="page-header">
-    <h2>Similar archives by fields</h2>
-    <p class="lead">Number of archive groups (by filesize and filecount, by crc32, by title): {{ by_size_count|length }}, {{ by_crc32|length }}, {{ by_title|length }}</p>
+<div class="container-fluid py-3">
+  {% include "viewer/include/dm_messages.html" %}
+
+  <!-- Header -->
+  <div class="dm-page-header">
+    <div>
+      <h2 class="h3 mb-1"><i class="fas fa-clone text-info me-2"></i>Similar Archives by Fields</h2>
+      <p class="mb-0 small">
+        Find duplicate archives sharing file size &amp; count, CRC32, or title. Mark duplicates with <strong>Del</strong> and optionally choose a <strong>Main</strong> archive to inherit their gallery as an alternative source.
+      </p>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      <a href="{% url 'viewer:archive-manager' %}" class="btn btn-outline-info btn-sm">
+        <i class="fas fa-archive me-1"></i>Archive Manager
+      </a>
+      {% if perms.viewer.compare_archives %}
+        <a href="{% url 'viewer:compare-archives-viewer' %}" class="btn btn-outline-secondary btn-sm">
+          <i class="fas fa-columns me-1"></i>Compare Archives
+        </a>
+      {% endif %}
+    </div>
   </div>
-  <form action="{% url 'viewer:archives-by-field' %}" method="GET">
-    {% for field in form %}
-      <div class="page-line">
-        {{ field.errors }}
-        {{ field }}
-      </div>
-    {% endfor %}
-    <div class="page-line row g-1 align-items-center">
-    <div class="col-md-auto">
-        <button data-role="toggle-field" data-field="source_type" class="btn btn-info" type="button" title="Select or deselect all the Archives with the same source as the filter">Toggle Source</button>
+
+  <!-- Summary tiles -->
+  <div class="row g-2 mb-3">
+    <div class="col-6 col-md-3">
+      <a class="dm-stat{% if 'filter-fileinfo' in request.GET %} active{% endif %}" href="?{% url_filter 'filter-fileinfo' '1' %}">
+        <div class="dm-lbl">By size &amp; count</div>
+        <div class="dm-val text-info">{{ by_size_count|length }}</div>
+        <div class="dm-stat-sub">click to group by file info</div>
+      </a>
     </div>
-    <div class="col-md-auto">
-      <button data-role="toggle-field" data-field="reason" class="btn btn-info" type="button" title="Select or deselect all the Archives with the same reason as the filter">Toggle Reason</button>
+    <div class="col-6 col-md-3">
+      <a class="dm-stat{% if 'filter-crc32' in request.GET %} active{% endif %}" href="?{% url_filter 'filter-crc32' '1' %}">
+        <div class="dm-lbl">By CRC32</div>
+        <div class="dm-val text-warning">{{ by_crc32|length }}</div>
+        <div class="dm-stat-sub">identical checksums</div>
+      </a>
     </div>
-    <div class="col-md-auto">
-      <input title="Source type" class="form-control" name="source_type" placeholder="Source type" value="{{ request.GET.source_type }}">
+    <div class="col-6 col-md-3">
+      <a class="dm-stat{% if 'filter-title' in request.GET %} active{% endif %}" href="?{% url_filter 'filter-title' '1' %}">
+        <div class="dm-lbl">By title</div>
+        <div class="dm-val text-primary">{{ by_title|length }}</div>
+        <div class="dm-stat-sub">matching titles</div>
+      </a>
     </div>
-    <div class="col-md-auto">
-      <input title="Reason" class="form-control" name="reason" placeholder="Reason" value="{{ request.GET.reason }}">
-    </div>
-    <div class="col-md-auto">
-      <div class="form-check">
-      <input id="checkbox-f1" class="form-check-input" type="checkbox" name="filter-fileinfo" value="1" {% if "filter-fileinfo" in request.GET %}checked{% endif %}><label for="checkbox-f1">By file info</label>
-      </div>
-    </div>
-    <div class="col-md-auto">
-      <div class="form-check">
-      <input id="checkbox-f2" class="form-check-input" type="checkbox" name="filter-crc32" value="1" {% if "filter-crc32" in request.GET %}checked{% endif %}><label for="checkbox-f2">By crc32</label>
-      </div>
-      </div>
-      <div class="col-md-auto">
-      <div class="form-check">
-      <input id="checkbox-f3" class="form-check-input" type="checkbox" name="filter-title" value="1" {% if "filter-title" in request.GET %}checked{% endif %}><label for="checkbox-f3">By title</label>
-      </div>
-      </div>
-      <div class="col-md-auto">
-      <div class="form-check">
-      <input id="checkbox-f5" class="form-check-input" type="checkbox" name="filter-after" value="1" {% if "filter-after" in request.GET %}checked{% endif %}><label for="checkbox-f5" title="Filter source, reason at group-level (at least 1 Archive must match)">Post-filter</label>
-      </div>
-      </div>
-      <div class="col-md-auto">
-      <div class="form-check">
-      <input id="checkbox-f6" class="form-check-input" type="checkbox" name="limit-groups" title="Hard limit the number of groups to 400" value="1" {% if "limit-groups" in request.GET %}checked{% endif %}><label for="checkbox-f6">Limit groups</label>
-      </div>
-      </div>
-      <div class="col-md-auto">
-      <div class="form-check">
-      <input id="checkbox-f7" class="form-check-input" type="checkbox" name="clear-title" value="1" {% if "clear-title" in request.GET %}checked{% endif %}><label for="checkbox-f7">Clear title</label>
-      </div>
-      </div>
-      <div class="col-md-auto">
-      <div class="form-check">
-      <input id="checkbox-f4" class="form-check-input" type="checkbox" name="no-custom-tags" value="1" {% if "no-custom-tags" in request.GET %}checked{% endif %}><label for="checkbox-f4">No custom tags</label>
-      </div>
+    <div class="col-6 col-md-3">
+      <div class="dm-stat">
+        <div class="dm-lbl">Total groups</div>
+        <div class="dm-val text-success">{{ total_groups }}</div>
+        <div class="dm-stat-sub">across active methods</div>
       </div>
     </div>
-    <div class="page-line row g-1">
-      <div class="col-md-auto">
-        <div class="btn-group">
-          <button type="submit" name="apply" class="btn btn-info">Search</button>
-          <a class="btn btn-light" href="{% url 'viewer:archives-by-field' %}">Clear</a>
+  </div>
+
+  <!-- Filters -->
+  <form action="{% url 'viewer:archives-by-field' %}" method="GET" class="dm-card" id="filter-form">
+    <div class="p-3">
+      <div class="row g-2 align-items-end">
+        <div class="col-lg-3">
+          <label class="form-label dm-lbl" for="{{ form.title.id_for_label }}">Archive title</label>
+          {{ form.title.errors }}
+          {{ form.title }}
+        </div>
+        <div class="col-lg-3">
+          <label class="form-label dm-lbl" for="{{ form.tags.id_for_label }}">Tags</label>
+          {{ form.tags.errors }}
+          {{ form.tags }}
+        </div>
+        <div class="col-6 col-lg-2">
+          <label class="form-label dm-lbl" for="f-source-type">Source type</label>
+          <input id="f-source-type" class="form-control form-control-sm" name="source_type" placeholder="Source type" value="{{ request.GET.source_type }}">
+        </div>
+        <div class="col-6 col-lg-2">
+          <label class="form-label dm-lbl" for="f-reason">Reason</label>
+          <input id="f-reason" class="form-control form-control-sm" name="reason" placeholder="Reason" value="{{ request.GET.reason }}">
+        </div>
+        <div class="col-lg-2 d-flex flex-wrap gap-2">
+          <button type="submit" name="apply" class="btn btn-info btn-sm"><i class="fas fa-search me-1"></i>Search</button>
+          <a class="btn btn-outline-light btn-sm" href="{% url 'viewer:archives-by-field' %}" title="Clear all filters"><i class="fas fa-times me-1"></i>Clear</a>
+        </div>
+      </div>
+
+      <div class="d-flex flex-wrap align-items-center gap-3 mt-3">
+        <div class="d-flex align-items-center gap-2">
+          <span class="dm-lbl">Group by</span>
+          <div class="dm-toggles">
+            <input id="checkbox-f1" class="btn-check" type="checkbox" name="filter-fileinfo" value="1" autocomplete="off"{% if "filter-fileinfo" in request.GET %} checked{% endif %}>
+            <label class="btn btn-outline-secondary" for="checkbox-f1">File size &amp; count</label>
+            <input id="checkbox-f2" class="btn-check" type="checkbox" name="filter-crc32" value="1" autocomplete="off"{% if "filter-crc32" in request.GET %} checked{% endif %}>
+            <label class="btn btn-outline-secondary" for="checkbox-f2">CRC32</label>
+            <input id="checkbox-f3" class="btn-check" type="checkbox" name="filter-title" value="1" autocomplete="off"{% if "filter-title" in request.GET %} checked{% endif %}>
+            <label class="btn btn-outline-secondary" for="checkbox-f3">Title</label>
+          </div>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+          <span class="dm-lbl">Options</span>
+          <div class="dm-toggles">
+            <input id="checkbox-f5" class="btn-check" type="checkbox" name="filter-after" value="1" autocomplete="off"{% if "filter-after" in request.GET %} checked{% endif %}>
+            <label class="btn btn-outline-secondary" for="checkbox-f5" title="Filter source and reason at group level (at least 1 archive must match)">Post-filter</label>
+            <input id="checkbox-f6" class="btn-check" type="checkbox" name="limit-groups" value="1" autocomplete="off"{% if "limit-groups" in request.GET %} checked{% endif %}>
+            <label class="btn btn-outline-secondary" for="checkbox-f6" title="Hard limit the number of groups to 400">Limit 400</label>
+            <input id="checkbox-f7" class="btn-check" type="checkbox" name="clear-title" value="1" autocomplete="off"{% if "clear-title" in request.GET %} checked{% endif %}>
+            <label class="btn btn-outline-secondary" for="checkbox-f7" title="Strip brackets, parentheses and punctuation when grouping by title">Clear title</label>
+            <input id="checkbox-f4" class="btn-check" type="checkbox" name="no-custom-tags" value="1" autocomplete="off"{% if "no-custom-tags" in request.GET %} checked{% endif %}>
+            <label class="btn btn-outline-secondary" for="checkbox-f4">No custom tags</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-3 d-none" data-dm-chips-wrapper>
+        <div class="d-flex flex-wrap align-items-center gap-2">
+          <span class="dm-lbl"><i class="fas fa-filter me-1"></i>Active</span>
+          <div class="dm-chips" id="filter-chips"></div>
         </div>
       </div>
     </div>
   </form>
-  <form action="{% url 'viewer:archives-by-field' %}" method="POST">{% csrf_token %}
-    <ul class="list-group">
-      {% for archive_group_key, archive_group_value in by_size_count.items %}
-        <label>File size and count group: {{ archive_group_key }}</label>
-        <table class="table table-bordered table-sm generic-table">
-          <thead>
-          <tr>
-            <th>Select</th><th>Main</th><th>Title</th><th>File</th><th>Source</th><th>Reason</th><th>Count</th><th>Size</th><th>Created</th><th>Posted</th>
-          </tr>
-          </thead>
-          <tbody>
-          {% for archive in archive_group_value %}
-            <tr>
-              <td class="text-center">
-                <input id="del-{{ archive.id }}" class="toggle-list form-check-input" data-source_type="{{ archive.source_type }}" data-reason="{{ archive.reason }}" type="checkbox" name="del-{{ archive.id }}" value="{{ archive_group_key }}"><label for="del-{{ archive.id }}"></label>
-              </td>
-              <td class="text-center">
-                <input id="main-{{ archive.id }}" class="form-check-input" type="checkbox" name="main-{{ archive.id }}" value="{{ archive_group_key }}"><label for="main-{{ archive.id }}"></label>
-              </td>
-              <td>
-              {% if archive.thumbnail.name %}
-                <a href="{% url 'viewer:archive' archive.pk %}" data-image-url="{{ archive.thumbnail.url }}" class="img-preview{% if not archive.crc32 %} archive-incomplete{% endif %}" rel="popover">{{ archive.title }}</a>
-              {% else %}
-                <a href="{% url 'viewer:archive' archive.pk %}"{% if not archive.crc32 %} class="archive-incomplete"{% endif %}>{{ archive.title }}</a>
-              {% endif %}
-              </td>
-              <td>
-                {{ archive.zipped }}
-              </td>
-              <td>
-                {{ archive.source_type }}
-              </td>
-              <td>
-                {{ archive.reason }}
-              </td>
-              <td>
-                {{ archive.filecount }}
-              </td>
-              <td>
-                {{ archive.filesize|filesizeformat }}, {{ archive.filesize }}
-              </td>
-              <td>
-                {{ archive.create_date|date:"DATETIME_FORMAT" }}
-              </td>
-              <td>
-                {{ archive.gallery.posted|date:"DATETIME_FORMAT" }}
-              </td>
-            </tr>
-          {% endfor %}
-          </tbody>
-        </table>
-      {% endfor %}
-    </ul>
-    <ul class="list-group">
-      {% for archive_group_key, archive_group_value in by_crc32.items %}
-        <label>CRC32 group: {{ archive_group_key }}</label>
-        <table class="table table-bordered table-sm generic-table">
-          <thead>
-          <tr>
-            <th>Select</th><th>Main</th><th>Title</th><th>File</th><th>Source</th><th>Reason</th><th>Count</th><th>Size</th><th>Created</th><th>Posted</th>
-          </tr>
-          </thead>
-          <tbody>
-          {% for archive in archive_group_value %}
-            <tr>
-              <td class="text-center">
-                <input id="del-{{ archive.id }}" class="toggle-list form-check-input" data-source_type="{{ archive.source_type }}" data-reason="{{ archive.reason }}" type="checkbox" name="del-{{ archive.id }}" value="{{ archive_group_key }}"><label for="del-{{ archive.id }}"></label>
-              </td>
-              <td class="text-center">
-                <input id="main-{{ archive.id }}" class="toggle-list form-check-input" type="checkbox" name="main-{{ archive.id }}" value="{{ archive_group_key }}"><label for="main-{{ archive.id }}"></label>
-              </td>
-              <td>
-              {% if archive.thumbnail.name %}
-                <a href="{% url 'viewer:archive' archive.pk %}" data-image-url="{{ archive.thumbnail.url }}" class="img-preview" rel="popover">{{ archive.title }}</a>
-              {% else %}
-                <a href="{% url 'viewer:archive' archive.pk %}">{{ archive.title }}</a>
-              {% endif %}
-              </td>
-              <td>
-                {{ archive.zipped }}
-              </td>
-              <td>
-                {{ archive.source_type }}
-              </td>
-              <td>
-                {{ archive.reason }}
-              </td>
-              <td>
-                {{ archive.filecount }}
-              </td>
-              <td>
-                {{ archive.filesize|filesizeformat }}, {{ archive.filesize }}
-              </td>
-              <td>
-                {{ archive.create_date|date:"DATETIME_FORMAT" }}
-              </td>
-              <td>
-                {{ archive.gallery.posted|date:"DATETIME_FORMAT" }}
-              </td>
-            </tr>
-          {% endfor %}
-          </tbody>
-        </table>
-      {% endfor %}
-    </ul>
-    <ul class="list-group">
-      {% for archive_group_key, archive_group_value in by_title.items %}
-        <label>Title group: {{ archive_group_key }}</label>
-        <table class="table table-bordered table-sm generic-table">
-          <thead>
-          <tr>
-            <th>Select</th><th>Main</th><th>Title</th><th>File</th><th>Source</th><th>Reason</th><th>Count</th><th>Size</th><th>Created</th><th>Posted</th>
-          </tr>
-          </thead>
-          <tbody>
-          {% for archive in archive_group_value %}
-            <tr>
-              <td class="text-center">
-                <input id="del-{{ archive.id }}" class="toggle-list form-check-input" data-source_type="{{ archive.source_type }}" data-reason="{{ archive.reason }}" type="checkbox" name="del-{{ archive.id }}" value="{{ archive_group_key }}"><label for="del-{{ archive.id }}"></label>
-              </td>
-              <td class="text-center">
-                <input id="main-{{ archive.id }}" class="toggle-list form-check-input" type="checkbox" name="main-{{ archive.id }}" value="{{ archive_group_key }}"><label for="main-{{ archive.id }}"></label>
-              </td>
-              <td>
-              {% if archive.thumbnail.name %}
-                <a href="{% url 'viewer:archive' archive.pk %}" data-image-url="{{ archive.thumbnail.url }}" class="img-preview" rel="popover">{{ archive.title }}</a>
-              {% else %}
-                <a href="{% url 'viewer:archive' archive.pk %}">{{ archive.title }}</a>
-              {% endif %}
-              </td>
-              <td>
-                {{ archive.zipped }}
-              </td>
-              <td>
-                {{ archive.source_type }}
-              </td>
-              <td>
-                {{ archive.reason }}
-              </td>
-              <td>
-                {{ archive.filecount }}
-              </td>
-              <td>
-                {{ archive.filesize|filesizeformat }}, {{ archive.filesize }}
-              </td>
-              <td>
-                {{ archive.create_date|date:"DATETIME_FORMAT" }}
-              </td>
-              <td>
-                {{ archive.gallery.posted|date:"DATETIME_FORMAT" }}
-              </td>
-            </tr>
-          {% endfor %}
-          </tbody>
-        </table>
-      {% endfor %}
-    </ul>
-    <div class="mb-3">
-      <input size="10" class="form-control" name="reason" value="" placeholder="Reason" maxlength="200"/>
+
+  <!-- Results & Bulk Actions -->
+  <form action="{% url 'viewer:archives-by-field' %}" method="POST" id="similar-archives-form">
+    {% csrf_token %}
+    <div id="groups-root">
+      {% if not has_grouping %}
+        <div class="dm-card">
+          <div class="dm-empty">
+            <i class="fas fa-filter"></i>
+            Choose at least one grouping method above (<strong>File size &amp; count</strong>, <strong>CRC32</strong>, or <strong>Title</strong>) and click <strong>Search</strong>.
+          </div>
+        </div>
+      {% elif total_groups == 0 %}
+        <div class="dm-card">
+          <div class="dm-empty">
+            <i class="fas fa-check-circle"></i>No similar archive groups found matching these filters.
+          </div>
+        </div>
+      {% else %}
+        {% include "viewer/include/similar_archives_group_table.html" with groups=by_size_count section_label="Size & Count" section_id="sc" badge_class="bg-info text-dark" %}
+        {% include "viewer/include/similar_archives_group_table.html" with groups=by_crc32 section_label="CRC32" section_id="crc" badge_class="bg-warning text-dark" %}
+        {% include "viewer/include/similar_archives_group_table.html" with groups=by_title section_label="Title" section_id="title" badge_class="bg-primary" %}
+      {% endif %}
     </div>
+
     {% if perms.viewer.delete_archive %}
-    <button type="submit" name="delete_objects" class="btn btn-light">Delete selected archives</button>
-    {% endif %}
-    {% if perms.viewer.delete_archive %}
-    <button type="submit" name="delete_archives" class="btn btn-light">Delete (WARNING!) selected archives and files</button>
+      <div class="dm-actionbar">
+        <div class="d-flex flex-wrap align-items-center gap-2">
+          <span class="dm-sel-count" data-dm-sel-count>None selected</span>
+          <button data-role="toggle-field" data-field="source_type" class="btn btn-sm btn-outline-info dm-actionbar-extra" type="button"
+                  title="Select or deselect all archives matching the Source type filter above">
+            <i class="fas fa-check-double me-1"></i>Toggle Source
+          </button>
+          <button data-role="toggle-field" data-field="reason" class="btn btn-sm btn-outline-info dm-actionbar-extra" type="button"
+                  title="Select or deselect all archives matching the Reason filter above">
+            <i class="fas fa-check-double me-1"></i>Toggle Reason
+          </button>
+          <input class="form-control form-control-sm dm-actionbar-extra" style="max-width: 14rem;" name="reason" value="" placeholder="Event log reason" maxlength="200">
+          <div class="ms-auto d-flex flex-wrap gap-2">
+            <button type="submit" name="delete_objects" class="btn btn-sm btn-outline-warning" data-dm-needs-selection disabled
+                    data-dm-confirm="Delete database records for {n} selected archive(s) (files on disk will be kept)?">
+              <i class="fas fa-unlink me-1"></i>Delete records only
+            </button>
+            <button type="submit" name="delete_archives" class="btn btn-sm btn-danger" data-dm-needs-selection disabled
+                    data-dm-confirm="PERMANENTLY DELETE {n} selected archive(s) AND their files on disk?">
+              <i class="fas fa-trash-alt me-1"></i>Delete archives &amp; files
+            </button>
+          </div>
+        </div>
+      </div>
     {% endif %}
   </form>
+</div>
 {% endblock %}
+
 {% block afterJQ %}
   {% load compress %}
-  {% compress css %}
-    <link href="{% static 'css/vendor/jal/style.css' %}" type="text/css" media="all" rel="stylesheet" />
-  {% endcompress %}
   {% compress js %}
     <script src="{% static 'js/vendor/jal.js' %}"></script>
+    <script src="{% static 'js/dm-pages.js' %}"></script>
   {% endcompress %}
-  <script type="text/javascript">
-  document.querySelectorAll('button[data-role="toggle-field"]').forEach((element) => {
-      element.addEventListener("click", function(event) {
-        const field_name = event.currentTarget.dataset["field"];
-        const current_value = document.querySelector(`input[name=${field_name}]`).value;
-        document.querySelectorAll(`input.toggle-list[${'data-' + field_name}="${current_value}"]`).forEach((elementIn) => {
-            elementIn.click();
-        })
-    })
-  });
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      const titleInput = document.getElementById('{{ form.title.id_for_label }}');
+      if (titleInput) titleInput.dataset.dmHotkey = '/';
+
+      const sel = DM.selection({
+        root: document.getElementById('groups-root'),
+        checkbox: '.archive-del-checkbox',
+        rowClick: true,
+      });
+
+      DM.filterChips(document.getElementById('filter-form'), document.getElementById('filter-chips'));
+
+      document.querySelectorAll('button[data-role="toggle-field"]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          const fieldName = btn.dataset.field;
+          const input = document.querySelector('#filter-form input[name="' + CSS.escape(fieldName) + '"]');
+          const currentValue = input ? input.value : '';
+          document.querySelectorAll('#groups-root input.archive-del-checkbox').forEach(function (cb) {
+            if ((cb.getAttribute('data-' + fieldName) || '') === currentValue) {
+              cb.checked = !cb.checked;
+            }
+          });
+          if (sel) sel.refresh();
+        });
+      });
+    });
   </script>
 {% endblock %}

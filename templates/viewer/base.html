@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en"{% block html_class %}{% endblock %}>
 
 <head>
   <meta charset="utf-8">
@@ -253,7 +253,10 @@
                 <a class="dropdown-item" href="{% url 'viewer:my-event-log' %}">Event log</a>
                 <a class="dropdown-item" href="{% url 'viewer:change-profile' %}">User profile</a>
                 <a class="dropdown-item" href="{% url 'viewer:change-password' %}">Change password</a>
-                <a class="dropdown-item" href="{% url 'viewer:logout' %}">Logout</a>
+                <form method="POST" action="{% url 'viewer:logout' %}" class="m-0">
+                  {% csrf_token %}
+                  <button type="submit" class="dropdown-item">Logout</button>
+                </form>
               </ul>
             </li>
             {% else %}

@@ -7,10 +7,11 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import permission_required, login_required
 from django.core.paginator import Paginator, InvalidPage, EmptyPage
-from django.db.models import Prefetch, Count, Case, When
-from django.http import HttpRequest, HttpResponse, Http404, JsonResponse
+from django.db.models import Prefetch, Count, Case, When, Q
+from django.http import HttpRequest, HttpResponse, HttpResponseRedirect, Http404, JsonResponse
 from django.shortcuts import render
 from django.urls import reverse
+from django.views.decorators.http import require_POST
 
 from core.base.setup import Settings
 from core.base.utilities import thread_exists_in_db, clamp
@@ -18,7 +19,7 @@ from viewer.utils.functions import (
     galleries_update_metadata,
     gallery_search_results_to_json,
 )
-from viewer.utils.general import safe_redirect_back
+from viewer.utils.general import PAGE_SIZE_OPTIONS, page_size, safe_redirect_back
 from viewer.utils.actions import event_log
 from workers import client
 from viewer.forms import (
@@ -62,12 +63,7 @@ def manage_galleries(request: HttpRequest) -> HttpResponse:
     except ValueError:
         page = 1
 
-    try:
-        size = int(get.get("size", "100"))
-        if size not in (10, 20, 50, 100):
-            size = 100
-    except ValueError:
-        size = 100
+    size = page_size(get, default=100, key="size")
 
     if p:
         pks = []
@@ -289,6 +285,7 @@ def manage_galleries(request: HttpRequest) -> HttpResponse:
             messages.success(request, "Adding the first possible match to the Match Group.")
         if json_request:
             return HttpResponse("", content_type="application/json; charset=utf-8")
+        return HttpResponseRedirect(request.get_full_path())
 
     params = {
         "sort": "create_date",
@@ -349,12 +346,30 @@ def manage_galleries(request: HttpRequest) -> HttpResponse:
 
     matcher_types = ("title", "comment")
 
+    raw_stats = Gallery.objects.aggregate(
+        total_count=Count("id"),
+        public_count=Count("id", filter=Q(public=True)),
+        private_count=Count("id", filter=Q(public=False)),
+        expunged_count=Count("id", filter=Q(expunged=True)),
+        hidden_count=Count("id", filter=Q(hidden=True)),
+    )
+    stats = {
+        "total": raw_stats["total_count"],
+        "public": raw_stats["public_count"],
+        "private": raw_stats["private_count"],
+        "expunged": raw_stats["expunged_count"],
+        "hidden": raw_stats["hidden_count"],
+    }
+
     d = {
         "results": results_page,
         "form": form,
         "search_form": search_form,
         "providers": available_providers,
         "matcher_types": matcher_types,
+        "stats": stats,
+        "size": size,
+        "per_page_options": PAGE_SIZE_OPTIONS,
     }
 
     return render(request, "viewer/collaborators/manage_galleries.html", d)
@@ -546,6 +561,7 @@ def gallery_match_groups_possibles(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
+@require_POST
 def archive_update(
     request: HttpRequest, pk: int, tool: str | None = None, tool_use_id: str | None = None
 ) -> HttpResponse:
@@ -613,6 +629,7 @@ def archive_update(
 
 
 @login_required
+@require_POST
 def gallery_update(
     request: HttpRequest, pk: int, tool: str | None = None, tool_use_id: str | None = None
 ) -> HttpResponse:
@@ -800,6 +817,8 @@ def missing_archives_for_galleries(request: HttpRequest) -> HttpResponse:
 
             galleries_update_metadata(gallery_links, gallery_providers, request.user, reason, crawler_settings)
 
+        return HttpResponseRedirect(request.get_full_path())
+
     providers = Gallery.objects.all().values_list("provider", flat=True).distinct()
 
     params = {}
@@ -816,13 +835,32 @@ def missing_archives_for_galleries(request: HttpRequest) -> HttpResponse:
 
     results = results.report_as_missing_galleries().prefetch_related("foundgallery_set")
 
-    paginator = Paginator(results, 50)
+    limit = page_size(get, default=50)
+    paginator = Paginator(results, limit)
     try:
         results_page = paginator.page(page)
     except (InvalidPage, EmptyPage):
         results_page = paginator.page(paginator.num_pages)
 
-    d = {"results": results_page, "providers": providers, "form": form}
+    raw_stats = Gallery.objects.report_as_missing_galleries().aggregate(
+        total_count=Count("id"),
+        public_count=Count("id", filter=Q(public=True)),
+        private_count=Count("id", filter=Q(public=False)),
+    )
+    stats = {
+        "total": raw_stats["total_count"],
+        "public": raw_stats["public_count"],
+        "private": raw_stats["private_count"],
+    }
+
+    d = {
+        "results": results_page,
+        "providers": providers,
+        "form": form,
+        "stats": stats,
+        "limit": limit,
+        "per_page_options": PAGE_SIZE_OPTIONS,
+    }
 
     return render(request, "viewer/collaborators/archives_missing_for_galleries.html", d)
 
@@ -904,6 +942,8 @@ def repeated_galleries_by_field(request: HttpRequest) -> HttpResponse:
                 event_log(
                     request.user, "CREATE_GALLERY_MATCH_GROUP", reason=user_reason, content_object=gallery_match_group, result="created"
                 )
+
+        return HttpResponseRedirect(request.get_full_path())
 
 
     params: dict[str, list[str] | str] = {
@@ -1015,9 +1055,13 @@ def repeated_galleries_by_field(request: HttpRequest) -> HttpResponse:
         inline_thumbnails = False
 
     d = {
-        "by_title": by_title, "by_filesize": by_filesize, "form": form,
+        "by_title": by_title,
+        "by_filesize": by_filesize,
+        "form": form,
         "fields_form": fields_form,
-        "inline_thumbnails": inline_thumbnails
+        "inline_thumbnails": inline_thumbnails,
+        "has_grouping": "by-title" in get or "by-filesize" in get,
+        "total_groups": len(by_title) + len(by_filesize),
     }
 
     return render(request, "viewer/galleries_repeated_by_fields.html", d)

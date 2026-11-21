@@ -6,7 +6,7 @@
 // @include     http://exhentai.org/*
 // @include     https://e-hentai.org/*
 // @include     https://exhentai.org/*
-// @version     0.2.03
+// @version     0.2.04
 // @grant       GM_xmlhttpRequest
 // @grant       GM_setValue
 // @grant       GM_getValue
@@ -258,7 +258,7 @@ function sendWebCrawlerAction(link, parentLink, action, reason, ignoreGlobalFilt
 
     GM_xmlhttpRequest({
         method: 'POST',
-        url: GM_getValue("activeUserServerUrl", "") + "/admin-api/",
+        url: GM_getValue("activeUserServerUrl", "") + "/api/v1/remote/",
         data: JSON.stringify(data),
         headers: {
             'Content-Type': 'application/json',
@@ -266,7 +266,13 @@ function sendWebCrawlerAction(link, parentLink, action, reason, ignoreGlobalFilt
         },
         onload: function (response) {
             var jsonResponse = JSON.parse(response.responseText);
-            if (jsonResponse.action === 'confirmDeletion') {
+            if (jsonResponse.error) {
+                // API error envelope: {"error": {"code": "...", "message": "..."}}
+                if (Notification.permission === "granted") {
+                    spawnNotification("ERROR: " + jsonResponse.error.message, GM_getValue("activeUserIconUrl", ""), "Panda Backup");
+                }
+            }
+            else if (jsonResponse.action === 'confirmDeletion') {
                 displayModalConfirm(
                     jsonResponse.message,
                     function () { sendWebCrawlerAction(link, parentLink, 'replaceFound', getDownloadReason()) },

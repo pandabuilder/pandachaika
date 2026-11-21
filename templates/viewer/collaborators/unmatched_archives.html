@@ -127,6 +127,7 @@
   </form>
 
   <!-- Results -->
+  <form id="ma-single-action-form" method="POST" class="d-none">{% csrf_token %}</form>
   <form action="{{ request.get_full_path }}" method="POST" id="match-form">
     {% csrf_token %}
     <div class="dm-card">
@@ -177,9 +178,9 @@
                   <button type="button" class="btn btn-sm btn-outline-light ma-toggle" data-bs-toggle="collapse" data-bs-target="#candidates-{{ archive.pk }}" aria-expanded="true">
                     <i class="fas fa-list me-1"></i>{{ archive.candidates|length }} candidate{{ archive.candidates|length|pluralize }}
                   </button>
-                  <a class="btn btn-sm btn-outline-secondary ma-clear" href="{% url 'viewer:col-archive-update-tool' archive.pk 'clear-possible-matches' %}" title="Remove this archive's candidates">
+                  <button type="submit" form="ma-single-action-form" formaction="{% url 'viewer:col-archive-update-tool' archive.pk 'clear-possible-matches' %}" class="btn btn-sm btn-outline-secondary ma-clear" title="Remove this archive's candidates">
                     <i class="fas fa-eraser me-1"></i>Clear
-                  </a>
+                  </button>
                 {% else %}
                   <span class="badge dm-badge-outline text-secondary">No candidates</span>
                 {% endif %}
@@ -214,8 +215,9 @@
                           {% with gallery=candidate.gallery %}
                           <tr>
                             <td>
-                              <a class="btn btn-sm btn-success ma-select" href="{% url 'viewer:col-archive-update-tool-id' archive.pk 'select-as-match' gallery.pk %}"
-                                 title="Link archive {{ archive.pk }} to gallery {{ gallery.pk }}"><i class="fas fa-link me-1"></i>Link</a>
+                              <button type="submit" form="ma-single-action-form" formaction="{% url 'viewer:col-archive-update-tool-id' archive.pk 'select-as-match' gallery.pk %}"
+                                 class="btn btn-sm btn-success ma-select"
+                                 title="Link archive {{ archive.pk }} to gallery {{ gallery.pk }}"><i class="fas fa-link me-1"></i>Link</button>
                             </td>
                             <td class="dm-wrap" style="min-width: 16rem;">
                               <a href="{% url 'viewer:gallery' gallery.pk %}"{% if gallery.thumbnail.name %} class="img-preview" data-image-url="{{ gallery.thumbnail.url }}"{% endif %}>{{ gallery.title|default:gallery.pk }}</a>
@@ -334,8 +336,17 @@
         list.querySelectorAll('.ma-candidates').forEach(function (el) { bootstrap.Collapse.getOrCreateInstance(el, { toggle: false }).hide(); });
       });
 
+      const csrfToken = document.querySelector('#ma-single-action-form input[name="csrfmiddlewaretoken"]')?.value || '';
+
       async function callTool(url) {
-        const res = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' } });
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'X-CSRFToken': csrfToken,
+            'X-Requested-With': 'XMLHttpRequest',
+            'Accept': 'application/json',
+          },
+        });
         const data = await res.json().catch(function () { return {}; });
         if (!res.ok || !data.success) throw new Error(data.error || ('HTTP ' + res.status));
         return data;
@@ -354,14 +365,16 @@
 
       // Link / clear without leaving the page.
       list.addEventListener('click', async function (e) {
-        const link = e.target.closest('a.ma-select, a.ma-clear, .ma-covers a.btn-info');
-        if (!link) return;
+        const btn = e.target.closest('button.ma-select, button.ma-clear, .ma-covers button.btn-info');
+        if (!btn) return;
         e.preventDefault();
-        const row = link.closest('.ma-archive');
-        const isClear = link.classList.contains('ma-clear');
-        link.classList.add('disabled');
+        const url = btn.getAttribute('formaction');
+        if (!url) return;
+        const row = btn.closest('.ma-archive');
+        const isClear = btn.classList.contains('ma-clear');
+        btn.disabled = true;
         try {
-          const data = await callTool(link.href);
+          const data = await callTool(url);
           if (isClear) {
             row.querySelector('.ma-candidates')?.remove();
             row.querySelectorAll('.ma-toggle, .ma-clear').forEach(function (el) { el.remove(); });
@@ -378,7 +391,7 @@
           }
         } catch (err) {
           flash(row, '<i class="fas fa-exclamation-triangle me-1"></i>' + DM.escapeHtml(err.message), 'text-danger');
-          link.classList.remove('disabled');
+          btn.disabled = false;
         }
       });
 

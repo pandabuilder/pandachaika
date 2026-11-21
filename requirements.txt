@@ -20,7 +20,7 @@ paramiko==5.1.0
 django-autocomplete-light==5.0.0
 django-vite==3.2.0
 elasticsearch==8.19.3
-PyYAML==6.0.3
+PyYAML==6.0.4
 pydantic==2.14.4
 deckar01-ratelimit==3.0.2
 # For image operations in edge cases

@@ -140,7 +140,7 @@ class ExpApiTests(TestCase):
         from workers.models import TaskQueue
         from workers import client
 
-        response = self.admin_client.get(f"/archive/{self.archive.pk}/extract/", HTTP_REFERER="/archive/")
+        response = self.admin_client.post(f"/archive/{self.archive.pk}/extract/", HTTP_REFERER="/archive/")
         self.assertEqual(response.status_code, 302)
         mock_extract.assert_not_called()
 
@@ -152,7 +152,7 @@ class ExpApiTests(TestCase):
         self.assertTrue(client.is_archive_extracting(self.archive.pk))
 
         # Calling again while task is pending does not enqueue a duplicate task
-        response = self.admin_client.get(f"/archive/{self.archive.pk}/extract/?resized=1", HTTP_REFERER="/archive/")
+        response = self.admin_client.post(f"/archive/{self.archive.pk}/extract/?resized=1", HTTP_REFERER="/archive/")
         self.assertEqual(response.status_code, 302)
         self.assertEqual(TaskQueue.objects.filter(task_type="extract_worker").count(), 1)
 
@@ -167,7 +167,7 @@ class ExpApiTests(TestCase):
         TaskQueue.objects.all().delete()
         self.archive.extracted = True
         self.archive.save()
-        response = self.admin_client.get(f"/archive/{self.archive.pk}/extract/", HTTP_REFERER="/archive/")
+        response = self.admin_client.post(f"/archive/{self.archive.pk}/extract/", HTTP_REFERER="/archive/")
         self.assertEqual(response.status_code, 302)
         self.assertEqual(TaskQueue.objects.filter(task_type="extract_worker").count(), 0)
         mock_extract.assert_not_called()
@@ -184,7 +184,7 @@ class ExpApiTests(TestCase):
         ArchiveGroupEntry.objects.create(archive_group=group, archive=self.archive, position=1)
         ArchiveGroupEntry.objects.create(archive_group=group, archive=a2, position=2)
 
-        response = self.admin_client.get(
+        response = self.admin_client.post(
             f"/archive-group/{group.title_slug}/?extract_all=",
             HTTP_REFERER=f"/archive-group/{group.title_slug}/",
         )
@@ -200,7 +200,7 @@ class ExpApiTests(TestCase):
 
         self.archive.extracted = True
         self.archive.save()
-        response = self.admin_client.get(f"/archive/{self.archive.pk}/reduce/", HTTP_REFERER="/archive/")
+        response = self.admin_client.post(f"/archive/{self.archive.pk}/reduce/", HTTP_REFERER="/archive/")
         self.assertEqual(response.status_code, 302)
         tasks = TaskQueue.objects.filter(task_type="reduce_worker")
         self.assertEqual(tasks.count(), 1)
@@ -209,7 +209,7 @@ class ExpApiTests(TestCase):
         self.archive.extracted = False
         self.archive.save()
         tasks.delete()
-        response = self.admin_client.get(f"/archive/{self.archive.pk}/reduce/", HTTP_REFERER="/archive/")
+        response = self.admin_client.post(f"/archive/{self.archive.pk}/reduce/", HTTP_REFERER="/archive/")
         self.assertEqual(response.status_code, 302)
         self.assertEqual(TaskQueue.objects.filter(task_type="reduce_worker").count(), 0)
 

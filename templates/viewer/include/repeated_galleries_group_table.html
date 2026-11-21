@@ -1,0 +1,93 @@
+{% load viewer_extras %}{% comment %}Reusable group card table for galleries_repeated_by_fields.html.{% endcomment %}
+{% for gallery_group_key, gallery_group_value in groups.items %}
+  {% with group_number=forloop.counter %}
+  <div class="dm-card rg-group">
+    <div class="dm-card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <div class="d-flex align-items-center gap-2 min-w-0">
+        <input type="checkbox" class="form-check-input mt-0 rg-group-toggle" title="Select all galleries in this group" aria-label="Select all in group">
+        <span class="badge {{ badge_class }}">{{ section_label }}</span>
+        <span class="text-truncate" title="{{ gallery_group_key }}">{{ gallery_group_key }}</span>
+      </div>
+      <span class="badge dm-badge-outline text-info flex-shrink-0">{{ gallery_group_value|length }} galler{{ gallery_group_value|length|pluralize:"y,ies" }}</span>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-dm table-hover table-sm mb-0 sortable-table">
+        <thead>
+          <tr>
+            <th class="dm-check-col">Sel</th>
+            <th{% if inline_thumbnails %} style="width: 15%;"{% endif %}>ID / Cover</th>
+            <th>Provider</th>
+            <th>Title</th>
+            <th class="text-end">Size</th>
+            <th class="text-end">Images</th>
+            <th>Source URL</th>
+            <th>Uploader</th>
+            <th>DL type</th>
+            <th>Reason</th>
+            <th>Added</th>
+            <th>Archives</th>
+            <th>Alt.</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for gallery in gallery_group_value %}
+            <tr>
+              <td class="dm-check-col">
+                <input id="sel-{{ section_id }}-{{ group_number }}-{{ gallery.id }}" class="form-check-input rg-checkbox"
+                       type="checkbox" name="sel-{{ section_id }}-{{ group_number }}" value="{{ gallery.pk }}"
+                       aria-label="Select gallery {{ gallery.pk }}">
+                <input id="ord-{{ section_id }}-{{ group_number }}-{{ gallery.id }}" type="hidden" name="ord-{{ gallery.id }}" value="{{ forloop.counter }}">
+              </td>
+              <td data-sort-value="{{ gallery.pk }}">
+                {% if gallery.thumbnail.name and inline_thumbnails %}
+                  {% include 'viewer/include/gallery_cover.html' with show_artist=1 %}
+                {% else %}
+                  <div class="d-flex align-items-center gap-2">
+                    {% if gallery.thumbnail.name %}
+                      <a href="{% url 'viewer:gallery' gallery.pk %}" class="img-preview" data-image-url="{{ gallery.thumbnail.url }}">
+                        <img class="dm-thumb" src="{{ gallery.thumbnail.url }}" alt="" loading="lazy">
+                      </a>
+                    {% endif %}
+                    <a href="{% url 'viewer:gallery' gallery.pk %}" class="font-monospace small">#{{ gallery.pk }}</a>
+                  </div>
+                {% endif %}
+              </td>
+              <td data-sort-value="{{ gallery.provider }}" class="small text-nowrap">
+                {% if gallery.provider %}<span class="badge bg-secondary">{{ gallery.provider }}</span>{% else %}<span class="dm-dim">-</span>{% endif %}
+              </td>
+              <td data-sort-value="{{ gallery.title }}" class="dm-wrap small" style="min-width: 14rem;">
+                <a href="{% url 'viewer:gallery' gallery.pk %}" class="fw-semibold">{{ gallery.title }}</a>
+              </td>
+              <td data-sort-value="{{ gallery.filesize|default:0 }}" class="text-end text-nowrap small" {% if gallery.filesize %}title="{{ gallery.filesize }} bytes"{% endif %}>
+                {% if gallery.filesize %}{{ gallery.filesize|filesizeformat }}{% else %}<span class="dm-dim">-</span>{% endif %}
+              </td>
+              <td data-sort-value="{{ gallery.filecount|default:0 }}" class="text-end font-monospace small">{{ gallery.filecount|default:"-" }}</td>
+              <td data-sort-value="{{ gallery.get_link }}" class="small dm-break-all" style="max-width: 14rem;">
+                {% if gallery.thumbnail.name %}
+                  <a href="{{ gallery.get_link }}" class="img-preview" data-image-url="{{ gallery.thumbnail.url }}" rel="popover noopener noreferrer nofollow">{{ gallery.get_link }}</a>
+                {% else %}
+                  {{ gallery.get_link|urlize_all_rel }}
+                {% endif %}
+              </td>
+              <td data-sort-value="{{ gallery.uploader|default:'' }}" class="small">{{ gallery.uploader|default:"-" }}</td>
+              <td data-sort-value="{{ gallery.dl_type|default:'' }}" class="small text-nowrap">
+                {% if gallery.dl_type %}<span class="badge bg-secondary">{{ gallery.dl_type }}</span>{% else %}<span class="dm-dim">-</span>{% endif %}
+              </td>
+              <td data-sort-value="{{ gallery.reason|default:'' }}" class="small dm-wrap" style="max-width: 10rem;">{{ gallery.reason|default:"" }}</td>
+              <td data-sort-value="{{ gallery.create_date|date:'U' }}" class="small text-nowrap">
+                <span data-dm-reltime="{{ gallery.create_date|date:'c' }}">{{ gallery.create_date|date:"Y-m-d H:i" }}</span>
+              </td>
+              <td data-sort-value="{{ gallery.archive_set.all|yesno:'1,0' }}" class="small text-center">
+                {% if gallery.archive_set.all %}<span class="badge bg-success">Yes</span>{% else %}<span class="dm-dim">No</span>{% endif %}
+              </td>
+              <td data-sort-value="{{ gallery.alternative_sources.all|yesno:'1,0' }}" class="small text-center">
+                {% if gallery.alternative_sources.all %}<span class="badge bg-info text-dark">Yes</span>{% else %}<span class="dm-dim">No</span>{% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endwith %}
+{% endfor %}

@@ -9,12 +9,17 @@ from typing import Any
 import django.utils.timezone as django_tz
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
-from django.db.models import Case, Count, IntegerField, Value, When
+from django.db.models import Case, Count, IntegerField, Q, Value, When
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.views.decorators.http import require_http_methods
 
 from viewer.models import DownloadEvent
-from viewer.utils.task_actions import can_view_task, render_task_status
+from viewer.utils.requests import double_check_auth
+from viewer.utils.task_actions import (
+    can_view_task,
+    render_task_status,
+    task_batch_status_summary,
+)
 from workers import client as worker_client
 from workers.models import SchedulerState, TaskQueue, WorkerProcess
 
@@ -198,7 +203,7 @@ def get_workers_dashboard_snapshot(
             worker_tasks[task.worker_pid].append(serialized_task)
 
     # 2. Schedulers & mapping to Worker PIDs
-    schedulers_qs = SchedulerState.objects.all().order_by("name")
+    schedulers_qs = SchedulerState.schedulers().order_by("name")
     schedulers_by_pid: dict[int, list[str]] = defaultdict(list)
     schedulers_list: list[dict[str, Any]] = []
     active_schedulers_count = 0
@@ -608,9 +613,16 @@ def get_workers_dashboard_snapshot(
     total_active_downloads = sum(t["total_count"] for t in download_types)
     transferring_downloads = sum(t["transferring_count"] for t in download_types)
 
-    # 8. 24h task stats
-    failed_24h = TaskQueue.objects.filter(status=TaskQueue.Status.FAILED, finished_at__gte=last_24h).count()
-    completed_24h = TaskQueue.objects.filter(status=TaskQueue.Status.COMPLETED, finished_at__gte=last_24h).count()
+    # 8. 24h task stats (single aggregate query hitting taskqueue_finished_order_idx)
+    recent_24h_counts = TaskQueue.objects.filter(
+        status__in=[TaskQueue.Status.COMPLETED, TaskQueue.Status.FAILED, TaskQueue.Status.CANCELLED],
+        finished_at__gte=last_24h,
+    ).aggregate(
+        failed_24h=Count("id", filter=Q(status=TaskQueue.Status.FAILED)),
+        completed_24h=Count("id", filter=Q(status=TaskQueue.Status.COMPLETED)),
+    )
+    failed_24h = recent_24h_counts["failed_24h"]
+    completed_24h = recent_24h_counts["completed_24h"]
 
     # 9. Diagram Topology Information for Client Rendering
     diagram_nodes = {
@@ -733,6 +745,37 @@ def task_status(request: HttpRequest, pk: int) -> HttpResponse:
     return render_task_status(request, task)
 
 
+def task_batch_status(request: HttpRequest) -> HttpResponse:
+    """JSON status summary for a batch of queued tasks (``?ids=1,2,3`` or repeated ``?id=1&id=2``).
+
+    Accepts session or read-scoped bearer token auth (same as Archive Manager). Only staff and the user who queued
+    each task can see its details; inaccessible or unknown IDs are reported as ``missing``.
+    """
+    authenticated, actual_user = double_check_auth(request)
+    if not authenticated or actual_user is None:
+        return JsonResponse({"error": "Authentication required."}, status=403)
+
+    raw_ids: list[str] = []
+    for part in request.GET.getlist("ids"):
+        raw_ids.extend(p.strip() for p in part.split(",") if p.strip())
+    for part in request.GET.getlist("id"):
+        if part.strip():
+            raw_ids.append(part.strip())
+
+    task_ids: list[int] = []
+    for raw in raw_ids:
+        try:
+            tid = int(raw)
+        except ValueError:
+            continue
+        if tid > 0:
+            task_ids.append(tid)
+        if len(task_ids) >= 500:
+            break
+
+    return JsonResponse(task_batch_status_summary(task_ids, actual_user))
+
+
 @login_required
 def workers_status_api(request: HttpRequest) -> HttpResponse:
     """REST API returning live JSON status of all background worker processes,
@@ -776,30 +819,26 @@ def workers_action_api(request: HttpRequest) -> HttpResponse:
 
     try:
         # --- Scheduler actions ---
-        if action == "scheduler_start":
+        if action in ("scheduler_start", "scheduler_stop", "scheduler_force_run"):
             name = target or payload.get("name", "")
             if not name:
                 return JsonResponse({"error": "Scheduler name is required."}, status=400)
-            timer_arg = str(payload.get("timer", ""))
-            SchedulerState.request_command(name, "start", timer_arg)
-            logger.info("Admin %s requested 'start' for scheduler '%s'", request.user, name)
-            return JsonResponse({"success": True, "message": f"Requested start command for scheduler '{name}'."})
+            if not SchedulerState.schedulers().filter(name=name).exists():
+                return JsonResponse({"error": f"Unknown scheduler '{name}'."}, status=404)
 
-        elif action == "scheduler_stop":
-            name = target or payload.get("name", "")
-            if not name:
-                return JsonResponse({"error": "Scheduler name is required."}, status=400)
-            SchedulerState.request_command(name, "stop")
-            logger.info("Admin %s requested 'stop' for scheduler '%s'", request.user, name)
-            return JsonResponse({"success": True, "message": f"Requested stop command for scheduler '{name}'."})
-
-        elif action == "scheduler_force_run":
-            name = target or payload.get("name", "")
-            if not name:
-                return JsonResponse({"error": "Scheduler name is required."}, status=400)
-            SchedulerState.request_command(name, "force_run")
-            logger.info("Admin %s requested 'force_run' for scheduler '%s'", request.user, name)
-            return JsonResponse({"success": True, "message": f"Requested immediate run for scheduler '{name}'."})
+            if action == "scheduler_start":
+                timer_arg = str(payload.get("timer", ""))
+                SchedulerState.request_command(name, "start", timer_arg)
+                logger.info("Admin %s requested 'start' for scheduler '%s'", request.user, name)
+                return JsonResponse({"success": True, "message": f"Requested start command for scheduler '{name}'."})
+            elif action == "scheduler_stop":
+                SchedulerState.request_command(name, "stop")
+                logger.info("Admin %s requested 'stop' for scheduler '%s'", request.user, name)
+                return JsonResponse({"success": True, "message": f"Requested stop command for scheduler '{name}'."})
+            else:
+                SchedulerState.request_command(name, "force_run")
+                logger.info("Admin %s requested 'force_run' for scheduler '%s'", request.user, name)
+                return JsonResponse({"success": True, "message": f"Requested immediate run for scheduler '{name}'."})
 
         # --- Task Queue actions ---
         elif action == "task_cancel":

@@ -855,6 +855,7 @@ class RestartWorkersApiAndToolsTests(TestCase):
         # Verify command queued in SchedulerState
         state = SchedulerState.objects.get(name="worker_runner")
         self.assertEqual(state.command_requested, "restart")
+        self.assertEqual(state.schedule_type, SchedulerState.TYPE_CONTROL)
 
     @patch("os.kill")
     def test_api_restart_workers_with_active_workers(self, mock_os_kill):

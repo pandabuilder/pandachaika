@@ -148,6 +148,7 @@ class HealthSectionTests(TestCase):
             last_run=now - datetime.timedelta(hours=5), last_heartbeat=now,
         )
         SchedulerState.objects.create(name="off", is_running=False)
+        SchedulerState.request_command("worker_runner", "restart")
         ProviderRateLimit.objects.create(name="panda", cooldown_until=time.time() + 120)
 
         report = build_admin_report(_options(sections=(SECTION_HEALTH,)))
@@ -157,6 +158,7 @@ class HealthSectionTests(TestCase):
         self.assertEqual(problems, {"dead": "unresponsive", "late": "overdue"})
         self.assertEqual(health["schedulers_running"], 1)
         self.assertEqual(health["schedulers_stopped"], 1)
+        self.assertNotIn("worker_runner", [s["name"] for s in health["schedulers"]])
         self.assertEqual(health["workers_alive"], 1)
         self.assertEqual([c["provider"] for c in health["rate_limit_cooldowns"]], ["panda"])
         messages = [item["message"] for item in report["attention"]]

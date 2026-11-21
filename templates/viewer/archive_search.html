@@ -12,6 +12,9 @@
     {% endfor %}
   {% endif %}
   <!-- Form  -->
+  {% if user.is_staff %}
+  <form id="archive-row-action-form" method="POST" class="d-none">{% csrf_token %}</form>
+  {% endif %}
   <form action="{% url 'viewer:archive-search' %}" method="GET">
     <div id="main-search" class="collapse{% if prm.main_filters %} show{% endif %}">
       {% for field in form %}
@@ -151,7 +154,7 @@
                   <ul class="pagination justify-content-end">
                   {% for option in extra_options %}
                     <li class="page-item{% if option == prm.view %} active{% endif %}">
-                      <a class="page-link" href="?{% url_replace 'view' option %}">{{ option }}</a>
+                      <a class="page-link" rel="nofollow" href="?{% url_replace 'view' option %}">{{ option }}</a>
                     </li>
                   {% endfor %}
                   </ul>
@@ -244,10 +247,10 @@
                       <div>
                       {% if archive.extracted %}
                         <a class="btn btn-sm btn-info" href="{% url 'viewer:new-image-viewer' archive.pk '1' %}?{% url_replace 'extracted' '1' %}">View online</a>
-                        <a class="btn btn-sm btn-light" href="{% url 'viewer:archive-reduce' archive.pk %}">Reduce archive</a>
+                        <button type="submit" form="archive-row-action-form" formaction="{% url 'viewer:archive-reduce' archive.pk %}" class="btn btn-sm btn-light">Reduce archive</button>
                       {% else %}
-                        <a class="btn btn-sm btn-light" href="{% url 'viewer:archive-extract' archive.pk %}">Expand archive</a>
-                        <a class="btn btn-sm btn-light" href="{% url 'viewer:archive-extract' archive.pk %}?resized=1">Expand (resized) archive</a>
+                        <button type="submit" form="archive-row-action-form" formaction="{% url 'viewer:archive-extract' archive.pk %}" class="btn btn-sm btn-light">Expand archive</button>
+                        <button type="submit" form="archive-row-action-form" formaction="{% url 'viewer:archive-extract' archive.pk %}?resized=1" class="btn btn-sm btn-light">Expand (resized) archive</button>
                       {% endif %}
                         <a class="btn btn-sm btn-light" href="{% url 'viewer:archive-download' archive.pk %}">Download archive</a>
                         <a class="btn btn-sm btn-light" href="{% url 'viewer:archive-download' archive.pk %}?original=1">Download with original name</a>

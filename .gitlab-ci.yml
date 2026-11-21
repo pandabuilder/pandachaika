@@ -9,7 +9,8 @@ variables:
   PYTHON_VERSION: "3.14"
   FF_TIMESTAMPS: true
 
-# Skip the whole pipeline when the only change is TODO.md.
+# Skip the whole pipeline when the only changes are root docs/markdown files
+# (e.g. CHANGELOG.md, README.md, TODO.md, LICENSE).
 # `changes` doesn't support negated globs, so we list everything that should
 # trigger a pipeline: every file inside a subdirectory, plus root-level files
 # by extension/name. If you add a new root-level file with an unlisted
@@ -23,7 +24,7 @@ workflow:
           - "*/**/*"
           - ".*"
           - "*.{py,toml,yml,yaml,lock,txt,sh,json,ini,cfg,env,xml}"
-          - "{Dockerfile,LICENSE,README.md}"
+          - "Dockerfile"
     - when: never
 
 cache: &global_cache

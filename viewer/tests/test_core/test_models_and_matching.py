@@ -289,6 +289,20 @@ class CoreTest(TestCase):
         call_command("config_schema", "--validate", "default.yaml", stdout=out_val)
         self.assertIn("is valid", out_val.getvalue())
 
+    def test_default_yaml_matches_generated_template(self):
+        from pathlib import Path
+
+        import core.base.config_models
+        from core.base.config_models import generate_default_yaml_content
+
+        default_yaml = Path(core.base.config_models.__file__).resolve().parents[2] / "default.yaml"
+        self.assertEqual(
+            default_yaml.read_text(encoding="utf-8"),
+            generate_default_yaml_content(),
+            "default.yaml differs from generate_default_yaml_content(); edit the template in "
+            "core/base/config_models.py, then run: python manage.py config_schema --update-default",
+        )
+
     def test_gunicorn_application_and_static_handler(self):
         from server import MediaAndStaticFilesHandler, GunicornApplication
 

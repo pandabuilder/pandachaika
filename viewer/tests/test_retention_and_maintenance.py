@@ -37,6 +37,7 @@ class RetentionConfigurationTests(TestCase):
         self.assertEqual(retention.status_log_days, 30)
         self.assertEqual(retention.processed_links_days, 180)
         self.assertEqual(retention.history_days, 90)
+        self.assertEqual(retention.session_days, 1)
         self.assertEqual(retention.chunk_size, 5000)
 
     def test_root_config_retention(self):
@@ -240,8 +241,30 @@ class DatabaseRetentionServiceTests(TestCase):
         self.assertIn("event_log", keys)
         self.assertIn("status_log", keys)
         self.assertIn("processed_links", keys)
+        self.assertIn("sessions", keys)
         self.assertIn("history_archive", keys)
         self.assertIn("history_gallery", keys)
+
+    def test_prune_expired_sessions(self):
+        from django.contrib.sessions.models import Session
+
+        old_expired = self.now - datetime.timedelta(days=5)
+        recent_expired = self.now - datetime.timedelta(hours=2)
+        active_future = self.now + datetime.timedelta(days=7)
+
+        Session.objects.create(session_key="old_expired_key", session_data="x", expire_date=old_expired)
+        Session.objects.create(session_key="recent_expired_key", session_data="x", expire_date=recent_expired)
+        Session.objects.create(session_key="active_session_key", session_data="x", expire_date=active_future)
+
+        dry_res = prune_database(entity="sessions", days_override=1, dry_run=True)
+        self.assertEqual(dry_res["total_deleted"], 1)
+        self.assertTrue(Session.objects.filter(pk="old_expired_key").exists())
+
+        res = prune_database(entity="sessions", days_override=1, dry_run=False)
+        self.assertEqual(res["total_deleted"], 1)
+        self.assertFalse(Session.objects.filter(pk="old_expired_key").exists())
+        self.assertTrue(Session.objects.filter(pk="recent_expired_key").exists())
+        self.assertTrue(Session.objects.filter(pk="active_session_key").exists())
 
 
 class TimedDatabasePrunerSchedulerTests(TestCase):

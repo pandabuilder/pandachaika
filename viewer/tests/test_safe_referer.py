@@ -64,17 +64,17 @@ class MissingRefererViewTests(TestCase):
         self.client.force_login(self.user)
 
     def test_archive_update_without_referer_redirects_to_fallback(self):
-        response = self.client.get(reverse("viewer:archive-update", args=[123]))
+        response = self.client.post(reverse("viewer:archive-update", args=[123]))
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response["Location"], reverse("viewer:archive", args=[123]))
 
     def test_archive_update_with_referer_redirects_back(self):
-        response = self.client.get(reverse("viewer:archive-update", args=[123]), HTTP_REFERER="/search/?q=x")
+        response = self.client.post(reverse("viewer:archive-update", args=[123]), HTTP_REFERER="/search/?q=x")
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response["Location"], "/search/?q=x")
 
     def test_archive_update_ignores_foreign_referer(self):
-        response = self.client.get(
+        response = self.client.post(
             reverse("viewer:archive-update", args=[123]), HTTP_REFERER="https://evil.example/phish"
         )
         self.assertEqual(response.status_code, 302)

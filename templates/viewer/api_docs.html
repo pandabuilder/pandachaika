@@ -1,0 +1,22 @@
+{% extends "viewer/base.html" %}
+{% load static %}
+{% block title %}API documentation | {{ block.super }}{% endblock %}
+{% block sidebar %}{% endblock %}
+{# Enables Swagger UI's dark styles; api_docs.css re-tints them to the site palette. #}
+{% block html_class %} class="dark-mode"{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'css/vendor/swagger-ui.css' %}">
+<link rel="stylesheet" href="{% static 'css/api_docs.css' %}">
+{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap align-items-baseline gap-3 my-2">
+  <h2 class="mb-0">API documentation</h2>
+  <a href="{{ openapi_url }}">OpenAPI document (JSON)</a>
+  <span class="text-muted small">Try-it-out requests use your session, or a token set with <strong>Authorize</strong>.</span>
+</div>
+<div id="swagger-ui" data-openapi-url="{{ openapi_url }}"></div>
+{% endblock %}
+{% block afterJQ %}
+<script src="{% static 'js/vendor/swagger-ui-bundle.js' %}"></script>
+<script src="{% static 'js/api_docs.js' %}"></script>
+{% endblock %}

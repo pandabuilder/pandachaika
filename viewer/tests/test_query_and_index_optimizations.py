@@ -101,17 +101,25 @@ class QueryOptimizationsTest(TestCase):
         sql_full = str(qs_full.query)
         self.assertNotIn("DISTINCT", sql_full)
 
-    def test_positive_tags_trigger_distinct(self):
-        params = {"tags": "parody:touhou_project", "title": ""}
+    def test_positive_tags_use_exists_without_distinct_and_avoid_duplicates(self):
+        # Add a second matching tag to the same archive to ensure EXISTS never duplicates outer rows
+        extra_tag = Tag.objects.create(name="touhou_project", scope="group")
+        ArchiveTag.objects.create(archive=self.archive, tag=extra_tag, origin=ArchiveTag.ORIGIN_SYSTEM)
+
+        params = {"tags": "touhou_project", "title": ""}
         qs_simple = filter_archives_simple(params, authenticated=True)
         sql_simple = str(qs_simple.query)
-        self.assertIn("DISTINCT", sql_simple)
+        self.assertIn("EXISTS", sql_simple)
+        self.assertNotIn("DISTINCT", sql_simple)
+        self.assertEqual(list(qs_simple.values_list("pk", flat=True)), [self.archive.pk])
 
         request = self.factory.get("/search/")
         request.user = self.user
         qs_full = filter_archives(request, {}, params, authenticated=True)
         sql_full = str(qs_full.query)
-        self.assertIn("DISTINCT", sql_full)
+        self.assertIn("EXISTS", sql_full)
+        self.assertNotIn("DISTINCT", sql_full)
+        self.assertEqual(list(qs_full.values_list("pk", flat=True)), [self.archive.pk])
 
     def test_archive_details_optimizations(self):
         self.client.force_login(self.user)

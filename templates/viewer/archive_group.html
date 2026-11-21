@@ -22,7 +22,7 @@
         {% if perms.viewer.delete_archivegroup %}<a class="btn btn-danger float-end open-modal" href="{% url 'viewer:archive-group-tool-reason' archive_group.title_slug 'delete' %}" data-popup-url="{% url 'viewer:archive-group-tool-reason' archive_group.title_slug 'delete' %}?inline=1" role="button">Delete</a>{% endif %}
         {% if perms.viewer.change_archivegroup %}<a class="btn btn-secondary float-end" href="{% url 'viewer:archive-group-edit' archive_group.title_slug %}" role="button">Edit</a>{% endif %}
         {% if perms.viewer.change_archivegroup %}<a class="btn btn-secondary float-end" href="{% url 'viewer:archive-group-editor' %}?archive-group={{ archive_group.pk }}" role="button">New Edit</a>{% endif %}
-        {% if perms.viewer.expand_archive %}<a class="btn btn-secondary float-end" href="{% url 'viewer:archive-group-edit' archive_group.title_slug %}?extract_all=" role="button">Extract all</a>{% endif %}
+        {% if perms.viewer.expand_archive %}<form method="POST" action="{% url 'viewer:archive-group' archive_group.title_slug %}" class="d-inline">{% csrf_token %}<button type="submit" name="extract_all" value="1" class="btn btn-secondary float-end">Extract all</button></form>{% endif %}
       </div>
       {% endif %}
     </div>

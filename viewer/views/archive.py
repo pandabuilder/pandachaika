@@ -20,15 +20,14 @@ from django.http import HttpResponseRedirect, HttpResponse, FileResponse, Stream
 from django.utils.http import content_disposition_header
 from django.templatetags.static import static
 from django.views.decorators.http import require_POST
-from django.shortcuts import render
+from django.shortcuts import redirect, render
 from django.conf import settings
 
 from workers import client
 from viewer.utils.actions import event_log
-from viewer.forms import ArchiveModForm, ImageFormSet, ArchiveEditForm, ArchiveManageEditFormSet, SplitArchiveFormSet
+from viewer.forms import ArchiveEditForm, ArchiveManageEditFormSet, SplitArchiveFormSet
 from viewer.models import (
     Archive,
-    Tag,
     Gallery,
     Image,
     ItemProperties,
@@ -36,8 +35,6 @@ from viewer.models import (
     ArchiveManageEntry,
     ArchiveRecycleEntry,
     GalleryProviderData,
-    ArchiveGroup,
-    ArchiveGroupEntry,
     ArchiveTag,
     ArchiveOption,
     ArchiveStatistics,
@@ -72,12 +69,71 @@ ARCHIVE_PAGE_TASK_TYPES = {
 }
 
 
+# The /edit/ URLs of the archive page redirect to the matching page without it.
+EDIT_MODE_REDIRECTS = {
+    "archive-edit": "viewer:archive",
+    "archive-new-edit": "viewer:archive-new",
+    "archive-old-edit": "viewer:archive-old",
+}
+
+def can_edit_archive(user: typing.Any) -> bool:
+    """Who sees the inline edit form on the archive page. Staff also get the staff-only fields."""
+    return user.is_authenticated and (user.is_staff or user.has_perm("viewer.change_archive"))
+
+
+def _save_archive_edit_form(request: HttpRequest, archive: Archive, edit_form: ArchiveEditForm) -> bool:
+    """Validate and save the inline edit form. Returns False when the form isn't valid."""
+    old_gallery = archive.gallery
+    if not edit_form.is_valid():
+        return False
+
+    with transaction.atomic(), batched_changes():
+        new_archive: Archive = edit_form.save(commit=False)
+        new_archive.simple_save()
+        edit_form.save_m2m()
+
+        if edit_form.cleaned_data["freeze_titles"]:
+            new_archive.do_freeze_titles()
+        else:
+            new_archive.undo_freeze_titles()
+
+        if edit_form.cleaned_data["freeze_tags"]:
+            new_archive.do_freeze_tags()
+        else:
+            new_archive.undo_freeze_tags()
+
+        errors = edit_form.apply_staff_changes(new_archive)
+
+        if new_archive.gallery:
+            if new_archive.gallery.tags.all():
+                new_archive.set_tags_from_gallery(new_archive.gallery)
+            if new_archive.gallery != old_gallery:
+                new_archive.set_titles_from_gallery(new_archive.gallery, dont_save=True)
+                if edit_form.cleaned_data["old_gallery_to_alt"] and old_gallery is not None:
+                    new_archive.alternative_sources.add(old_gallery)
+                new_archive.simple_save()
+
+    for error in errors:
+        messages.error(request, error, extra_tags="danger")
+    message = "Archive successfully modified"
+    messages.success(request, message)
+    logger.info("User {}: {}".format(request.user.username, message))
+    event_log(request.user, "CHANGE_ARCHIVE", content_object=new_archive, result="changed")
+    return True
+
+
 def archive_details(request: HttpRequest, pk: int, mode: str = "view", view_style: str = "old") -> HttpResponse:
     """Archive details page.
 
     ``view_style`` ("new" or "old") picks the template. It comes from the URLconf: /archive_new/ and
     /archive_old/ fix it, /archive/ uses ``urls.new_detail_views_as_default``.
     """
+
+    if mode == "edit":
+        # The staff edit page was merged into the inline edit form; keep old links working.
+        url_name = request.resolver_match.url_name if request.resolver_match else None
+        target = EDIT_MODE_REDIRECTS.get(url_name or "", "viewer:archive")
+        return redirect(reverse(target, args=[pk]) + "#change-archive-form")
 
     try:
         archive = Archive.objects.select_related("gallery").get(pk=pk)
@@ -86,8 +142,26 @@ def archive_details(request: HttpRequest, pk: int, mode: str = "view", view_styl
     if not archive.public and not request.user.is_authenticated:
         raise Http404("Archive does not exist")
 
-    if mode == "edit" and not request.user.is_staff:
-        raise Http404("Archive does not exist")
+    edit_form: ArchiveEditForm | None = None
+    if can_edit_archive(request.user):
+        is_staff = request.user.is_staff
+        if request.method == "POST" and request.POST.get("change-archive"):
+            edit_form = ArchiveEditForm(request.POST, instance=archive, staff=is_staff)
+            if _save_archive_edit_form(request, archive, edit_form):
+                return redirect(request.get_full_path())
+            messages.error(request, "The provided data is not valid", extra_tags="danger")
+            # The invalid form modified the instance in memory; show the stored values on the rest of the page.
+            archive = Archive.objects.select_related("gallery").get(pk=pk)
+        else:
+            archive_option = ArchiveOption.objects.filter(archive=archive).first()
+            edit_form = ArchiveEditForm(
+                initial={
+                    "freeze_titles": archive_option.freeze_titles if archive_option else False,
+                    "freeze_tags": archive_option.freeze_tags if archive_option else False,
+                },
+                instance=archive,
+                staff=is_staff,
+            )
 
     if request.user.is_authenticated:
         view = request.GET.get("view", None)
@@ -101,7 +175,7 @@ def archive_details(request: HttpRequest, pk: int, mode: str = "view", view_styl
     else:
         view = "cover"
 
-    d: dict[str, typing.Any] = {"archive": archive, "view": view, "mode": mode}
+    d: dict[str, typing.Any] = {"archive": archive, "view": view}
 
     num_images = 30
     if view == "full":
@@ -129,34 +203,6 @@ def archive_details(request: HttpRequest, pk: int, mode: str = "view", view_styl
             images_page = None
 
         d.update({"images": images_page})
-
-    if mode == "edit" and request.user.is_staff:
-
-        paginator = Paginator(archive.image_set.all(), num_images)
-        try:
-            page = int(request.GET.get("page", "1"))
-        except ValueError:
-            page = 1
-
-        try:
-            all_images = paginator.page(page)
-        except (InvalidPage, EmptyPage):
-            all_images = paginator.page(paginator.num_pages)
-
-        form = ArchiveModForm(instance=archive, initial={"archive_groups": archive.archive_groups.all()})
-        page_image_pks = [img.pk for img in all_images]
-        image_formset = ImageFormSet(
-            queryset=archive.image_set.filter(pk__in=page_image_pks),
-            prefix="images",
-        )
-        d.update(
-            {
-                "form": form,
-                "image_formset": image_formset,
-                "image_queryset": all_images,
-                "matchers": crawler_settings.provider_context.get_matchers(crawler_settings, force=True),
-            }
-        )
 
     if request.user.is_authenticated:
         current_user_archive_preferences, created = UserArchivePrefs.objects.get_or_create(
@@ -196,56 +242,10 @@ def archive_details(request: HttpRequest, pk: int, mode: str = "view", view_styl
             }
         )
 
-    # In-place collaborator edit form
-    if request.user.has_perm("viewer.change_archive"):
-        if request.POST.get("change-archive"):
-            # create a form instance and populate it with data from the request:
-            old_gallery = archive.gallery
-            edit_form = ArchiveEditForm(request.POST, instance=archive)
-            # check whether it's valid:
-            if edit_form.is_valid():
-                new_archive: Archive = edit_form.save(commit=False)
-                new_archive.simple_save()
-                edit_form.save_m2m()
-
-                if edit_form.cleaned_data["freeze_titles"]:
-                    new_archive.do_freeze_titles()
-                else:
-                    new_archive.undo_freeze_titles()
-
-                if edit_form.cleaned_data["freeze_tags"]:
-                    new_archive.do_freeze_tags()
-                else:
-                    new_archive.undo_freeze_tags()
-
-                if new_archive.gallery:
-                    if new_archive.gallery.tags.all():
-                        new_archive.set_tags_from_gallery(new_archive.gallery)
-                    if new_archive.gallery != old_gallery:
-                        new_archive.set_titles_from_gallery(new_archive.gallery, dont_save=True)
-                        if edit_form.cleaned_data["old_gallery_to_alt"] and old_gallery is not None:
-                            new_archive.alternative_sources.add(old_gallery)
-                        new_archive.simple_save()
-                        edit_form = ArchiveEditForm(instance=new_archive)
-
-                message = "Archive successfully modified"
-                messages.success(request, message)
-                logger.info("User {}: {}".format(request.user.username, message))
-                event_log(request.user, "CHANGE_ARCHIVE", content_object=new_archive, result="changed")
-            else:
-                messages.error(request, "The provided data is not valid", extra_tags="danger")
-        else:
-            archive_option = ArchiveOption.objects.filter(archive=archive).first()
-            if not archive_option:
-                freeze_titles = False
-                freeze_tags = False
-            else:
-                freeze_titles = archive_option.freeze_titles
-                freeze_tags = archive_option.freeze_tags
-            edit_form = ArchiveEditForm(
-                initial={"freeze_titles": freeze_titles, "freeze_tags": freeze_tags}, instance=archive
-            )
+    if edit_form is not None:
         d.update({"edit_form": edit_form})
+        if request.user.is_staff:
+            d.update({"matchers": crawler_settings.provider_context.get_matchers_name_priority(crawler_settings)})
 
     if request.user.has_perm("viewer.mark_archive") and request.user.is_authenticated:
         if request.POST.get("manage-archive"):
@@ -329,11 +329,15 @@ def archive_details(request: HttpRequest, pk: int, mode: str = "view", view_styl
 
 
 @login_required
-@batched_changes()  # custom tags are deleted and re-created on every save; only the net change is logged
+@require_POST
+@batched_changes()  # selecting a match changes the titles, tags and gallery; log them as one change
 def archive_update(
     request: HttpRequest, pk: int, tool: str | None = None, tool_use_id: str | None = None
 ) -> HttpResponse:
-    """Update archive title, rating, tags, archives."""
+    """Staff matching tools: select a possible match, or clear the possible matches.
+
+    Editing the archive's fields is done by the inline edit form of the archive page (``archive_details``).
+    """
     if not request.user.is_staff:
         messages.error(request, "You need to be an admin to update an archive.")
         return safe_redirect_back(request, reverse("viewer:archive", args=[pk]))
@@ -362,109 +366,73 @@ def archive_update(
         archive.possible_matches.clear()
         return safe_redirect_back(request, reverse("viewer:archive", args=[pk]))
 
-    current_user_archive_preferences, created = UserArchivePrefs.objects.get_or_create(
-        user__id=request.user.pk,
-        archive=archive,
-        defaults={"user_id": request.user.pk, "archive": archive, "favorite_group": 0},
-    )
-
-    d = {"archive": archive, "view": "edit", "user_archive_preferences": current_user_archive_preferences}
-
-    if request.method == "POST":
-        p = request.POST
-        image_formset = ImageFormSet(p, queryset=archive.image_set.all(), prefix="images")
-        if image_formset.is_valid():
-            images = image_formset.save(commit=False)
-            for image in images:
-                image.save()
-            for image in image_formset.deleted_objects:
-                image.delete_plus_files()
-
-            # Force relative positions
-            for count, image in enumerate(archive.image_set.all(), start=1):
-                image.position = count
-                # image.archive_position = count
-                image.save()
-
-        archive.title = p["title"]
-        archive.title_jpn = p["title_jpn"]
-        archive.source_type = p["source_type"]
-        archive.reason = p["reason"]
-        archive.details = p["details"]
-
-        if "zipped" in p:
-            if p["zipped"] != "" and p["zipped"] != archive.zipped:
-                result = archive.rename_zipped_pathname(p["zipped"])
-                if not result:
-                    messages.error(request, "File {} already exists, renaming failed".format(p["zipped"]))
-
-        if "tags" in p:
-            archive_custom_tags = ArchiveTag.objects.filter(archive=archive, origin=ArchiveTag.ORIGIN_USER)
-            archive_custom_tags.delete()
-            tags = p.getlist("tags")
-            for t in tags:
-                tag = Tag.objects.get(pk=t)
-                archive_custom_tag = ArchiveTag(archive=archive, tag=tag, origin=ArchiveTag.ORIGIN_USER)
-                archive_custom_tag.save()
-
-        else:
-            archive_custom_tags = ArchiveTag.objects.filter(archive=archive, origin=ArchiveTag.ORIGIN_USER)
-            archive_custom_tags.delete()
-        if "possible_matches" in p and p["possible_matches"] != "":
-
-            matched_gallery = Gallery.objects.get(pk=p["possible_matches"])
-
-            archive.gallery_id = p["possible_matches"]
-            archive.set_titles_from_gallery(matched_gallery, dont_save=True)
-            archive.set_tags_from_gallery(matched_gallery)
-
-            archive.match_type = "manual:cutoff"
-            archive.possible_matches.clear()
-
-            if "failed" in matched_gallery.dl_type:
-                matched_gallery.dl_type = "manual:matched"
-                matched_gallery.save()
-        if "alternative_sources" in p:
-            alternative_sources = p.getlist("alternative_sources")
-            alt_galleries = Gallery.objects.filter(pk__in=alternative_sources)
-            archive.alternative_sources.set(alt_galleries)
-        else:
-            archive.alternative_sources.clear()
-        if "archive_groups" in p:
-
-            archive_groups_pks = p.getlist("archive_groups")
-
-            current_ages = ArchiveGroupEntry.objects.filter(archive=archive)
-
-            for current_age in current_ages:
-                if str(current_age.pk) not in archive_groups_pks:
-                    current_age.delete()
-
-            for archive_group_pk in archive_groups_pks:
-                if not ArchiveGroupEntry.objects.filter(archive=archive, archive_group__pk=archive_group_pk).exists():
-                    archive_group = ArchiveGroup.objects.filter(pk=archive_group_pk).first()
-
-                    if archive_group:
-                        archive_group_entry = ArchiveGroupEntry(archive=archive, archive_group=archive_group)
-                        archive_group_entry.save()
-        else:
-            archive.archive_groups.clear()
-        archive.simple_save()
-
-        messages.success(request, "Updated archive: {}".format(archive.title))
-
-    else:
-        image_formset = ImageFormSet(queryset=archive.image_set.all(), prefix="images")
-    form = ArchiveModForm(instance=archive)
-    d.update(
-        {
-            "form": form,
-            "image_formset": image_formset,
-            "matchers": crawler_settings.provider_context.get_matchers(crawler_settings, force=True),
-        }
-    )
-
     return safe_redirect_back(request, reverse("viewer:archive", args=[pk]))
+
+
+def _parse_pks(values: list[str]) -> list[int] | None:
+    try:
+        return [int(value) for value in values if value]
+    except ValueError:
+        return None
+
+
+def archive_images_edit(request: HttpRequest, pk: int) -> HttpResponse:
+    """Staff image editor of the archive edit form: reorder (drag and drop) or delete the archive's images.
+
+    Loaded on demand into the edit form (htmx), so the archive page doesn't query the image set for it.
+    POST takes ``order``, the comma-separated pks of the kept images in their new order, and ``delete``, the pks of
+    the images to delete. Together they must be exactly the archive's current images, so an editor loaded before
+    someone else changed them can't apply a stale order.
+    """
+    if not request.user.is_staff:
+        raise Http404("Archive does not exist")
+    try:
+        archive = Archive.objects.get(pk=pk)
+    except Archive.DoesNotExist:
+        raise Http404("Archive does not exist")
+
+    error = ""
+    saved = False
+    if request.method == "POST":
+        order = _parse_pks(request.POST.get("order", "").split(","))
+        to_delete = _parse_pks(request.POST.getlist("delete"))
+        images_by_pk = {image.pk: image for image in archive.image_set.all()}
+        if (
+            order is None
+            or to_delete is None
+            or len(set(order)) != len(order)
+            or set(order) & set(to_delete)
+            or set(order) | set(to_delete) != set(images_by_pk)
+        ):
+            error = "The archive's images changed since the editor was loaded. Nothing was saved, try again."
+        else:
+            with transaction.atomic():
+                for image_pk in set(to_delete):
+                    images_by_pk[image_pk].delete_plus_files()
+                changed = []
+                for position, image_pk in enumerate(order, start=1):
+                    image = images_by_pk[image_pk]
+                    if image.position != position:
+                        image.position = position
+                        changed.append(image)
+                Image.objects.bulk_update(changed, ["position"])
+            saved = True
+            event_log(
+                request.user,
+                "CHANGE_ARCHIVE",
+                content_object=archive,
+                result="images: {} moved, {} deleted".format(len(changed), len(set(to_delete))),
+            )
+
+    images = [
+        (image, image.image_name or (basename(image.image.name or "") if image.image else ""))
+        for image in archive.image_set.all()
+    ]
+    return render(
+        request,
+        "viewer/include/archive_images_edit.html",
+        {"archive": archive, "images": images, "saved": saved, "error": error},
+    )
 
 
 def archive_auth(request: HttpRequest) -> HttpResponse:
@@ -836,6 +804,7 @@ def archive_image_view(request: HttpRequest, archive_pk: int, position: int) -> 
 
 
 @login_required
+@require_POST
 def extract(request: HttpRequest, pk: int) -> HttpResponse:
     """Extract archive (idempotent, queued to background worker)."""
 
@@ -856,7 +825,7 @@ def extract(request: HttpRequest, pk: int) -> HttpResponse:
                     request, active_task, target_url, "Archive extraction is already queued or in progress.", messages.INFO
                 )
 
-            resized = bool(request.GET.get("resized", ""))
+            resized = bool(request.POST.get("resized") or request.GET.get("resized", ""))
 
             if resized:
                 logger.info("Queueing image expansion (resized) for archive: {}".format(archive.get_absolute_url()))
@@ -881,6 +850,7 @@ def extract(request: HttpRequest, pk: int) -> HttpResponse:
 
 
 @login_required
+@require_POST
 def reduce(request: HttpRequest, pk: int) -> HttpResponse:
     """Reduce archive (idempotent, queued to background worker)."""
 
@@ -915,6 +885,7 @@ def reduce(request: HttpRequest, pk: int) -> HttpResponse:
 
 
 @login_required
+@require_POST
 def check_and_convert_filetype(request: HttpRequest, pk: int) -> HttpResponse:
     """Check and convert archive filetype (queued to background worker)."""
 
@@ -1274,6 +1245,7 @@ def extract_context(request: HttpRequest, pk: int) -> HttpResponse:
 
 
 @login_required
+@require_POST
 def mark_similar_archives(request: HttpRequest, pk: int) -> HttpResponse:
     """Create similar info as marks for archive (queued to background worker)."""
 
@@ -1291,7 +1263,7 @@ def mark_similar_archives(request: HttpRequest, pk: int) -> HttpResponse:
                     request, active_task, target_url, "Archive similarity check is already queued or in progress.", messages.INFO
                 )
 
-            use_recycled_archives = bool(request.GET.get("use-recycled", ""))
+            use_recycled_archives = bool(request.POST.get("use-recycled") or request.GET.get("use-recycled", ""))
 
             logger.info("Queueing mark similar archives for Archive: {}, use recycled archives: {}".format(archive.get_absolute_url(), use_recycled_archives))
             task = client.enqueue(
@@ -1339,6 +1311,7 @@ def recall_api(request: HttpRequest, pk: int) -> HttpResponse:
 
 
 @login_required
+@require_POST
 def generate_matches(request: HttpRequest, pk: int) -> HttpResponse:
     """Generate matches for non-match (queued to background worker)."""
 
@@ -1357,15 +1330,15 @@ def generate_matches(request: HttpRequest, pk: int) -> HttpResponse:
                 messages.info(request, "Archive match generation is already queued or in progress.")
                 return HttpResponseRedirect(target_url)
 
-            clear_title = True if "clear" in request.GET else False
+            clear_title = ("clear" in request.POST) or ("clear" in request.GET)
 
-            provider_filter = request.GET.get("provider", "")
+            provider_filter = request.POST.get("provider", request.GET.get("provider", ""))
             try:
-                cutoff = float(request.GET.get("cutoff", "0.4"))
+                cutoff = float(request.POST.get("cutoff", request.GET.get("cutoff", "0.4")))
             except ValueError:
                 cutoff = 0.4
             try:
-                max_matches = int(request.GET.get("max-matches", "10"))
+                max_matches = int(request.POST.get("max-matches", request.GET.get("max-matches", "10")))
             except ValueError:
                 max_matches = 10
 
@@ -1375,7 +1348,7 @@ def generate_matches(request: HttpRequest, pk: int) -> HttpResponse:
                 "provider_filter": provider_filter,
                 "cutoff": cutoff,
                 "max_matches": max_matches,
-                "auto_link": "auto_link" in request.GET,
+                "auto_link": ("auto_link" in request.POST) or ("auto_link" in request.GET),
             }
             client.enqueue(
                 args=[archive.pk],
@@ -1562,3 +1535,8 @@ def add_to_index_manage_archive(request: HttpRequest, pk: int) -> HttpResponse:
     archive_manage_entry.save()
 
     return safe_redirect_back(request, reverse("viewer:archive", args=[archive_manage_entry.archive_id]))
+
+@login_required
+def new_image_viewer(request: HttpRequest, archive: int | None = None, image: int | None = None) -> HttpResponse:
+    """The bundled image viewer app; it loads the archive through the /r-api/ reader routes."""
+    return render(request, "viewer/new_image_viewer.html")

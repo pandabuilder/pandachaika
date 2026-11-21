@@ -6,13 +6,7 @@ from typing import Any
 
 from django.contrib.auth.models import User, AnonymousUser
 from django.db import transaction
-from django.http import (
-    HttpResponse,
-    HttpRequest,
-    HttpResponseBadRequest,
-    HttpResponseForbidden,
-    HttpResponseNotFound,
-)
+from django.http import HttpResponse, HttpRequest
 from django.http.request import QueryDict
 
 from viewer.models import Archive, ArchiveGroup, ArchiveGroupEntry, Gallery, WantedGallery
@@ -24,6 +18,8 @@ from viewer.views.api.common import (
     get_str_from_data_or_body,
     parse_bool_from_data_or_body,
 )
+from viewer.views.api.errors import ApiError
+from viewer.views.api.handlers.tasks import task_reference, tasks_reference
 from workers import client
 
 logger = logging.getLogger(__name__)
@@ -34,9 +30,7 @@ def handle_delete_archive_group(
     try:
         archive_group_id = _get_int(data, "archive-group")
     except ValueError:
-        return HttpResponseNotFound(
-            json.dumps({"result": "ArchiveGroup does not exist."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("ArchiveGroup does not exist.")
     try:
         with transaction.atomic():
             archive_group = ArchiveGroup.objects.select_for_update(of=("self",)).get(pk=archive_group_id)
@@ -46,9 +40,7 @@ def handle_delete_archive_group(
         return HttpResponse(json.dumps({"result": delete_number}), content_type="application/json; charset=utf-8")
 
     except ArchiveGroup.DoesNotExist:
-        return HttpResponseNotFound(
-            json.dumps({"result": "ArchiveGroup does not exist."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("ArchiveGroup does not exist.")
 
 
 def handle_delete_archive_group_entry(
@@ -57,10 +49,7 @@ def handle_delete_archive_group_entry(
     try:
         archive_group_entry_id = _get_int(data, "archive-group-entry")
     except ValueError:
-        return HttpResponseNotFound(
-            json.dumps({"result": "ArchiveGroupEntry does not exist."}),
-            content_type="application/json; charset=utf-8",
-        )
+        raise ApiError.not_found("ArchiveGroupEntry does not exist.")
     try:
         with transaction.atomic():
             archive_group_entry = ArchiveGroupEntry.objects.select_for_update(of=("self",)).get(
@@ -72,10 +61,7 @@ def handle_delete_archive_group_entry(
         return HttpResponse(json.dumps({"result": delete_number}), content_type="application/json; charset=utf-8")
 
     except ArchiveGroupEntry.DoesNotExist:
-        return HttpResponseNotFound(
-            json.dumps({"result": "ArchiveGroupEntry does not exist."}),
-            content_type="application/json; charset=utf-8",
-        )
+        raise ApiError.not_found("ArchiveGroupEntry does not exist.")
 
 
 def handle_delete_wanted_gallery(
@@ -84,9 +70,7 @@ def handle_delete_wanted_gallery(
     try:
         wanted_gallery_id = _get_int_from_data_or_body(data, "wanted-gallery", body)
     except (ValueError, TypeError):
-        return HttpResponseNotFound(
-            json.dumps({"result": "WantedGallery does not exist."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("WantedGallery does not exist.")
     try:
         with transaction.atomic():
             wanted_gallery = WantedGallery.objects.select_for_update(of=("self",)).get(pk=wanted_gallery_id)
@@ -98,14 +82,10 @@ def handle_delete_wanted_gallery(
         )
 
     except WantedGallery.DoesNotExist:
-        return HttpResponseNotFound(
-            json.dumps({"result": "WantedGallery does not exist."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("WantedGallery does not exist.")
 
 
-def _parse_archive_delete_options(
-    data: QueryDict, body: dict, user: User | AnonymousUser | None
-) -> tuple[dict[str, Any] | None, HttpResponse | None]:
+def _parse_archive_delete_options(data: QueryDict, body: dict, user: User | AnonymousUser | None) -> dict[str, Any]:
     delete_zipped, has_zipped = parse_bool_from_data_or_body(data, body, "delete_zipped", "delete-zipped")
     delete_archive, has_archive = parse_bool_from_data_or_body(data, body, "delete_archive", "delete-archive")
     delete_file, has_file = parse_bool_from_data_or_body(data, body, "delete_file", "delete-file")
@@ -118,24 +98,15 @@ def _parse_archive_delete_options(
 
     # Enforce permissions for optional gallery actions before doing any work.
     if mark_gallery_deleted and (not user or not user.has_perm("viewer.mark_delete_gallery")):
-        return None, HttpResponseForbidden(
-            json.dumps({"result": "Not authorized"}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.forbidden("Not authorized")
     if mark_gallery_denied and (not user or not user.has_perm("viewer.approve_gallery")):
-        return None, HttpResponseForbidden(
-            json.dumps({"result": "Not authorized"}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.forbidden("Not authorized")
     if delete_gallery and (not user or not user.has_perm("viewer.delete_gallery")):
-        return None, HttpResponseForbidden(
-            json.dumps({"result": "Not authorized"}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.forbidden("Not authorized")
 
     gallery_actions = sum(bool(x) for x in (mark_gallery_deleted, mark_gallery_denied, delete_gallery))
     if gallery_actions > 1:
-        return None, HttpResponseBadRequest(
-            json.dumps({"result": "Only one gallery action may be specified at a time."}),
-            content_type="application/json; charset=utf-8",
-        )
+        raise ApiError.bad_request("Only one gallery action may be specified at a time.")
 
     if not (has_zipped or has_archive or has_file):
         # Default when no archive deletion flags are explicitly passed: delete archive entry and associated file.
@@ -148,10 +119,7 @@ def _parse_archive_delete_options(
         delete_file = False
 
     if not any((delete_zipped, delete_archive, delete_file, mark_gallery_deleted, mark_gallery_denied, delete_gallery)):
-        return None, HttpResponseBadRequest(
-            json.dumps({"result": "No deletion option selected."}),
-            content_type="application/json; charset=utf-8",
-        )
+        raise ApiError.bad_request("No deletion option selected.")
 
     user_reason = get_str_from_data_or_body(data, body, "reason")[:200]
     options: dict[str, Any] = {
@@ -163,30 +131,23 @@ def _parse_archive_delete_options(
         "mark_gallery_denied": mark_gallery_denied,
         "user_reason": user_reason,
     }
-    return options, None
+    return options
 
 
 def handle_delete_archive(
     request: HttpRequest, data: QueryDict, body: dict, user: User | AnonymousUser | None
 ):
-    options, err_response = _parse_archive_delete_options(data, body, user)
-    if err_response is not None:
-        return err_response
-    assert options is not None
+    options = _parse_archive_delete_options(data, body, user)
 
     try:
         archive_id = _get_int_from_data_or_body(data, "archive", body)
     except (ValueError, TypeError):
-        return HttpResponseNotFound(
-            json.dumps({"result": "Archive does not exist."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("Archive does not exist.")
 
     try:
         archive = Archive.objects.get(pk=archive_id)
     except Archive.DoesNotExist:
-        return HttpResponseNotFound(
-            json.dumps({"result": "Archive does not exist."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("Archive does not exist.")
 
     task = client.enqueue(
         args=[archive.pk],
@@ -207,7 +168,7 @@ def handle_delete_archive(
             {
                 "result": "success",
                 "id": archive.pk,
-                "task_id": task.pk,
+                **task_reference(request, task),
             },
             sort_keys=True,
             ensure_ascii=False,
@@ -217,12 +178,9 @@ def handle_delete_archive(
 
 
 def _delete_archives_for_gallery(
-    gallery: Gallery, data: QueryDict, body: dict, user: User | AnonymousUser | None
+    request: HttpRequest, gallery: Gallery, data: QueryDict, body: dict, user: User | AnonymousUser | None
 ) -> HttpResponse:
-    options, err_response = _parse_archive_delete_options(data, body, user)
-    if err_response is not None:
-        return err_response
-    assert options is not None
+    options = _parse_archive_delete_options(data, body, user)
 
     archives_qs = gallery.archive_set.all().order_by("pk")
 
@@ -242,10 +200,7 @@ def _delete_archives_for_gallery(
         try:
             archive_id_filter = [int(x) for x in raw_archive_ids]
         except (ValueError, TypeError):
-            return HttpResponseBadRequest(
-                json.dumps({"result": "Invalid archive_ids parameter."}),
-                content_type="application/json; charset=utf-8",
-            )
+            raise ApiError.bad_request("Invalid archive_ids parameter.")
         archives_qs = archives_qs.filter(pk__in=archive_id_filter)
 
     archives = list(archives_qs)
@@ -336,7 +291,7 @@ def _delete_archives_for_gallery(
                 "gid": gallery_gid,
                 "provider": gallery_provider,
                 "archives": archive_ids,
-                "task_ids": task_ids,
+                **tasks_reference(request, task_ids),
                 "gallery_action": gallery_action_applied,
             },
             sort_keys=True,
@@ -349,42 +304,30 @@ def _delete_archives_for_gallery(
 def handle_delete_gid(
     request: HttpRequest, data: QueryDict, body: dict, user: User | AnonymousUser | None
 ):
-    options, err_response = _parse_archive_delete_options(data, body, user)
-    if err_response is not None:
-        return err_response
-    assert options is not None
+    options = _parse_archive_delete_options(data, body, user)
 
     gallery = get_gallery_by_gid(data, body)
     if not gallery:
-        return HttpResponseNotFound(
-            json.dumps({"result": "Gallery does not exist."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("Gallery does not exist.")
 
-    return _delete_archives_for_gallery(gallery, data, body, user)
+    return _delete_archives_for_gallery(request, gallery, data, body, user)
 
 
 def handle_delete_gallery(
     request: HttpRequest, data: QueryDict, body: dict, user: User | AnonymousUser | None
 ):
-    options, err_response = _parse_archive_delete_options(data, body, user)
-    if err_response is not None:
-        return err_response
-    assert options is not None
+    options = _parse_archive_delete_options(data, body, user)
 
     try:
         gallery_id = _get_int_from_data_or_body(data, "gallery", body)
     except (ValueError, TypeError):
-        return HttpResponseNotFound(
-            json.dumps({"result": "Gallery does not exist."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("Gallery does not exist.")
 
     try:
         gallery = Gallery.objects.get(pk=gallery_id)
     except Gallery.DoesNotExist:
-        return HttpResponseNotFound(
-            json.dumps({"result": "Gallery does not exist."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("Gallery does not exist.")
 
-    return _delete_archives_for_gallery(gallery, data, body, user)
+    return _delete_archives_for_gallery(request, gallery, data, body, user)
 
 

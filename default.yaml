@@ -209,11 +209,16 @@ general:
   # Default: 1500
   horizontal_image_max_width: 1500
 
-  # Minimum logging level sent to log files and database ('DEBUG', 'INFO', 'WARNING', 'ERROR').
+  # Minimum logging level sent to rotating log files ('DEBUG', 'INFO', 'WARNING', 'ERROR').
   # Default: INFO
   force_log_level: INFO
 
-  # Suppress verbose Django SQL query logs in debug mode.
+  # Minimum logging level written to the database StatusLog table via django_db_logger.
+  # Raise to WARNING on high-volume crawler instances to avoid per-INFO-line database WAL writes while retaining INFO in the file log.
+  # Default: INFO
+  sql_log_level: INFO
+
+  # Disable writing application logs to the database StatusLog table (django_db_logger).
   # Default: false
   disable_sql_log: false
 
@@ -858,22 +863,6 @@ urls:
   cors_allow_all_origins: false
 
 # ------------------------------------------------------------------------------
-# Remote Site Synchronization
-# Credentials for synchronizing with another Panda Backup instance.
-# ------------------------------------------------------------------------------
-remote_site:
-  # Remote Panda Backup instance JSON API endpoint URL.
-  # Default: 'https://panda.chaika.moe/jsonapi'
-  api_url: "https://panda.chaika.moe/jsonapi"
-
-  # Long-lived user authentication token generated on the remote server.
-  user_token: asdf1234
-
-  # Directory on remote server where synchronized archives are located.
-  # Default: /media/galleries/archives
-  remote_folder: /media/galleries/archives
-
-# ------------------------------------------------------------------------------
 # Monitored Links Subsystem
 # Controls background polling workers tracking new additions on subscribed URLs.
 # ------------------------------------------------------------------------------
@@ -918,6 +907,10 @@ retention:
   # Days to retain Gallery/Archive change log entries (recorded field and tag changes).
   # 0 to disable pruning for this entity. Default: 90
   history_days: 90
+
+  # Days past expiry to retain expired Django sessions (django_session).
+  # 0 to disable pruning for this entity. Default: 1
+  session_days: 1
 
   # Maximum rows deleted per batch transaction to avoid database locks.
   # Default: 5000

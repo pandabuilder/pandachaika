@@ -121,7 +121,6 @@ from core.base.config_models import (
     MonitoredLinksSettings,
     PandaGalleryConfig,
     PushoverSettings,
-    RemoteSiteSettings,
     RetentionSettings,
     TorrentSettings,
     UrlSettings,
@@ -226,6 +225,7 @@ class Settings:
     vertical_image_max_width = _ModelField[int]("general_model")
     horizontal_image_max_width = _ModelField[int]("general_model")
     log_level = _ModelField[str]("general_model", "force_log_level")
+    sql_log_level = _ModelField[str]("general_model")
     disable_sql_log = _ModelField[bool]("general_model")
     # Option to auto-purge a torrent after a certain time has passed
     max_torrent_lifespan = _ModelField[int]("general_model")
@@ -306,7 +306,6 @@ class Settings:
         self.database = DatabaseSettings()
         self.torrent = TorrentSettings()
         self.ftps = FtpsSettings()
-        self.remote_site = RemoteSiteSettings()
         self.auto_wanted = AutoWantedSettings()
         self.backlog_search = BacklogSearchSettings()
         self.autoupdater = AutoUpdaterSettings()
@@ -775,7 +774,6 @@ class Settings:
             ("database", self.database),
             ("torrent", self.torrent),
             ("ftps", self.ftps),
-            ("remote_site", self.remote_site),
             ("cloning_image_tool", self.cloning_image_tool),
             ("auto_wanted", self.auto_wanted),
             ("backlog_search", self.backlog_search),

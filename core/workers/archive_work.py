@@ -98,7 +98,7 @@ class ArchiveWorker(object):
         user: typing.Any = None,
         force_local: bool = False,
         full: bool = False,
-    ) -> None:
+    ) -> typing.Any:
         """Enqueue or run file info recalculation for all or specific archives."""
         if force_local:
             import os
@@ -147,16 +147,17 @@ class ArchiveWorker(object):
                     except (ValueError, FileNotFoundError):
                         pass
                 self.start_info_thread(force_local=True)
+            return None
         else:
             from workers.client import enqueue
             archive_pks = [a.pk if hasattr(a, "pk") else int(a) for a in archives] if archives is not None else []
             if archives is not None and not archive_pks:
                 logger.info("No archives to recalculate file info for, not enqueueing fileinfo_worker.")
-                return
+                return None
             extra_options: dict[str, typing.Any] = {"all": True} if archives is None else {}
             if full:
                 extra_options["full"] = True
-            enqueue(
+            task = enqueue(
                 args=archive_pks,
                 task_type="fileinfo_worker",
                 override_options=self.settings,
@@ -169,8 +170,11 @@ class ArchiveWorker(object):
                 len(archive_pks) if archives is not None else "all",
                 full,
             )
+            return task
 
-    def regenerate_all_thumbs(self, archives: typing.Any = None, user: typing.Any = None, force_local: bool = False) -> None:
+    def regenerate_all_thumbs(
+        self, archives: typing.Any = None, user: typing.Any = None, force_local: bool = False
+    ) -> typing.Any:
         """Enqueue or run thumbnail regeneration for all or specific archives."""
         if force_local:
             import os
@@ -191,13 +195,14 @@ class ArchiveWorker(object):
                 except (ValueError, FileNotFoundError):
                     pass
             self.start_thumbs_thread(force_local=True)
+            return None
         else:
             from workers.client import enqueue
             archive_pks = [a.pk if hasattr(a, "pk") else int(a) for a in archives] if archives is not None else []
             if archives is not None and not archive_pks:
                 logger.info("No archives to regenerate thumbnails for, not enqueueing thumbnails_worker.")
-                return
-            enqueue(
+                return None
+            task = enqueue(
                 args=archive_pks,
                 task_type="thumbnails_worker",
                 override_options=self.settings,
@@ -208,13 +213,14 @@ class ArchiveWorker(object):
                 "Enqueued thumbnails_worker task to worker process (archives: %s)",
                 len(archive_pks) if archives is not None else "all",
             )
+            return task
 
     def generate_missing_thumbs(
         self,
         archives: typing.Any = None,
         user: typing.Any = None,
         force_local: bool = False,
-    ) -> None:
+    ) -> typing.Any:
         """Enqueue or run thumbnail generation for archives missing thumbnails."""
         if archives is None:
             from viewer.models import Archive
@@ -226,7 +232,7 @@ class ArchiveWorker(object):
         archives: typing.Any = None,
         user: typing.Any = None,
         force_local: bool = False,
-    ) -> None:
+    ) -> typing.Any:
         """Enqueue or run file info calculation for archives with missing file info."""
         if archives is None:
             from viewer.models import Archive
@@ -239,7 +245,7 @@ class ArchiveWorker(object):
         reason: str | None = None,
         user: typing.Any = None,
         force_local: bool = False,
-    ) -> None:
+    ) -> typing.Any:
         """Enqueue or run publishing for archives associated with hidden galleries."""
         if archives is None:
             from viewer.models import Archive
@@ -1022,7 +1028,7 @@ class ArchiveWorker(object):
         reason: str | None = None,
         user: typing.Any = None,
         force_local: bool = False,
-    ) -> None:
+    ) -> typing.Any:
         """Enqueue or run archive publishing (zip test, image set, thumbnails, SHA1, public state) for one or more archives."""
         if force_local:
             import zipfile
@@ -1030,7 +1036,7 @@ class ArchiveWorker(object):
             from viewer.utils.actions import event_log
 
             if archives is None:
-                return
+                return None
             archive_qs: typing.Iterable[Archive]
             if isinstance(archives, (list, tuple, set)) and all(isinstance(x, (int, str)) for x in archives):
                 archive_qs = Archive.objects.filter(pk__in=[int(x) for x in archives])
@@ -1085,18 +1091,19 @@ class ArchiveWorker(object):
                         getattr(archive, "pk", "?"),
                         traceback.format_exc(),
                     )
+            return None
         else:
             from workers.client import enqueue
 
             archive_pks = [a.pk if hasattr(a, "pk") else int(a) for a in archives] if archives is not None else []
             if not archive_pks:
-                return
+                return None
             effective_reason = (
                 reason
                 if reason is not None
                 else (getattr(self.settings, "archive_reason", "") if self.settings else "")
             ) or ""
-            enqueue(
+            task = enqueue(
                 args=archive_pks,
                 task_type="publish_worker",
                 override_options=self.settings,
@@ -1108,6 +1115,7 @@ class ArchiveWorker(object):
                 "Enqueued publish_worker task to worker process (archive count: %d)",
                 len(archive_pks),
             )
+            return task
 
     def extract_contextual_info(
         self,

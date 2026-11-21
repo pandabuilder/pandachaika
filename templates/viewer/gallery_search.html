@@ -76,7 +76,7 @@
                 <ul class="pagination justify-content-end mb-0">
                   {% for option in extra_options %}
                     <li class="page-item{% if option == prm.view %} active{% endif %}">
-                      <a class="page-link" href="?{% url_replace 'view' option %}">{{ option }}</a>
+                      <a class="page-link" rel="nofollow" href="?{% url_replace 'view' option %}">{{ option }}</a>
                     </li>
                   {% endfor %}
                 </ul>

@@ -323,6 +323,9 @@ class GalleryUpdaterWorkerIntegrationTests(TestCase):
 
         claimed.refresh_from_db()
         self.assertEqual(claimed.status, TaskQueue.Status.COMPLETED)
+        self.assertEqual(
+            claimed.result, {"requested": 1, "unsupported": [], "fetched": 0, "updated": 1, "failed": 0}
+        )
 
     def test_gallery_updater_and_web_crawler_can_run_independently(self):
         # 1. Enqueue both a gallery_updater and a web_crawler task

@@ -1,3 +1,4 @@
+import dataclasses
 from datetime import timedelta
 import logging
 import os
@@ -7,6 +8,7 @@ import sys
 import threading
 import time
 import traceback
+from typing import TYPE_CHECKING, Any
 
 import django.utils.timezone as django_tz
 from django import db
@@ -23,6 +25,9 @@ from workers.client import expand_task_type_aliases
 from workers.models import TaskQueue, WorkerProcess, SchedulerState
 from workers.serialization import deserialize_settings_options
 
+if TYPE_CHECKING:
+    from viewer.models import ArchiveFileCheck
+
 logger = logging.getLogger(__name__)
 
 
@@ -35,6 +40,22 @@ def _safe_close_old_connections() -> None:
             db.close_old_connections()
     except Exception:
         pass
+
+
+def file_check_result(check: "ArchiveFileCheck") -> dict[str, Any]:
+    """TaskQueue.result of an archive_file_check task: the check's counters."""
+    return {
+        "check_id": check.pk,
+        "status": check.status,
+        "total": check.total,
+        "checked": check.checked,
+        "ok": check.ok_count,
+        "missing": check.missing_count,
+        "size_mismatch": check.size_mismatch_count,
+        "crc32_mismatch": check.crc32_mismatch_count,
+        "errors": check.error_count,
+        "no_crc32": check.no_crc32_count,
+    }
 
 
 class WorkerRunner:
@@ -138,6 +159,10 @@ class WorkerRunner:
         if stall_timeout <= 0:
             return []
 
+        with self._jobs_lock:
+            if not self.active_jobs:
+                return []
+
         now_mono = time.monotonic()
         now_wall = time.time()
 
@@ -240,18 +265,25 @@ class WorkerRunner:
             pass
 
     def sync_schedulers_state(self) -> None:
-        """Sync live running status and heartbeats of local schedulers to SchedulerState."""
+        """Sync live running status and heartbeats of local schedulers to SchedulerState in a single batch."""
         if not self.enable_schedulers:
             return
         try:
+            workers = list(self.settings.workers.get_active_initialized_workers())
+            if not workers:
+                return
+
             now = django_tz.now()
-            for s in self.settings.workers.get_active_initialized_workers():
+            snapshots: list[dict[str, Any]] = []
+            names: list[str] = []
+            for s in workers:
+                name = s.thread_name
+                names.append(name)
                 is_running = s.is_running_locally()
-                last_run = getattr(s, "current_last_run", s.last_run)
-                next_run = (last_run + timedelta(seconds=s.timer)) if (last_run and is_running) else None
-                extra_data = {}
+                local_last_run = getattr(s, "last_run", None)
+                extra_data: dict[str, Any] = {}
                 if (
-                    s.thread_name in ("download_progress_checker", "archive_download_queue")
+                    name in ("download_progress_checker", "archive_download_queue")
                     and hasattr(s, "current_download")
                 ):
                     try:
@@ -271,25 +303,99 @@ class WorkerRunner:
                     except Exception:
                         pass
 
-                SchedulerState.objects.update_or_create(
-                    name=s.thread_name,
-                    defaults={
-                        "display_name": getattr(s, "thread_name", ""),
+                snapshots.append(
+                    {
+                        "name": name,
+                        "display_name": name,
                         "is_running": is_running,
-                        "last_run": last_run,
-                        "next_run": next_run,
+                        "local_last_run": local_last_run,
                         "cycle_timer": s.timer,
-                        "worker_pid": self.pid,
-                        "last_heartbeat": now,
                         "extra_data": extra_data,
-                    },
+                    }
                 )
+
+            with transaction.atomic():
+                existing_by_name = SchedulerState.objects.in_bulk(names)
+                to_create: list[SchedulerState] = []
+                to_update: list[SchedulerState] = []
+
+                for snap in snapshots:
+                    name = snap["name"]
+                    existing = existing_by_name.get(name)
+                    last_run = (
+                        snap["local_last_run"]
+                        if snap["local_last_run"] is not None
+                        else (existing.last_run if existing is not None else None)
+                    )
+                    is_running = snap["is_running"]
+                    next_run = (
+                        (last_run + timedelta(seconds=snap["cycle_timer"]))
+                        if (last_run and is_running)
+                        else None
+                    )
+
+                    if existing is None:
+                        to_create.append(
+                            SchedulerState(
+                                name=name,
+                                display_name=snap["display_name"],
+                                is_running=is_running,
+                                last_run=last_run,
+                                next_run=next_run,
+                                cycle_timer=snap["cycle_timer"],
+                                worker_pid=self.pid,
+                                last_heartbeat=now,
+                                extra_data=snap["extra_data"],
+                            )
+                        )
+                        continue
+
+                    # Running schedulers must refresh last_heartbeat so liveness checks stay fresh.
+                    # Stopped schedulers only need a DB write when their persisted state actually changed.
+                    state_changed = (
+                        existing.display_name != snap["display_name"]
+                        or existing.is_running != is_running
+                        or existing.last_run != last_run
+                        or existing.next_run != next_run
+                        or existing.cycle_timer != snap["cycle_timer"]
+                        or existing.worker_pid != self.pid
+                        or existing.extra_data != snap["extra_data"]
+                    )
+                    if not is_running and not state_changed:
+                        continue
+
+                    existing.display_name = snap["display_name"]
+                    existing.is_running = is_running
+                    existing.last_run = last_run
+                    existing.next_run = next_run
+                    existing.cycle_timer = snap["cycle_timer"]
+                    existing.worker_pid = self.pid
+                    existing.last_heartbeat = now
+                    existing.extra_data = snap["extra_data"]
+                    to_update.append(existing)
+
+                if to_create:
+                    SchedulerState.objects.bulk_create(to_create, ignore_conflicts=True)
+                if to_update:
+                    SchedulerState.objects.bulk_update(
+                        to_update,
+                        fields=[
+                            "display_name",
+                            "is_running",
+                            "last_run",
+                            "next_run",
+                            "cycle_timer",
+                            "worker_pid",
+                            "last_heartbeat",
+                            "extra_data",
+                        ],
+                    )
         except Exception as e:
             logger.warning("Failed to sync schedulers state: %s", e)
 
     def sync_monitored_links(self) -> None:
         """Keep timed_link_monitors in sync with the database, stopping and pruning deleted links."""
-        if not self.enable_schedulers:
+        if not self.enable_schedulers or not self.settings.workers.timed_link_monitors:
             return
         try:
             from viewer.models import MonitoredLink
@@ -313,7 +419,7 @@ class WorkerRunner:
             for state in pending_commands:
                 cmd = state.command_requested
                 name = state.name
-                if name in ("worker_runner", "worker_process") and cmd == "restart":
+                if name in SchedulerState.CONTROL_NAMES and cmd == "restart":
                     logger.info("Executing requested 'restart' for %s via IPC", name)
                     state.command_requested = ""
                     state.command_arg = ""
@@ -417,19 +523,29 @@ class WorkerRunner:
         if force or (now - self.last_heartbeat_time >= self.heartbeat_interval):
             try:
                 _safe_close_old_connections()
-                WorkerProcess.objects.update_or_create(
-                    pid=self.pid,
-                    defaults={
-                        "hostname": self.hostname,
-                        "worker_type": "general",
-                        "status": "running",
-                        "last_heartbeat": django_tz.now(),
-                    },
-                )
+                self.sync_monitored_links()
+                heartbeat_dt = django_tz.now()
+                # Batch WorkerProcess heartbeat and SchedulerState sync in a single transaction (1 WAL fsync).
+                with transaction.atomic():
+                    updated = WorkerProcess.objects.filter(pid=self.pid).update(
+                        hostname=self.hostname,
+                        worker_type="general",
+                        status="running",
+                        last_heartbeat=heartbeat_dt,
+                    )
+                    if not updated:
+                        WorkerProcess.objects.update_or_create(
+                            pid=self.pid,
+                            defaults={
+                                "hostname": self.hostname,
+                                "worker_type": "general",
+                                "status": "running",
+                                "last_heartbeat": heartbeat_dt,
+                            },
+                        )
+                    self.sync_schedulers_state()
                 WorkerProcess.cleanup_dead_workers()
                 self.check_stuck_jobs()
-                self.sync_monitored_links()
-                self.sync_schedulers_state()
                 self.last_heartbeat_time = now
             except Exception as e:
                 logger.warning("Failed to update worker heartbeat: %s", e)
@@ -675,6 +791,8 @@ class WorkerRunner:
 
         batch_collector = None
         delayed_for_ban = False
+        # Saved to TaskQueue.result when the task completes; branches that know what they did set it.
+        job_result: dict[str, Any] | None = None
         try:
             current_settings = deserialize_settings_options(self.settings, job.options)
             current_settings.activity_callback = lambda: self.touch_job_activity(job.pk)
@@ -704,7 +822,7 @@ class WorkerRunner:
             elif job.task_type in ("gallery_updater", "update_galleries"):
                 from core.web.gallery_updater import GalleryMetadataUpdater
 
-                GalleryMetadataUpdater(current_settings).update(job.args)
+                job_result = dataclasses.asdict(GalleryMetadataUpdater(current_settings).update(job.args))
             elif job.task_type in ("folder_crawler", "foldercrawler"):
                 from core.local.foldercrawler import FolderCrawler
                 folder_crawler = FolderCrawler(current_settings)
@@ -738,6 +856,33 @@ class WorkerRunner:
                     archives = Archive.objects.none()
                 archive_worker = ArchiveWorker(current_settings, 4)
                 archive_worker.regenerate_all_thumbs(archives, force_local=True)
+            elif job.task_type in ("gallery_thumbnail_worker", "refetch_gallery_thumbnail"):
+                from viewer.models import Gallery
+                from viewer.utils.actions import event_log
+
+                gallery_pks = [int(pk) for pk in job.args] if job.args else []
+                for gallery in Gallery.objects.filter(pk__in=gallery_pks):
+                    if current_settings.is_cancelled():
+                        raise TaskCancelledError("Gallery thumbnail refetch cancelled")
+                    current_settings.activity_callback()
+                    if not gallery.thumbnail_url:
+                        continue
+                    success = gallery.fetch_thumbnail(force_redownload=True)
+                    if job.user:
+                        event_log(
+                            job.user,
+                            "REFETCH_THUMBNAIL",
+                            content_object=gallery,
+                            reason=job.reason or None,
+                            result="sucess" if success else "failed",
+                            data=gallery.thumbnail_url,
+                        )
+                    logger.info(
+                        "Refetching gallery: %s thumbnail from url: %s (success=%s)",
+                        gallery.get_absolute_url(),
+                        gallery.thumbnail_url,
+                        success,
+                    )
             elif job.task_type in ("extract_worker", "extract_archives"):
                 from core.workers.archive_work import ArchiveWorker
                 from viewer.models import Archive
@@ -906,17 +1051,19 @@ class WorkerRunner:
                     user=job.user,
                 )
                 logger.info("Task #%d pruned database: %s", job.pk, res)
+                job_result = res
             elif job.task_type in ("archive_file_check",):
                 from viewer.services.archive_file_check import run_file_check
                 options = job.options if isinstance(job.options, dict) else {}
                 check_id = options.get("check_id") or (job.args[0] if job.args else None)
                 if not check_id:
                     raise ValueError("archive_file_check task has no check id")
-                run_file_check(
+                check = run_file_check(
                     int(check_id),
                     activity_cb=current_settings.activity_callback,
                     is_cancelled=current_settings.is_cancelled,
                 )
+                job_result = file_check_result(check)
             else:
                 raise ValueError(f"Unknown task_type: {job.task_type!r}")
 
@@ -924,7 +1071,8 @@ class WorkerRunner:
             if job.status == TaskQueue.Status.PROCESSING:
                 job.status = TaskQueue.Status.COMPLETED
                 job.finished_at = django_tz.now()
-                job.save(update_fields=["status", "finished_at"])
+                job.result = job_result
+                job.save(update_fields=["status", "finished_at", "result"])
                 duration = time.time() - start_time
                 logger.info("Finished Task #%d successfully in %.2fs", job.pk, duration)
 

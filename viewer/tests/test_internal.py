@@ -11,6 +11,7 @@ from django.urls import reverse
 from django.core.files.uploadedfile import SimpleUploadedFile
 
 import json
+from unittest.mock import MagicMock
 import os
 import shutil
 import tempfile
@@ -588,7 +589,7 @@ class JsonApiEndpointsTest(GeneralPagesTest):
     def test_api_wanted_gallery_post_unauthorized(self):
         # Unauthenticated
         response = self._api_post(self.client, "wanted-gallery=", {"title": "Denied"})
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, 401)
 
         # Authenticated but missing add_wantedgallery permission
         client = Client()
@@ -667,7 +668,7 @@ class JsonApiEndpointsTest(GeneralPagesTest):
     def test_api_wanted_gallery_put_unauthorized(self):
         # Unauthenticated
         response = self._api_put(self.client, f"wanted-gallery={self.test_wanted_gallery1.pk}", {"title": "Denied"})
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, 401)
 
         # Authenticated without change_wantedgallery
         client = Client()
@@ -691,7 +692,7 @@ class JsonApiEndpointsTest(GeneralPagesTest):
     def test_api_wanted_gallery_delete_not_found_and_unauthorized(self):
         # Unauthenticated
         response = self._api_delete(self.client, f"wanted-gallery={self.test_wanted_gallery1.pk}")
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, 401)
 
         # Authorized but not found
         client = Client()
@@ -749,13 +750,13 @@ class JsonParserWebcrawlerTest(TestCase):
             {"operation": "webcrawler", "args": {"link": "https://example.com/1"}},
             client=unauth_client,
         )
-        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.status_code, 403)
         data = json.loads(response.content)
-        self.assertEqual(data["error"], "Not authorized")
+        self.assertEqual(data["error"]["code"], "forbidden")
 
     def test_single_link_argument(self):
         from unittest.mock import patch
-        with patch("workers.client.enqueue") as mock_enqueue:
+        with patch("workers.client.enqueue", return_value=MagicMock(pk=1)) as mock_enqueue:
             response = self._post_json_parser(
                 {"operation": "webcrawler", "args": {"link": "https://example.com/test1"}}
             )
@@ -771,7 +772,7 @@ class JsonParserWebcrawlerTest(TestCase):
     def test_multiple_links_argument(self):
         from unittest.mock import patch
         links = ["https://example.com/test1", "https://example.com/test2", "https://example.com/test3"]
-        with patch("workers.client.enqueue") as mock_enqueue:
+        with patch("workers.client.enqueue", return_value=MagicMock(pk=1)) as mock_enqueue:
             response = self._post_json_parser(
                 {"operation": "webcrawler", "args": {"links": links}}
             )
@@ -786,7 +787,7 @@ class JsonParserWebcrawlerTest(TestCase):
 
     def test_single_link_in_links_argument(self):
         from unittest.mock import patch
-        with patch("workers.client.enqueue") as mock_enqueue:
+        with patch("workers.client.enqueue", return_value=MagicMock(pk=1)) as mock_enqueue:
             response = self._post_json_parser(
                 {"operation": "webcrawler", "args": {"links": ["https://example.com/single"]}}
             )
@@ -800,7 +801,7 @@ class JsonParserWebcrawlerTest(TestCase):
     def test_multiple_links_string_argument(self):
         from unittest.mock import patch
         links_str = "https://example.com/str1\nhttps://example.com/str2"
-        with patch("workers.client.enqueue") as mock_enqueue:
+        with patch("workers.client.enqueue", return_value=MagicMock(pk=1)) as mock_enqueue:
             response = self._post_json_parser(
                 {"operation": "webcrawler", "args": {"links": links_str}}
             )
@@ -816,7 +817,7 @@ class JsonParserWebcrawlerTest(TestCase):
 
     def test_combined_link_and_links_arguments(self):
         from unittest.mock import patch
-        with patch("workers.client.enqueue") as mock_enqueue:
+        with patch("workers.client.enqueue", return_value=MagicMock(pk=1)) as mock_enqueue:
             response = self._post_json_parser(
                 {
                     "operation": "webcrawler",
@@ -838,7 +839,7 @@ class JsonParserWebcrawlerTest(TestCase):
     def test_multiple_links_with_reason(self):
         from unittest.mock import patch
         links = ["https://example.com/1", "https://example.com/2"]
-        with patch("workers.client.enqueue") as mock_enqueue:
+        with patch("workers.client.enqueue", return_value=MagicMock(pk=1)) as mock_enqueue:
             response = self._post_json_parser(
                 {"operation": "webcrawler", "args": {"links": links, "reason": "test_reason"}}
             )
@@ -855,7 +856,7 @@ class JsonParserWebcrawlerTest(TestCase):
     def test_multiple_links_with_downloader(self):
         from unittest.mock import patch
         links = ["https://example.com/1", "https://example.com/2"]
-        with patch("workers.client.enqueue") as mock_enqueue:
+        with patch("workers.client.enqueue", return_value=MagicMock(pk=1)) as mock_enqueue:
             response = self._post_json_parser(
                 {"operation": "webcrawler", "args": {"links": links, "downloader": "default"}}
             )
@@ -869,17 +870,19 @@ class JsonParserWebcrawlerTest(TestCase):
         response = self._post_json_parser(
             {"operation": "webcrawler", "args": {"links": []}}
         )
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 400)
         data = json.loads(response.content)
-        self.assertEqual(data["error"], "No links provided")
+        self.assertEqual(data["error"]["message"], "No links provided")
+        self.assertEqual(data["message"], "No links provided")
 
     def test_missing_link_and_links_returns_error(self):
         response = self._post_json_parser(
             {"operation": "webcrawler", "args": {}}
         )
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 400)
         data = json.loads(response.content)
-        self.assertEqual(data["error"], "No links provided")
+        self.assertEqual(data["error"]["message"], "No links provided")
+        self.assertEqual(data["message"], "No links provided")
 
     def test_multiple_links_some_exist_in_database(self):
         gallery = Gallery.objects.create(title="Existing gallery", gid="999991", provider="panda")
@@ -890,7 +893,7 @@ class JsonParserWebcrawlerTest(TestCase):
             "https://e-hentai.org/g/999991/token1/",
             "https://e-hentai.org/g/999992/token2/",
         ]
-        with patch("workers.client.enqueue") as mock_enqueue:
+        with patch("workers.client.enqueue", return_value=MagicMock(pk=1)) as mock_enqueue:
             response = self._post_json_parser(
                 {"operation": "webcrawler", "args": {"links": links}}
             )
@@ -912,7 +915,7 @@ class JsonParserWebcrawlerTest(TestCase):
             "https://e-hentai.org/g/999993/token1/",
             "https://e-hentai.org/g/999994/token2/",
         ]
-        with patch("workers.client.enqueue") as mock_enqueue:
+        with patch("workers.client.enqueue", return_value=MagicMock(pk=1)) as mock_enqueue:
             response = self._post_json_parser(
                 {"operation": "webcrawler", "args": {"links": links}}
             )
@@ -951,7 +954,7 @@ class JsonParserWebcrawlerTest(TestCase):
 
         from unittest.mock import patch
         links = ["https://e-hentai.org/g/777773/tok3/", "https://e-hentai.org/g/777774/tok4/"]
-        with patch("workers.client.enqueue") as mock_enqueue:
+        with patch("workers.client.enqueue", return_value=MagicMock(pk=1)) as mock_enqueue:
             response = self._post_json_parser(
                 {
                     "operation": "webcrawler",
@@ -971,7 +974,7 @@ class JsonParserWebcrawlerTest(TestCase):
 
     def test_ignore_global_filters_snake_case(self):
         from unittest.mock import patch
-        with patch("workers.client.enqueue") as mock_enqueue:
+        with patch("workers.client.enqueue", return_value=MagicMock(pk=1)) as mock_enqueue:
             response = self._post_json_parser(
                 {
                     "operation": "webcrawler",
@@ -990,7 +993,7 @@ class JsonParserWebcrawlerTest(TestCase):
 
     def test_ignore_global_filters_kebab_case(self):
         from unittest.mock import patch
-        with patch("workers.client.enqueue") as mock_enqueue:
+        with patch("workers.client.enqueue", return_value=MagicMock(pk=1)) as mock_enqueue:
             response = self._post_json_parser(
                 {
                     "operation": "webcrawler",
@@ -1008,7 +1011,7 @@ class JsonParserWebcrawlerTest(TestCase):
 
     def test_ignore_global_filters_top_level_flag(self):
         from unittest.mock import patch
-        with patch("workers.client.enqueue") as mock_enqueue:
+        with patch("workers.client.enqueue", return_value=MagicMock(pk=1)) as mock_enqueue:
             response = self._post_json_parser(
                 {
                     "operation": "webcrawler",
@@ -1024,7 +1027,7 @@ class JsonParserWebcrawlerTest(TestCase):
 
     def test_ignore_global_filters_with_downloader(self):
         from unittest.mock import patch
-        with patch("workers.client.enqueue") as mock_enqueue:
+        with patch("workers.client.enqueue", return_value=MagicMock(pk=1)) as mock_enqueue:
             response = self._post_json_parser(
                 {
                     "operation": "webcrawler",
@@ -1037,36 +1040,6 @@ class JsonParserWebcrawlerTest(TestCase):
             )
             self.assertEqual(response.status_code, 200)
             mock_enqueue.assert_called_once()
-            call_kwargs = mock_enqueue.call_args.kwargs
-            self.assertIn("--ignore-global-filters", call_kwargs["args"])
-            self.assertTrue(call_kwargs["override_options"].ignore_global_filters)
-
-    def test_ignore_global_filters_other_operations(self):
-        from unittest.mock import patch
-        with patch("workers.client.enqueue") as mock_enqueue:
-            # Operation: links
-            response = self._post_json_parser(
-                {
-                    "operation": "links",
-                    "args": ["https://example.com/link1"],
-                    "ignore_global_filters": True,
-                }
-            )
-            self.assertEqual(response.status_code, 200)
-            call_kwargs = mock_enqueue.call_args.kwargs
-            self.assertIn("--ignore-global-filters", call_kwargs["args"])
-            self.assertTrue(call_kwargs["override_options"].ignore_global_filters)
-
-            mock_enqueue.reset_mock()
-            # Operation: force_queue_archives
-            response = self._post_json_parser(
-                {
-                    "operation": "force_queue_archives",
-                    "args": ["https://example.com/fq1"],
-                    "ignore_global_filters": True,
-                }
-            )
-            self.assertEqual(response.status_code, 200)
             call_kwargs = mock_enqueue.call_args.kwargs
             self.assertIn("--ignore-global-filters", call_kwargs["args"])
             self.assertTrue(call_kwargs["override_options"].ignore_global_filters)

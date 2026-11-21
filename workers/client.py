@@ -24,6 +24,7 @@ def enqueue(
     priority: int = 10,
     deduplicate: bool = True,
     extra_options: dict[str, Any] | None = None,
+    base_settings: Any = None,
 ) -> TaskQueue:
     """Enqueue a new task into PostgreSQL TaskQueue.
 
@@ -54,7 +55,7 @@ def enqueue(
             )
             return existing
 
-    serialized_options = serialize_settings_options(override_options)
+    serialized_options = serialize_settings_options(override_options, base_settings=base_settings)
     if extra_options:
         serialized_options.update(extra_options)
 
@@ -179,6 +180,7 @@ TASK_TYPE_ALIAS_GROUPS: list[set[str]] = [
     {"folder_crawler", "foldercrawler"},
     {"fileinfo_worker", "recalc_all_file_info", "calculate_missing_info", "recalc_info"},
     {"thumbnails_worker", "regenerate_all_thumbs", "generate_missing_thumbs"},
+    {"gallery_thumbnail_worker", "refetch_gallery_thumbnail"},
     {"extract_worker", "extract_archives"},
     {"reduce_worker", "reduce_archives", "reduce_archive"},
     {"calculate_sha1_worker", "calculate_images_sha1"},
@@ -347,6 +349,74 @@ def get_active_archive_task(archive_pk: int, task_type: str) -> TaskQueue | None
 def is_archive_task_active(archive_pk: int, task_type: str) -> bool:
     """Check if a task of given type for the archive PK is currently pending or processing."""
     return get_active_archive_task(archive_pk, task_type) is not None
+
+
+def get_active_task_by_type(task_type: str) -> TaskQueue | None:
+    """Return the active (processing preferred over pending) task for the given task_type queue."""
+    aliases = get_task_type_aliases(task_type)
+    active_tasks = TaskQueue.objects.filter(
+        status__in=[TaskQueue.Status.PENDING, TaskQueue.Status.PROCESSING],
+        task_type__in=aliases,
+    ).order_by("priority", "created_at", "id")
+    best: TaskQueue | None = None
+    for task in active_tasks:
+        if task.status == TaskQueue.Status.PROCESSING:
+            return task
+        if best is None:
+            best = task
+    return best
+
+
+def get_active_tasks_by_types(task_types: Iterable[str]) -> list[TaskQueue]:
+    """Return all pending or processing tasks matching any of the given task types (including aliases)."""
+    aliases = expand_task_type_aliases(task_types)
+    if not aliases:
+        return []
+    return list(
+        TaskQueue.objects.filter(
+            status__in=[TaskQueue.Status.PENDING, TaskQueue.Status.PROCESSING],
+            task_type__in=aliases,
+        ).order_by("priority", "created_at", "id")
+    )
+
+
+def get_active_gallery_tasks(gallery_pk: int, gallery_link: str) -> dict[str, TaskQueue]:
+    """Find active background tasks for a gallery (recall API, download, thumbnail refetch) in one query.
+
+    Processing tasks win over pending ones for each key.
+    """
+    updater_aliases = get_task_type_aliases("gallery_updater")
+    crawler_aliases = get_task_type_aliases("web_crawler")
+    thumb_aliases = get_task_type_aliases("gallery_thumbnail_worker")
+    all_aliases = updater_aliases | crawler_aliases | thumb_aliases
+
+    active_tasks = TaskQueue.objects.filter(
+        status__in=[TaskQueue.Status.PENDING, TaskQueue.Status.PROCESSING],
+        task_type__in=all_aliases,
+    ).order_by("priority", "created_at", "id")
+
+    target_pk_str = str(gallery_pk)
+    found: dict[str, TaskQueue] = {}
+
+    def _record(key: str, task: TaskQueue) -> None:
+        current = found.get(key)
+        if current is None or (
+            current.status != TaskQueue.Status.PROCESSING and task.status == TaskQueue.Status.PROCESSING
+        ):
+            found[key] = task
+
+    for task in active_tasks:
+        if not isinstance(task.args, list):
+            continue
+        if task.task_type in updater_aliases and gallery_link and gallery_link in task.args:
+            _record("recall_api", task)
+        elif task.task_type in crawler_aliases and gallery_link and gallery_link in task.args:
+            _record("download", task)
+        elif task.task_type in thumb_aliases and any(
+            arg == gallery_pk or str(arg) == target_pk_str for arg in task.args
+        ):
+            _record("refetch_thumbnail", task)
+    return found
 
 
 def tasks_ahead(task: TaskQueue) -> int:

@@ -7,7 +7,7 @@ crawler_settings = settings.CRAWLER_SETTINGS
 
 
 class Command(BaseCommand):
-    help = "Prune old TaskQueue, DownloadEvent, EventLog, ProcessedLinks, StatusLog, and Gallery/Archive change log entries according to retention policy."
+    help = "Prune old TaskQueue, DownloadEvent, EventLog, ProcessedLinks, StatusLog, Session, and Gallery/Archive change log entries according to retention policy."
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -21,7 +21,7 @@ class Command(BaseCommand):
             "--entities",
             type=str,
             default="all",
-            help="Comma-separated list of entities to prune (task_queue, download_event, event_log, processed_links, status_log, history, or all).",
+            help="Comma-separated list of entities to prune (task_queue, download_event, event_log, processed_links, status_log, sessions, history, or all).",
         )
         parser.add_argument(
             "--task-queue-days",
@@ -60,6 +60,12 @@ class Command(BaseCommand):
             help="Override retention period in days for the Gallery/Archive change log (0 to skip).",
         )
         parser.add_argument(
+            "--session-days",
+            type=int,
+            default=None,
+            help="Override retention period in days past expiry for expired Django sessions (0 to skip).",
+        )
+        parser.add_argument(
             "--chunk-size",
             type=int,
             default=None,
@@ -94,6 +100,9 @@ class Command(BaseCommand):
             days_override["history_days"] = options["history_days"]
             days_override["history_archive"] = options["history_days"]
             days_override["history_gallery"] = options["history_days"]
+        if options["session_days"] is not None:
+            days_override["sessions"] = options["session_days"]
+            days_override["session_days"] = options["session_days"]
 
         # Parse entities
         target_entities = [e.strip() for e in entities_arg.split(",") if e.strip()]

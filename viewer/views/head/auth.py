@@ -9,6 +9,7 @@ from django.http import Http404, HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
+from django.views.decorators.http import require_POST
 
 from viewer.forms import (
     BootstrapPasswordChangeForm,
@@ -74,6 +75,7 @@ def viewer_login(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
+@require_POST
 def viewer_logout(request: HttpRequest) -> HttpResponse:
     logout(request)
     return HttpResponseRedirect(reverse("viewer:main-page"))
@@ -137,12 +139,9 @@ def session_settings(request: HttpRequest) -> HttpResponse:
     elif request.method == "GET":
         data = json.loads(request.body.decode("utf-8"))
         if "viewer_parameters" in data:
-            if "viewer_parameters" not in request.session:
-                request.session["viewer_parameters"] = {}
-                request.session["viewer_parameters"]["image_width"] = 900
-                request.session.modified = True
+            viewer_params = request.session.get("viewer_parameters", {"image_width": 900})
             return HttpResponse(
-                json.dumps(request.session["viewer_parameters"]), content_type="application/json; charset=utf-8"
+                json.dumps(viewer_params), content_type="application/json; charset=utf-8"
             )
         return HttpResponse(json.dumps({"result": "error"}), content_type="application/json; charset=utf-8")
     else:
@@ -151,6 +150,7 @@ def session_settings(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
+@require_POST
 def user_archive_preferences(request: AuthenticatedHttpRequest, archive_pk: int, setting: str) -> HttpResponse:
     """Archive user favorite toggle."""
     try:

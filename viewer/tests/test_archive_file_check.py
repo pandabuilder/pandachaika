@@ -310,6 +310,10 @@ class WorkerTaskTests(FileCheckTestBase):
         self.assertEqual(task.status, TaskQueue.Status.COMPLETED)
         self.assertEqual(check.status, ArchiveFileCheck.Status.COMPLETED)
         self.assertEqual(check.missing_count, 1)
+        assert task.result is not None
+        self.assertEqual(task.result["check_id"], check.pk)
+        self.assertEqual(task.result["status"], ArchiveFileCheck.Status.COMPLETED)
+        self.assertEqual(task.result["missing"], 1)
 
     def test_sync_with_task_finishes_orphaned_runs(self):
         check = create_file_check(scope=ArchiveFileCheck.Scope.ALL, user=self.user)

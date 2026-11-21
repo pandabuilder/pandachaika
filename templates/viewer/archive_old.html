@@ -309,14 +309,19 @@
     {% if is_reducing %}
     <button class="btn btn-warning" type="button" disabled id="btn-reducing-archive"><i class="fas fa-spinner fa-spin me-1"></i>Reducing...</button>
     {% else %}
-    <a class="btn btn-light" href="{% url 'viewer:archive-reduce' archive.pk %}" id="btn-reduce-archive">Reduce archive</a>
+    <form method="POST" action="{% url 'viewer:archive-reduce' archive.pk %}" class="d-inline">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-light" id="btn-reduce-archive">Reduce archive</button>
+    </form>
     {% endif %}
     {% elif is_extracting %}
     <button class="btn btn-warning" type="button" disabled id="btn-extracting-archive"><i class="fas fa-spinner fa-spin me-1"></i>Extracting...</button>
     {% else %}
-    <a class="btn btn-light" href="{% url 'viewer:archive-extract' archive.pk %}" id="btn-extract-archive">Expand archive</a>
-    <a class="btn btn-light" href="{% url 'viewer:archive-extract' archive.pk %}?resized=1">Expand (resized)
-      archive</a>
+    <form method="POST" action="{% url 'viewer:archive-extract' archive.pk %}" class="d-inline">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-light" id="btn-extract-archive">Expand archive</button>
+      <button type="submit" name="resized" value="1" class="btn btn-light">Expand (resized) archive</button>
+    </form>
     {% endif %}
     <a class="btn btn-light" href="{% url 'viewer:archive-download' archive.pk %}">Download archive</a>
     <a class="btn btn-light" href="{% url 'viewer:archive-download' archive.pk %}?original=1">Download with
@@ -333,11 +338,15 @@
       cover</a>
     {% endif %}
     {% if user_archive_preferences.favorite_group == 0 %}
-    <a class="btn btn-light"
-      href="{% url 'viewer:user-archive-preferences' archive.pk 'favorite' %}">Favorite</a>
+    <form method="POST" action="{% url 'viewer:user-archive-preferences' archive.pk 'favorite' %}" class="d-inline">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-light">Favorite</button>
+    </form>
     {% else %}
-    <a class="btn btn-light"
-      href="{% url 'viewer:user-archive-preferences' archive.pk 'unfavorite' %}">Unfavorite</a>
+    <form method="POST" action="{% url 'viewer:user-archive-preferences' archive.pk 'unfavorite' %}" class="d-inline">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-light">Unfavorite</button>
+    </form>
     {% endif %}
     {% endif %}
     <button class="btn btn-secondary collapse-icon" id="edit-archive" data-bs-toggle="collapse"
@@ -355,14 +364,19 @@
     {% if is_reducing %}
     <button class="btn btn-warning" type="button" disabled id="btn-reducing-archive"><i class="fas fa-spinner fa-spin me-1"></i>Reducing...</button>
     {% else %}
-    <a class="btn btn-light" href="{% url 'viewer:archive-reduce' archive.pk %}" id="btn-reduce-archive">Reduce archive</a>
+    <form method="POST" action="{% url 'viewer:archive-reduce' archive.pk %}" class="d-inline">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-light" id="btn-reduce-archive">Reduce archive</button>
+    </form>
     {% endif %}
     {% elif is_extracting %}
     <button class="btn btn-warning" type="button" disabled id="btn-extracting-archive"><i class="fas fa-spinner fa-spin me-1"></i>Extracting...</button>
     {% else %}
-    <a class="btn btn-light" href="{% url 'viewer:archive-extract' archive.pk %}" id="btn-extract-archive">Expand archive</a>
-    <a class="btn btn-light" href="{% url 'viewer:archive-extract' archive.pk %}?resized=1">Expand (resized)
-      archive</a>
+    <form method="POST" action="{% url 'viewer:archive-extract' archive.pk %}" class="d-inline">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-light" id="btn-extract-archive">Expand archive</button>
+      <button type="submit" name="resized" value="1" class="btn btn-light">Expand (resized) archive</button>
+    </form>
     {% endif %}
     {% endif %}
     <a class="btn btn-light" href="{% url 'viewer:archive-download' archive.pk %}">Download archive</a>
@@ -385,14 +399,18 @@
     {% endif %}
     {% if user.is_authenticated %}
     {% if user_archive_preferences.favorite_group == 0 %}
-    <a class="btn btn-light"
-      href="{% url 'viewer:user-archive-preferences' archive.pk 'favorite' %}">Favorite</a>
+    <form method="POST" action="{% url 'viewer:user-archive-preferences' archive.pk 'favorite' %}" class="d-inline">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-light">Favorite</button>
+    </form>
     {% else %}
-    <a class="btn btn-light"
-      href="{% url 'viewer:user-archive-preferences' archive.pk 'unfavorite' %}">Unfavorite</a>
+    <form method="POST" action="{% url 'viewer:user-archive-preferences' archive.pk 'unfavorite' %}" class="d-inline">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-light">Unfavorite</button>
+    </form>
     {% endif %}
     {% endif %}
-    {% if perms.viewer.change_archive %}
+    {% if edit_form %}
     <button class="btn btn-secondary collapse-icon" id="edit-archive" data-bs-toggle="collapse"
       data-bs-target="#change-archive-form" name="edit-archive" type="button" aria-label="toggle edit archive">Edit <i
         class="fas fa-chevron-down"></i></button>
@@ -403,7 +421,7 @@
       type="button" aria-label="toggle edit archive">Manage <i class="fas fa-chevron-down"></i></button>
     {% endif %}
     {% else %}
-    {% if perms.viewer.change_archive %}
+    {% if edit_form %}
     <button class="btn btn-secondary collapse-icon" id="edit-archive" data-bs-toggle="collapse"
       data-bs-target="#change-archive-form" name="edit-archive" type="button" aria-label="toggle edit archive">Edit <i
         class="fas fa-chevron-down"></i></button>
@@ -473,12 +491,17 @@
     {% endif %}
     {% endif %}
     {% if perms.viewer.mark_similar_archive %}
-    <a class="btn shrink-btn" href="{% url 'viewer:archive-mark-similar' archive.pk %}">mark similar</a>
-    <a class="btn shrink-btn" href="{% url 'viewer:archive-mark-similar' archive.pk %}?use-recycled=1">mark
-      similar (incl. recycled)</a>
+    <form method="POST" action="{% url 'viewer:archive-mark-similar' archive.pk %}" class="d-inline">
+      {% csrf_token %}
+      <button type="submit" class="btn shrink-btn">mark similar</button>
+      <button type="submit" name="use-recycled" value="1" class="btn shrink-btn">mark similar (incl. recycled)</button>
+    </form>
     {% endif %}
     {% if user.is_staff %}
-    <a class="btn shrink-btn" href="{% url 'viewer:check-convert-type' archive.pk %}">convert zip</a>
+    <form method="POST" action="{% url 'viewer:check-convert-type' archive.pk %}" class="d-inline">
+      {% csrf_token %}
+      <button type="submit" class="btn shrink-btn">convert zip</button>
+    </form>
     {% endif %}
     {% if perms.viewer.update_metadata %}
     <form method="POST" action="{% url 'viewer:archive-recall-api' archive.pk %}" class="d-inline">
@@ -515,12 +538,10 @@
     <a class="btn shrink-btn open-modal" href="{% url 'viewer:archive-delete' archive.pk %}"
       data-popup-url="{% url 'viewer:archive-delete' archive.pk %}?inline=1" role="button">delete</a>
     {% if archive.gallery %}
-    <a class="btn shrink-btn" href="{% url 'viewer:gallery-tool' archive.gallery.pk 'toggle-hidden' %}">{% if archive.gallery.hidden %}open{% else %}hidden{% endif %}</a>
-    {% endif %}
-    {% if mode == 'view' %}
-    <a class="btn shrink-btn" href="{% url 'viewer:archive-edit' archive.pk 'edit' %}">edit</a>
-    {% else %}
-    <a class="btn shrink-btn" href="{% url 'viewer:archive' archive.pk %}">view</a>
+    <form method="POST" action="{% url 'viewer:gallery-tool' archive.gallery.pk 'toggle-hidden' %}" class="d-inline">
+      {% csrf_token %}
+      <button type="submit" class="btn shrink-btn">{% if archive.gallery.hidden %}open{% else %}hidden{% endif %}</button>
+    </form>
     {% endif %}
     <a class="btn shrink-btn" href="{% url 'admin:viewer_archive_change' archive.pk %}">admin</a>
     {% endif %}
@@ -535,7 +556,7 @@
     <a class="btn shrink-btn" href="?{% url_replace 'view' 'single' %}">single</a>
   </li>
     {% endif %}
-  {% if perms.viewer.change_archive %}
+  {% if edit_form %}
   <li class="subtitle">
     {% include 'viewer/include/archive_edit.html' %}
   </li>
@@ -656,90 +677,6 @@
   {% endif %}
 
   {% if user.is_authenticated %}
-  {% if mode == "edit" and user.is_staff %}
-  <!-- EDIT VIEW  -->
-  <li class="subtitle mt-4">
-    <a href="{% url 'viewer:archive-generate-matches' archive.pk %}">generate matches internally</a> >>
-    <a href="{% url 'viewer:archive-generate-matches' archive.pk %}?clear">generate matches internally with cleared
-      title</a> >>
-    <span class="dropdown">
-      <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">match</button>
-      <div class="dropdown-menu">
-        <a class="dropdown-item" href="#" onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{% static 'favicon-160.png' %}', 'match_archive', {archive: {{ archive.pk }}, match_filter: ''}); return false;">All</a>
-        {% for matcher, priority in matchers %}
-        <a class="dropdown-item" href="#"
-          onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{% static 'favicon-160.png' %}', 'match_archive', {archive: {{ archive.pk }}, match_filter: '{{ matcher }}'}); return false;">{{ matcher }}</a>
-        {% endfor %}
-      </div>
-    </span> >>
-    <a href="{% url 'viewer:archive-update-tool' archive.pk 'clear-possible-matches' %}">Clear possible matches</a>
-  </li>
-  <li class="subtitle">
-    <form action="{% url 'viewer:archive-update' archive.pk %}" method="POST">{% csrf_token %}
-      <table class="table">
-        {{ form }}
-      </table>
-      {% if image_formset %}
-      {{ image_formset.non_form_errors }}
-      {{ image_formset.management_form }}
-      <div id="update">
-        <button type="submit" class="btn btn-light">Update</button>
-      </div>
-      <div class="text-center">
-        <div class="row">
-          {% for form in image_formset %}
-          {{ form.id }}
-          <div class="thumbnail text-center col-md-2 col-sm-6">
-            <img alt="" src="{% if form.instance.extracted %}{{ form.instance.thumbnail.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}" />
-            <p>{{ form.position.label }}</p>
-            <p>{{ form.position }}</p>
-            {% if image_formset.can_delete %}
-            <p>{{ form.DELETE }}<label for="{{ form.DELETE.input }}">Delete</label></p>
-            {% endif %}
-          </div>
-          {% endfor %}
-        </div>
-      </div>
-      <div id="update">
-        <button type="submit" class="btn btn-light">Update</button>
-      </div>
-
-      {% endif %}
-    </form>
-    <!-- Next/Prev page links  -->
-    {% if image_queryset and image_queryset.paginator.num_pages > 1 %}
-    <div>
-      <nav aria-label="Middle navigation">
-        <ul class="pagination justify-content-center my-0">
-          <li class="page-item{% if image_queryset.number == 1 %} disabled{% endif %}">
-            <a class="page-link" href="?{% url_replace 'page' '1' %}" aria-label="First">
-              <span aria-hidden="true">&laquo;</span>
-            </a>
-          </li>
-          {% if image_queryset.has_previous %}
-            <li class="page-item"><a class="page-link" href="?{% url_replace 'page' image_queryset.previous_page_number %}">Previous</a></li>
-          {% else %}
-            <li class="page-item disabled"><a class="page-link" href="#">Previous</a></li>
-          {% endif %}
-          <li class="page-item">
-            <div class="mid-item">Page {{ image_queryset.number }} of {{ image_queryset.paginator.num_pages }}</div>
-          </li>
-          {% if image_queryset.has_next %}
-            <li class="page-item"><a class="page-link" href="?{% url_replace 'page' image_queryset.next_page_number %}">Next</a></li>
-          {% else %}
-            <li class="page-item disabled"><a class="page-link" href="#">Next</a></li>
-          {% endif %}
-          <li class="page-item{% if image_queryset.number == image_queryset.paginator.num_pages %} disabled{% endif %}">
-            <a class="page-link" href="?{% url_replace 'page' image_queryset.paginator.num_pages %}" aria-label="Last">
-              <span aria-hidden="true">&raquo;</span>
-            </a>
-          </li>
-        </ul>
-      </nav>
-    </div>
-    {% endif %}
-  </li>
-  {% else %}
   <!-- COVER VIEW  -->
   <li class="text-center" id="img-container">
     {% for img in images.object_list %}
@@ -766,7 +703,6 @@
       <img class="img-fluid mx-auto" alt="" src="{% if img.thumbnail.name %}{{ img.thumbnail.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}" /></a>{% endif %}
     {% endfor %}
   </li>
-  {% endif %}
   <!-- Next/Prev page links  -->
   {% if images and images.paginator.num_pages > 1 %}
   <li class="text-center">
@@ -804,7 +740,7 @@
 {% endblock %}
 {% block afterJQ %}
 {% load compress %}
-{% if perms.viewer.change_archive %}
+{% if edit_form %}
 {{ edit_form.media }}
 {% endif %}
 {% if perms.viewer.mark_archive %}
@@ -916,7 +852,9 @@
 </script>
 {% endcompress %}
 {% if user.is_staff %}
+<script type="text/javascript" src="{% static 'js/vendor/htmx.min.js' %}"></script>
 <script type="text/javascript" src="{% static 'js/admin.js' %}"></script>
+<script type="text/javascript" src="{% static 'js/archive_images_edit.js' %}"></script>
 <script type="text/javascript" src="{% static 'js/vendor/keys.min.js' %}"></script>
 <script type="text/javascript" src="{% static 'js/archnav.js' %}"></script>
 {% include "viewer/include/viewer_modal.html" %}

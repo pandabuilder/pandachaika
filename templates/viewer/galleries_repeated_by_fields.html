@@ -1,410 +1,365 @@
 {% extends "viewer/base.html" %}
-{% block title %}Similar galleries by field | {{ block.super }}{% endblock %}
+{% load static dict_key viewer_extras %}
+{% block title %}Similar Galleries by Fields | {{ block.super }}{% endblock %}
 {% block sidebar %}{% endblock %}
-{% load static %}
-{% load dict_key %}
-{% block content %}
-  {% load viewer_extras %}
-  {% if messages %}
-    {% for message in messages %}
-      <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
-    {% endfor %}
-  {% endif %}
-  <!-- Non-matched galleries  -->
-  <div class="page-header">
-    <h2>Similar Galleries by fields</h2>
-    <p class="lead">Number of gallery groups (by title, by size): ({{ by_title|length }}, {{ by_filesize|length }})</p>
-  </div>
-  <form action="{% url 'viewer:galleries-by-field' %}" method="GET">
-    {% for field in form %}
-      <div class="page-line">
-        {{ field.errors }}
-        {{ field }}
-      </div>
-    {% endfor %}
-    <div class="page-line row g-0 align-items-center">
-    <div class="col-md-auto">
-      <button id="toggle-all" class="btn btn-secondary" type="button">Toggle All</button>
-    </div>
-      {% for field in fields_form %}
-          <div class="col-md-auto">
-          <div class="input-group align-items-center">
-            {{ field.label_tag }}{{ field }}
-          </div>
-          </div>
-      {% endfor %}
-    <div class="col-md-auto">
-      <label for="filecount-from">Filecount</label>
-    </div>
-    <div class="col-md-auto">
-      <input id="filecount-from" size="2" type="text" class="form-control me-sm-1" name="filecount_from" value="{{ request.GET.filecount_from }}" placeholder="from"/>
-    </div>
-    <div class="col-md-auto">
-      <input size="2" type="text" class="form-control me-sm-1" name="filecount_to" value="{{ request.GET.filecount_to }}" placeholder="to"/>
-    </div>
-    <div class="col-md-auto">
-      <input title="Download type" class="form-control" name="dl_type" placeholder="Download type" value="{{ request.GET.dl_type }}">
-    </div>
-    <div class="col-md-auto g-1">
-        <div class="form-check">
-        <input id="checkbox-f2" class="form-check-input" type="checkbox" name="has-archives" value="1" {% if "has-archives" in request.GET %}checked{% endif %}><label for="checkbox-f2">Has Archives</label>
-        </div>
-    </div>
-    <div class="col-md-auto g-1">
-        <div class="form-check">
-        <input id="checkbox-f7" class="form-check-input" type="checkbox" name="has-size" value="1" {% if "has-size" in request.GET %}checked{% endif %}><label for="checkbox-f7">Has size</label>
-        </div>
-    </div>
-    <div class="col-md-auto g-1">
-        <div class="form-check">
-        <input id="checkbox-f-groups" class="form-check-input" type="checkbox" name="is-not-in-groups" value="1" {% if "is-not-in-groups" in request.GET %}checked{% endif %}><label for="checkbox-f-groups">Is not in Match Groups</label>
-        </div>
-    </div>
-    <div class="col-md-auto g-1">
-        <div class="form-check">
-        <input id="checkbox-f-single-group" class="form-check-input" type="checkbox" name="is-in-single-group" value="1" {% if "is-in-single-group" in request.GET %}checked{% endif %}><label for="checkbox-f-single-group">Is in Single Match Groups</label>
-        </div>
-    </div>
-    <div class="col-md-auto g-1">
-        <div class="form-check">
-        <input id="checkbox-f-inline" class="form-check-input" type="checkbox" name="inline-thumbnails" value="1" {% if "inline-thumbnails" in request.GET %}checked{% endif %}><label for="checkbox-f-inline">Inline thumbnails</label>
-        </div>
-    </div>
-    </div>
-  <div class="page-line row g-0 align-items-center">
-        <div class="col-md-auto g-1">
-            <h6 class="form-check">Grouping (must choose one): </h6>
-        </div>
-        <div class="col-md-auto g-1">
-            <div class="form-check">
-            <input id="checkbox-f6" class="form-check-input" type="checkbox" name="by-title" value="1" {% if "by-title" in request.GET %}checked{% endif %}><label for="checkbox-f6">By title</label>
-            </div>
-        </div>
-        <div class="col-md-auto g-1">
-            <div class="form-check">
-            <input id="checkbox-f3" class="form-check-input" type="checkbox" name="by-filesize" value="1" {% if "by-filesize" in request.GET %}checked{% endif %}><label for="checkbox-f3">By filesize</label>
-            </div>
-        </div>
-    </div>
-    <div class="page-line row g-0 align-items-center">
-        <div class="col-md-auto g-1">
-            <h6 class="form-check">Grouping options (title): </h6>
-        </div>
-        <div class="col-md-auto g-1">
-            <div class="form-check">
-            <input id="checkbox-f1" class="form-check-input" type="checkbox" name="same-uploader" value="1" {% if "same-uploader" in request.GET %}checked{% endif %}><label for="checkbox-f1">Same uploader</label>
-            </div>
-        </div>
-        <div class="col-md-auto g-1">
-            <div class="form-check">
-            <input id="checkbox-f11" class="form-check-input" type="checkbox" name="same-description" title="Excludes empty descriptions" value="1" {% if "same-description" in request.GET %}checked{% endif %}><label for="checkbox-f11">Same description</label>
-            </div>
-        </div>
-        <div class="col-md-auto g-1">
-            <div class="form-check">
-            <input id="checkbox-f13" class="form-check-input" type="checkbox" name="range-per-group-provider" value="1" {% if "range-per-group-provider" in request.GET %}checked{% endif %}><label for="checkbox-f13">Define min-max (including) per group per provider</label>
-            </div>
-        </div>
-        <div class="col-md-1 g-1">
-            <label>
-                <input type="number" class="form-control" name="min-group" min="0" step="1" value="{{ request.GET|dict_key:'min-group' }}" placeholder="Min"/>
-            </label>
-        </div>
-        <div class="col-md-1 g-1">
-            <label>
-                <input type="number" class="form-control" name="max-group" min="0" step="1" value="{{ request.GET|dict_key:'max-group' }}" placeholder="Max"/>
-            </label>
-        </div>
-        <div class="col-md-auto g-1">
-            <div class="form-check">
-            <input id="checkbox-limit-diff-filecount" class="form-check-input" type="checkbox" name="limit-diff-filecount" value="1" {% if "limit-diff-filecount" in request.GET %}checked{% endif %}><label for="checkbox-limit-diff-filecount">Define max difference in filecount</label>
-            </div>
-        </div>
-        <div class="col-md-1 g-1">
-            <label>
-                <input type="number" class="form-control" name="max-diff-filecount" min="0" step="1" value="{{ request.GET|dict_key:'max-diff-filecount' }}" placeholder="Max"/>
-            </label>
-        </div>
-    </div>
-    <div class="page-line row g-0 align-items-center">
-        <div class="col-md-auto g-1">
-            <h6 class="form-check">Field processing (title, uploader, description) for "by title": </h6>
-        </div>
-        <div class="col-md-auto g-1">
-            <div class="form-check">
-            <input id="checkbox-f12" class="form-check-input" type="checkbox" name="ignore-case" value="1" {% if "ignore-case" in request.GET %}checked{% endif %}><label for="checkbox-f12">Ignore case</label>
-            </div>
-        </div>
-        <div class="col-md-auto g-1">
-            <div class="form-check">
-            <input id="checkbox-clear-fields" class="form-check-input" type="checkbox" name="clear-fields" value="1" {% if "clear-fields" in request.GET %}checked{% endif %}><label for="checkbox-clear-fields">Only alphanumeric and space, strip whitespaces, lowercase</label>
-            </div>
-        </div>
-    </div>
-    <div class="page-line row g-1">
-        <div class="col-md-auto">
-            <div class="btn-group">
-                <button type="submit" name="apply" class="btn btn-info">Search</button>
-                <a class="btn btn-light" href="{% url 'viewer:galleries-by-field' %}">Clear</a>
-             </div>
-        </div>
-    </div>
-  </form>
-  <form action="{% url 'viewer:galleries-by-field' %}" method="POST">{% csrf_token %}
-    <!-- Sort selector -->
-    <div class="page-line row g-1 mb-3">
-        <div class="col-md-auto">
-            <label for="sort-by">Sort by:</label>
-            <select id="sort-by" class="form-select">
-                <option value="0">----</option>
-                <option value="1">URL</option>
-                <option value="2">Provider</option>
-                <option value="3">Title</option>
-                <option value="4">Size</option>
-                <option value="5">Images</option>
-                <option value="6">Source URL</option>
-                <option value="7">Uploader</option>
-                <option value="8">DL type</option>
-                <option value="9">Reason</option>
-                <option value="10">Added</option>
-                <option value="11">Has archives</option>
-                <option value="12">Has alt. archives</option>
-            </select>
-        </div>
-        <div class="col-md-auto">
-            <label for="sort-direction">Direction:</label>
-            <select id="sort-direction" class="form-select">
-                <option value="asc">Ascending</option>
-                <option value="desc">Descending</option>
-            </select>
-        </div>
-        <div class="col-md-auto">
-            <button type="button" id="apply-sort" class="btn btn-secondary mt-4">Apply Sort</button>
-        </div>
-    </div>
-    <ul class="list-group">
-      {% for gallery_group_key, gallery_group_value in by_title.items %}
-      {% with group_number=forloop.counter %}
-        <label for="sel-{{ gallery_group_key }}">Title: {{ gallery_group_key }}</label>
-        <table class="table table-bordered table-sm generic-table sortable-table">
-          <thead>
-          <tr>
-            <th>Select</th><th{% if inline_thumbnails %} style="width:15%"{% endif %}>URL</th><th>Provider</th><th>Title</th><th>Size</th><th>Images</th><th>Source URL | Image</th><th>Uploader</th><th>DL type</th><th>Reason</th><th>Added</th><th>Has archives</th><th>Has alt. archives</th>
-          </tr>
-          </thead>
-          <tbody>
-          {% for gallery in gallery_group_value %}
-            <tr>
-              <td class="text-center">
-                <input id="sel-{{ gallery.id }}" class="toggle-list form-check-input" type="checkbox" name="sel-title-{{ group_number }}" value="{{ gallery.pk }}"><label for="sel-{{ gallery.id }}"></label>
-                <input id="ord-{{ gallery.id }}" type="hidden" name="ord-{{ gallery.id }}" value="{{ forloop.counter }}">
-              </td>
-              <td data-sort-value="{{ gallery.pk }}">
-                  {% if gallery.thumbnail.name and inline_thumbnails %}
-                      {% include 'viewer/include/gallery_cover.html' with show_artist=1 %}
-                  {% else %}
-                    <a href="{% url 'viewer:gallery' gallery.pk %}">{{ gallery.pk }}</a>
-                  {% endif %}
-              </td>
-              <td data-sort-value="{{ gallery.provider }}">
-                {{ gallery.provider }}
-              </td>
-              <td data-sort-value="{{ gallery.title }}">
-                {{ gallery.title }}
-              </td>
-              <td data-sort-value="{{ gallery.filesize }}">
-                {{ gallery.filesize }} ({{ gallery.filesize|filesizeformat }})
-              </td>
-              <td data-sort-value="{{ gallery.filecount }}">
-                {{ gallery.filecount }}
-              </td>
-              <td data-sort-value="{{ gallery.get_link }}">
-                {% if gallery.thumbnail.name %}
-                  <a href="{{ gallery.get_link }}" class="img-preview" data-image-url="{{ gallery.thumbnail.url }}" rel="popover noopener noreferrer nofollow">{{ gallery.get_link }}</a>
-                {% else %}
-                  {{ gallery.get_link|urlize_all_rel }}
-                {% endif %}
-              </td>
-              <td data-sort-value="{{ gallery.uploader }}">
-                {{ gallery.uploader }}
-              </td>
-              <td data-sort-value="{{ gallery.dl_type }}">
-                {{ gallery.dl_type }}
-              </td>
-              <td data-sort-value="{{ gallery.reason }}">
-                {{ gallery.reason }}
-              </td>
-              <td data-sort-value="{{ gallery.create_date|date:'U' }}">
-                {{ gallery.create_date|date:"DATETIME_FORMAT" }}
-              </td>
-              <td data-sort-value="{{ gallery.archive_set.all|yesno:'1,0' }}">
-                {{ gallery.archive_set.all|yesno:"yes,no" }}
-              </td>
-              <td data-sort-value="{{ gallery.alternative_sources.all|yesno:'1,0' }}">
-                {{ gallery.alternative_sources.all|yesno:"yes,no" }}
-              </td>
-            </tr>
-          {% endfor %}
-          </tbody>
-        </table>
-      {% endwith %}
-      {% endfor %}
-    </ul>
-    <ul class="list-group">
-      {% for gallery_group_key, gallery_group_value in by_filesize.items %}
-      {% with group_number=forloop.counter %}
-        <label for="sel-{{ gallery_group_key }}">Filesize: {{ gallery_group_key }}</label>
-        <table class="table table-bordered table-sm generic-table sortable-table">
-          <thead>
-          <tr>
-              <th>Select</th><th>URL</th><th>Provider</th><th>Title</th><th>Size</th><th>Images</th><th>Source URL | Image</th><th>Uploader</th><th>DL type</th><th>Reason</th><th>Added</th><th>Has archives</th><th>Has alt. archives</th>
-          </tr>
-          </thead>
-          <tbody>
-          {% for gallery in gallery_group_value %}
-            <tr>
-              <td class="text-center">
-                <input id="sel-{{ gallery.id }}" class="toggle-list form-check-input" type="checkbox" name="sel-filesize-{{ group_number }}" value="{{ gallery.pk }}"><label for="sel-{{ gallery.id }}"></label>
-                <input id="ord-{{ gallery.id }}" type="hidden" name="ord-{{ gallery.id }}" value="{{ forloop.counter }}">
-              </td>
-              <td data-sort-value="{{ gallery.pk }}">
-                  {% if gallery.thumbnail.name and inline_thumbnails %}
-                      {% include 'viewer/include/gallery_cover.html' with show_artist=1 %}
-                  {% else %}
-                    <a href="{% url 'viewer:gallery' gallery.pk %}">{{ gallery.pk }}</a>
-                  {% endif %}
-              </td>
-              <td data-sort-value="{{ gallery.provider }}">
-                {{ gallery.provider }}
-              </td>
-              <td data-sort-value="{{ gallery.title }}">
-                {{ gallery.title }}
-              </td>
-              <td data-sort-value="{{ gallery.filesize }}">
-                {{ gallery.filesize }} ({{ gallery.filesize|filesizeformat }})
-              </td>
-              <td data-sort-value="{{ gallery.filecount }}">
-                {{ gallery.filecount }}
-              </td>
-              <td data-sort-value="{{ gallery.get_link }}">
-                {% if gallery.thumbnail.name %}
-                  <a href="{{ gallery.get_link }}" class="img-preview" data-image-url="{{ gallery.thumbnail.url }}" rel="popover noopener noreferrer nofollow">{{ gallery.get_link }}</a>
-                {% else %}
-                  {{ gallery.get_link|urlize_all_rel }}
-                {% endif %}
-              </td>
-              <td data-sort-value="{{ gallery.uploader }}">
-                {{ gallery.uploader }}
-              </td>
-              <td data-sort-value="{{ gallery.dl_type }}">
-                {{ gallery.dl_type }}
-              </td>
-              <td data-sort-value="{{ gallery.reason }}">
-                {{ gallery.reason }}
-              </td>
-              <td data-sort-value="{{ gallery.create_date|date:'U' }}">
-                {{ gallery.create_date|date:"DATETIME_FORMAT" }}
-              </td>
-              <td data-sort-value="{{ gallery.archive_set.all|yesno:'1,0' }}">
-                {{ gallery.archive_set.all|yesno:"yes,no" }}
-              </td>
-              <td data-sort-value="{{ gallery.alternative_sources.all|yesno:'1,0' }}">
-                {{ gallery.alternative_sources.all|yesno:"yes,no" }}
-              </td>
-            </tr>
-          {% endfor %}
-          </tbody>
-        </table>
-      {% endwith %}
-      {% endfor %}
-    </ul>
-    <div class="mb-3">
-      <input size="10" class="form-control" name="reason" value="" placeholder="Reason" maxlength="200"/>
-    </div>
-  {% if perms.viewer.add_gallerymatchgroup %}
-    <button type="submit" name="create_gallery_match_groups" class="btn btn-light">Create Gallery Match Groups (will delete groups that the selected galleries are already member of)</button>
-  {% endif %}
-  {% if perms.viewer.mark_delete_gallery %}
-    <button type="submit" name="delete_galleries" class="btn btn-light">Mark selected galleries as deleted</button>
-  {% endif %}
-  </form>
-{% endblock %}
-{% block afterJQ %}
-    {{ fields_form.media }}
+
+{% block extra_head %}
   {% load compress %}
   {% compress css %}
     <link href="{% static 'css/vendor/jal/style.css' %}" type="text/css" media="all" rel="stylesheet" />
+    <link href="{% static 'css/dm-pages.css' %}" type="text/css" rel="stylesheet" />
   {% endcompress %}
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+  {% include "viewer/include/dm_messages.html" %}
+
+  <!-- Header -->
+  <div class="dm-page-header">
+    <div>
+      <h2 class="h3 mb-1"><i class="fas fa-layer-group text-info me-2"></i>Similar Galleries by Fields</h2>
+      <p class="mb-0 small">
+        Group repeated galleries by title or file size, sort rows to set group order, then create Gallery Match Groups or mark duplicates deleted.
+      </p>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      <a href="{% url 'viewer:gallery-match-groups' %}" class="btn btn-outline-info btn-sm">
+        <i class="fas fa-object-group me-1"></i>Match Groups
+      </a>
+      <a href="{% url 'viewer:manage-galleries' %}" class="btn btn-outline-secondary btn-sm">
+        <i class="fas fa-images me-1"></i>Manage Galleries
+      </a>
+    </div>
+  </div>
+
+  <!-- Summary tiles -->
+  <div class="row g-2 mb-3">
+    <div class="col-4">
+      <a class="dm-stat{% if 'by-title' in request.GET %} active{% endif %}" href="?{% url_filter 'by-title' '1' %}">
+        <div class="dm-lbl">By title</div>
+        <div class="dm-val text-info">{{ by_title|length }}</div>
+        <div class="dm-stat-sub">click to group by title</div>
+      </a>
+    </div>
+    <div class="col-4">
+      <a class="dm-stat{% if 'by-filesize' in request.GET %} active{% endif %}" href="?{% url_filter 'by-filesize' '1' %}">
+        <div class="dm-lbl">By filesize</div>
+        <div class="dm-val text-warning">{{ by_filesize|length }}</div>
+        <div class="dm-stat-sub">click to group by filesize</div>
+      </a>
+    </div>
+    <div class="col-4">
+      <div class="dm-stat">
+        <div class="dm-lbl">Total groups</div>
+        <div class="dm-val text-success">{{ total_groups }}</div>
+        <div class="dm-stat-sub">across active groupings</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <form action="{% url 'viewer:galleries-by-field' %}" method="GET" class="dm-card" id="filter-form">
+    <div class="p-3">
+      <div class="row g-2 align-items-end">
+        <div class="col-lg-5">
+          <label class="form-label dm-lbl" for="{{ form.title.id_for_label }}">Gallery title</label>
+          {{ form.title.errors }}
+          {{ form.title }}
+        </div>
+        <div class="col-lg-4">
+          <label class="form-label dm-lbl" for="{{ form.tags.id_for_label }}">Tags</label>
+          {{ form.tags.errors }}
+          {{ form.tags }}
+        </div>
+        <div class="col-lg-3 d-flex flex-wrap gap-2">
+          <button type="submit" name="apply" class="btn btn-info btn-sm"><i class="fas fa-search me-1"></i>Search</button>
+          <a class="btn btn-outline-light btn-sm" href="{% url 'viewer:galleries-by-field' %}" title="Clear all filters"><i class="fas fa-times me-1"></i>Clear</a>
+          <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#more-filters" aria-expanded="false" aria-controls="more-filters">
+            <i class="fas fa-sliders-h me-1"></i>More options
+          </button>
+        </div>
+      </div>
+
+      <!-- Primary grouping & quick toggles -->
+      <div class="d-flex flex-wrap align-items-center gap-3 mt-3">
+        <div class="d-flex align-items-center gap-2">
+          <span class="dm-lbl">Group by</span>
+          <div class="dm-toggles">
+            <input id="checkbox-f6" class="btn-check" type="checkbox" name="by-title" value="1" autocomplete="off"{% if "by-title" in request.GET %} checked{% endif %}>
+            <label class="btn btn-outline-secondary" for="checkbox-f6">By title</label>
+            <input id="checkbox-f3" class="btn-check" type="checkbox" name="by-filesize" value="1" autocomplete="off"{% if "by-filesize" in request.GET %} checked{% endif %}>
+            <label class="btn btn-outline-secondary" for="checkbox-f3">By filesize</label>
+          </div>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+          <span class="dm-lbl">Filter</span>
+          <div class="dm-toggles">
+            <input id="checkbox-f2" class="btn-check" type="checkbox" name="has-archives" value="1" autocomplete="off"{% if "has-archives" in request.GET %} checked{% endif %}>
+            <label class="btn btn-outline-secondary" for="checkbox-f2">Has archives</label>
+            <input id="checkbox-f7" class="btn-check" type="checkbox" name="has-size" value="1" autocomplete="off"{% if "has-size" in request.GET %} checked{% endif %}>
+            <label class="btn btn-outline-secondary" for="checkbox-f7">Has size</label>
+            <input id="checkbox-f-groups" class="btn-check" type="checkbox" name="is-not-in-groups" value="1" autocomplete="off"{% if "is-not-in-groups" in request.GET %} checked{% endif %}>
+            <label class="btn btn-outline-secondary" for="checkbox-f-groups">Not in match groups</label>
+            <input id="checkbox-f-single-group" class="btn-check" type="checkbox" name="is-in-single-group" value="1" autocomplete="off"{% if "is-in-single-group" in request.GET %} checked{% endif %}>
+            <label class="btn btn-outline-secondary" for="checkbox-f-single-group">Single match group</label>
+            <input id="checkbox-f-inline" class="btn-check" type="checkbox" name="inline-thumbnails" value="1" autocomplete="off"{% if "inline-thumbnails" in request.GET %} checked{% endif %}>
+            <label class="btn btn-outline-secondary" for="checkbox-f-inline"><i class="fas fa-th-large me-1"></i>Cover view</label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Advanced & title-grouping options -->
+      <div class="collapse" id="more-filters">
+        <div class="row g-2 mt-2 pt-2 border-top" style="border-color: var(--pg-border-subtle) !important;">
+          {% for field in fields_form %}
+            <div class="col-md-6 col-lg-3">
+              <label class="form-label dm-lbl" for="{{ field.id_for_label }}">{{ field.label }}</label>
+              {{ field }}
+            </div>
+          {% endfor %}
+          <div class="col-6 col-lg-2">
+            <label class="form-label dm-lbl" for="filecount-from">Images from</label>
+            <input id="filecount-from" type="number" min="0" class="form-control form-control-sm" name="filecount_from" value="{{ request.GET.filecount_from }}" placeholder="from">
+          </div>
+          <div class="col-6 col-lg-2">
+            <label class="form-label dm-lbl" for="filecount-to">Images to</label>
+            <input id="filecount-to" type="number" min="0" class="form-control form-control-sm" name="filecount_to" value="{{ request.GET.filecount_to }}" placeholder="to">
+          </div>
+          <div class="col-md-6 col-lg-2">
+            <label class="form-label dm-lbl" for="f-dl-type">Download type</label>
+            <input id="f-dl-type" class="form-control form-control-sm" name="dl_type" placeholder="Download type" value="{{ request.GET.dl_type }}">
+          </div>
+        </div>
+
+        <div class="row g-2 align-items-center mt-2 pt-2 border-top" style="border-color: var(--pg-border-subtle) !important;">
+          <div class="col-12">
+            <span class="dm-lbl me-2">Title grouping &amp; normalization</span>
+          </div>
+          <div class="col-auto">
+            <div class="dm-toggles">
+              <input id="checkbox-f1" class="btn-check" type="checkbox" name="same-uploader" value="1" autocomplete="off"{% if "same-uploader" in request.GET %} checked{% endif %}>
+              <label class="btn btn-outline-secondary" for="checkbox-f1">Same uploader</label>
+              <input id="checkbox-f11" class="btn-check" type="checkbox" name="same-description" value="1" autocomplete="off"{% if "same-description" in request.GET %} checked{% endif %}>
+              <label class="btn btn-outline-secondary" for="checkbox-f11" title="Excludes empty descriptions">Same description</label>
+              <input id="checkbox-f12" class="btn-check" type="checkbox" name="ignore-case" value="1" autocomplete="off"{% if "ignore-case" in request.GET %} checked{% endif %}>
+              <label class="btn btn-outline-secondary" for="checkbox-f12">Ignore case</label>
+              <input id="checkbox-clear-fields" class="btn-check" type="checkbox" name="clear-fields" value="1" autocomplete="off"{% if "clear-fields" in request.GET %} checked{% endif %}>
+              <label class="btn btn-outline-secondary" for="checkbox-clear-fields" title="Only alphanumeric and space, strip whitespaces, lowercase">Clean fields</label>
+            </div>
+          </div>
+          <div class="col-auto d-flex align-items-center gap-1">
+            <div class="form-check mb-0">
+              <input id="checkbox-f13" class="form-check-input" type="checkbox" name="range-per-group-provider" value="1"{% if "range-per-group-provider" in request.GET %} checked{% endif %}>
+              <label class="form-check-label small" for="checkbox-f13">Per-provider range</label>
+            </div>
+            <input type="number" class="form-control form-control-sm" style="width: 4.5rem;" name="min-group" min="0" step="1" value="{{ request.GET|dict_key:'min-group' }}" placeholder="Min" aria-label="Min per provider">
+            <input type="number" class="form-control form-control-sm" style="width: 4.5rem;" name="max-group" min="0" step="1" value="{{ request.GET|dict_key:'max-group' }}" placeholder="Max" aria-label="Max per provider">
+          </div>
+          <div class="col-auto d-flex align-items-center gap-1">
+            <div class="form-check mb-0">
+              <input id="checkbox-limit-diff-filecount" class="form-check-input" type="checkbox" name="limit-diff-filecount" value="1"{% if "limit-diff-filecount" in request.GET %} checked{% endif %}>
+              <label class="form-check-label small" for="checkbox-limit-diff-filecount">Max image diff</label>
+            </div>
+            <input type="number" class="form-control form-control-sm" style="width: 4.5rem;" name="max-diff-filecount" min="0" step="1" value="{{ request.GET|dict_key:'max-diff-filecount' }}" placeholder="Max" aria-label="Max image count diff">
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-3 d-none" data-dm-chips-wrapper>
+        <div class="d-flex flex-wrap align-items-center gap-2">
+          <span class="dm-lbl"><i class="fas fa-filter me-1"></i>Active</span>
+          <div class="dm-chips" id="filter-chips"></div>
+        </div>
+      </div>
+    </div>
+  </form>
+
+  <!-- Results & Bulk Actions -->
+  <form action="{% url 'viewer:galleries-by-field' %}" method="POST" id="repeated-galleries-form">
+    {% csrf_token %}
+
+    {% if total_groups > 0 %}
+      <!-- Group toolbar (select all & intra-group sort) -->
+      <div class="dm-card p-2 px-3">
+        <div class="d-flex flex-wrap align-items-center gap-2">
+          <div class="form-check mb-0">
+            <input type="checkbox" class="form-check-input" id="toggle-all">
+            <label class="form-check-label small" for="toggle-all">Select all across {{ total_groups }} group{{ total_groups|pluralize }}</label>
+          </div>
+          <div class="ms-auto d-flex flex-wrap align-items-center gap-2">
+            <label class="dm-lbl mb-0" for="sort-by">Sort rows within groups</label>
+            <select id="sort-by" class="form-select form-select-sm" style="width: auto;">
+              <option value="0">----</option>
+              <option value="1">ID</option>
+              <option value="2">Provider</option>
+              <option value="3">Title</option>
+              <option value="4">Size</option>
+              <option value="5">Images</option>
+              <option value="6">Source URL</option>
+              <option value="7">Uploader</option>
+              <option value="8">DL type</option>
+              <option value="9">Reason</option>
+              <option value="10">Added</option>
+              <option value="11">Has archives</option>
+              <option value="12">Has alt. archives</option>
+            </select>
+            <select id="sort-direction" class="form-select form-select-sm" style="width: auto;" aria-label="Sort direction">
+              <option value="asc">Ascending</option>
+              <option value="desc">Descending</option>
+            </select>
+            <button type="button" id="apply-sort" class="btn btn-sm btn-outline-info">
+              <i class="fas fa-sort me-1"></i>Apply Sort
+            </button>
+          </div>
+        </div>
+      </div>
+    {% endif %}
+
+    <div id="groups-root">
+      {% if not has_grouping %}
+        <div class="dm-card">
+          <div class="dm-empty">
+            <i class="fas fa-layer-group"></i>
+            Choose a grouping method above (<strong>By title</strong> or <strong>By filesize</strong>) and click <strong>Search</strong>.
+          </div>
+        </div>
+      {% elif total_groups == 0 %}
+        <div class="dm-card">
+          <div class="dm-empty">
+            <i class="fas fa-check-circle"></i>No repeated gallery groups found matching these filters.
+          </div>
+        </div>
+      {% else %}
+        {% include "viewer/include/repeated_galleries_group_table.html" with groups=by_title section_label="Title" section_id="title" badge_class="bg-info text-dark" %}
+        {% include "viewer/include/repeated_galleries_group_table.html" with groups=by_filesize section_label="Filesize" section_id="filesize" badge_class="bg-warning text-dark" %}
+      {% endif %}
+    </div>
+
+    {% if perms.viewer.add_gallerymatchgroup or perms.viewer.mark_delete_gallery %}
+      <div class="dm-actionbar">
+        <div class="d-flex flex-wrap align-items-center gap-2">
+          <span class="dm-sel-count" data-dm-sel-count>None selected</span>
+          <input class="form-control form-control-sm dm-actionbar-extra" style="max-width: 14rem;" name="reason" value="" placeholder="Reason" maxlength="200">
+          <div class="ms-auto d-flex flex-wrap gap-2">
+            {% if perms.viewer.add_gallerymatchgroup %}
+              <button type="submit" name="create_gallery_match_groups" class="btn btn-sm btn-primary" data-dm-needs-selection disabled
+                      data-dm-confirm="Create Gallery Match Groups for {n} selected galler(ies)? Existing groups containing these galleries will be replaced.">
+                <i class="fas fa-object-group me-1"></i>Create Match Groups
+              </button>
+            {% endif %}
+            {% if perms.viewer.mark_delete_gallery %}
+              <button type="submit" name="delete_galleries" class="btn btn-sm btn-outline-danger" data-dm-needs-selection disabled
+                      data-dm-confirm="Mark {n} selected galler(ies) as deleted?">
+                <i class="fas fa-ban me-1"></i>Mark Deleted
+              </button>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    {% endif %}
+  </form>
+</div>
+{% endblock %}
+
+{% block afterJQ %}
+  {{ fields_form.media }}
+  {% load compress %}
   {% compress js %}
     <script src="{% static 'js/vendor/jal.js' %}"></script>
+    <script src="{% static 'js/dm-pages.js' %}"></script>
   {% endcompress %}
-    <script type="text/javascript" src="{% static 'js/list_operations.js' %}"></script>
-    <script>
-        let tagDataGallery = {};
-        const tagUrlGallery = '{% url 'viewer:api' %}?gt=';
-        function tagToHtml (tag) {
-            return '<div class="tag">' + tag + '</div>'
-        }
-        document.addEventListener("DOMContentLoaded", function() {
-            document.querySelectorAll('.tag-preview-g')?.forEach((element) => {
-                element.addEventListener("click", function (event) {
-                    let el = event.currentTarget;
-                    const pk = event.currentTarget.dataset['bsPk'];
-                    if (tagDataGallery[pk]) {
-                        return tagDataGallery[pk];
-                    } else {
-                        fetch(tagUrlGallery + pk).then(function (response) {
-                            return response.json();
-                        }).then(function (body) {
-                            if (body.tags) {
-                                tagDataGallery[pk] = body.tags.map(tagToHtml);
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      const titleInput = document.getElementById('{{ form.title.id_for_label }}');
+      if (titleInput) titleInput.dataset.dmHotkey = '/';
 
-                                const popover = new bootstrap.Popover(el, {
-                                    content: tagDataGallery[pk].join(""),
-                                    html: true,
-                                })
-                                popover.show();
+      const root = document.getElementById('groups-root');
+      const sel = DM.selection({
+        root: root,
+        checkbox: '.rg-checkbox',
+        toggleAll: document.getElementById('toggle-all'),
+        rowClick: true,
+        onChange: function () {
+          root.querySelectorAll('.rg-group').forEach(function (card) {
+            const groupToggle = card.querySelector('.rg-group-toggle');
+            if (!groupToggle) return;
+            const boxes = Array.from(card.querySelectorAll('.rg-checkbox'));
+            const checked = boxes.filter(function (cb) { return cb.checked; }).length;
+            groupToggle.checked = boxes.length > 0 && checked === boxes.length;
+            groupToggle.indeterminate = checked > 0 && checked < boxes.length;
+          });
+        },
+      });
 
-                            }
-                        });
-                    }
-                });
-            });
+      root.querySelectorAll('.rg-group-toggle').forEach(function (groupToggle) {
+        groupToggle.addEventListener('change', function () {
+          const card = groupToggle.closest('.rg-group');
+          card.querySelectorAll('.rg-checkbox').forEach(function (cb) { cb.checked = groupToggle.checked; });
+          if (sel) sel.refresh();
         });
-        $(document).ready(function() {
-            $('#apply-sort').on('click', function() {
-                const sortBy = parseInt($('#sort-by').val());
-                const sortDirection = $('#sort-direction').val();
-                
-                if (sortBy === 0) return; // No sorting selected
-                
-                $('.sortable-table').each(function() {
-                    const $table = $(this);
-                    const $tbody = $table.find('tbody');
-                    const $rows = $tbody.find('tr').get();
-                    
-                    $rows.sort(function(a, b) {
-                        const aVal = $(a).find('td').eq(sortBy).data('sort-value');
-                        const bVal = $(b).find('td').eq(sortBy).data('sort-value');
-                        
-                        // Handle numeric values
-                        if (!isNaN(aVal) && !isNaN(bVal)) {
-                            return sortDirection === 'asc' ? aVal - bVal : bVal - aVal;
-                        }
-                        
-                        // Handle string values
-                        const aStr = String(aVal || '').toLowerCase();
-                        const bStr = String(bVal || '').toLowerCase();
-                        return sortDirection === 'asc' ? aStr.localeCompare(bStr) : bStr.localeCompare(aStr);
-                    });
+      });
 
-                    // Reorder rows and update hidden input values
-                    $.each($rows, function(index, row) {
-                        $tbody.append(row);
-                        $(row).find('input[type="hidden"]').val(index + 1);
-                    });
-                });
+      DM.filterChips(document.getElementById('filter-form'), document.getElementById('filter-chips'));
+
+      const more = document.getElementById('more-filters');
+      const hasMore = Array.from(more.querySelectorAll('input, select')).some(function (el) {
+        if (el.type === 'checkbox') return el.checked;
+        if (el.tagName === 'SELECT') return el.selectedOptions && el.selectedOptions.length > 0 && Array.from(el.selectedOptions).some(function (o) { return o.value; });
+        return Boolean(el.value);
+      });
+      if (hasMore) more.classList.add('show');
+
+      // Client-side sort within each group table (updates hidden ord-* inputs to preserve order on POST).
+      const applySort = document.getElementById('apply-sort');
+      if (applySort) {
+        applySort.addEventListener('click', function () {
+          const sortBy = parseInt(document.getElementById('sort-by').value, 10);
+          const sortDirection = document.getElementById('sort-direction').value;
+          if (!sortBy) return;
+          root.querySelectorAll('.sortable-table').forEach(function (table) {
+            const tbody = table.querySelector('tbody');
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+            rows.sort(function (a, b) {
+              const aCell = a.querySelectorAll('td')[sortBy];
+              const bCell = b.querySelectorAll('td')[sortBy];
+              const aVal = aCell ? aCell.dataset.sortValue : '';
+              const bVal = bCell ? bCell.dataset.sortValue : '';
+              const aNum = Number(aVal);
+              const bNum = Number(bVal);
+              if (aVal !== '' && bVal !== '' && !isNaN(aNum) && !isNaN(bNum)) {
+                return sortDirection === 'asc' ? aNum - bNum : bNum - aNum;
+              }
+              const aStr = String(aVal || '').toLowerCase();
+              const bStr = String(bVal || '').toLowerCase();
+              return sortDirection === 'asc' ? aStr.localeCompare(bStr) : bStr.localeCompare(aStr);
             });
+            rows.forEach(function (row, idx) {
+              tbody.appendChild(row);
+              const ord = row.querySelector('input[type="hidden"][name^="ord-"]');
+              if (ord) ord.value = String(idx + 1);
+            });
+          });
         });
-    </script>
+      }
+
+      // Cover view: gallery tags popover.
+      const tagCache = {};
+      root.addEventListener('click', function (e) {
+        const el = e.target.closest('.tag-preview-g');
+        if (!el) return;
+        const pk = el.dataset.bsPk;
+        if (tagCache[pk]) return;
+        fetch('{% url "viewer:api" %}?gt=' + encodeURIComponent(pk))
+          .then(function (r) { return r.json(); })
+          .then(function (body) {
+            if (!body.tags) return;
+            tagCache[pk] = body.tags.map(function (tag) {
+              return '<div class="tag">' + DM.escapeHtml(tag) + '</div>';
+            }).join('');
+            new bootstrap.Popover(el, { content: tagCache[pk], html: true }).show();
+          });
+      });
+    });
+  </script>
 {% endblock %}

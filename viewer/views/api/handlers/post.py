@@ -4,7 +4,7 @@ import json
 import logging
 
 from django.contrib.auth.models import User, AnonymousUser
-from django.http import HttpResponse, HttpRequest, HttpResponseBadRequest, HttpResponseNotFound
+from django.http import HttpResponse, HttpRequest
 from django.http.request import QueryDict
 
 from core.base.utilities import timestamp_or_zero
@@ -16,6 +16,8 @@ from viewer.models import (
     WantedGallery,
 )
 from viewer.utils.functions import archive_group_entry_to_json
+from viewer.views.api.errors import ApiError
+from viewer.views.api.handlers.tasks import task_reference
 from viewer.views.api.common import (
     _get_int,
     _get_str,
@@ -55,10 +57,7 @@ def handle_post_archive_group(request: HttpRequest, data: QueryDict, body: dict,
                 archive_group_entry.save()
                 archive_group_entries.append(archive_group_entry)
             except Archive.DoesNotExist:
-                return HttpResponseNotFound(
-                    json.dumps({"result": "Archive does not exist."}),
-                    content_type="application/json; charset=utf-8",
-                )
+                raise ApiError.not_found("Archive does not exist.")
 
         response = json.dumps(
             {
@@ -82,9 +81,7 @@ def handle_post_archive_group(request: HttpRequest, data: QueryDict, body: dict,
         return HttpResponse(response, content_type="application/json; charset=utf-8")
 
     except ArchiveGroup.DoesNotExist:
-        return HttpResponseNotFound(
-            json.dumps({"result": "ArchiveGroup does not exist."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("ArchiveGroup does not exist.")
 
 
 def handle_post_archive_group_entry(
@@ -93,15 +90,11 @@ def handle_post_archive_group_entry(
     try:
         archive_group_id = _get_int(data, "archive-group-entry")
     except ValueError:
-        return HttpResponseNotFound(
-            json.dumps({"result": "ArchiveGroup does not exist."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("ArchiveGroup does not exist.")
     try:
         archive_group = ArchiveGroup.objects.get(pk=archive_group_id)
     except ArchiveGroup.DoesNotExist:
-        return HttpResponseNotFound(
-            json.dumps({"result": "ArchiveGroup does not exist."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("ArchiveGroup does not exist.")
 
     try:
         archive = Archive.objects.get(pk=body["archive"]["id"])
@@ -123,9 +116,7 @@ def handle_post_archive_group_entry(
         return HttpResponse(response, content_type="application/json; charset=utf-8")
 
     except Archive.DoesNotExist:
-        return HttpResponseNotFound(
-            json.dumps({"result": "Archive does not exist."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("Archive does not exist.")
 
 
 def handle_post_wanted_gallery(request: HttpRequest, data: QueryDict, body: dict, user: User | AnonymousUser | None):
@@ -143,10 +134,7 @@ def handle_post_wanted_gallery(request: HttpRequest, data: QueryDict, body: dict
 
     except Exception as e:
         logger.exception("Error creating WantedGallery: %s", e)
-        return HttpResponseBadRequest(
-            json.dumps({"result": f"Error creating WantedGallery: {str(e)}"}),
-            content_type="application/json; charset=utf-8",
-        )
+        raise ApiError.bad_request(f"Error creating WantedGallery: {str(e)}")
 
 
 def handle_post_update_metadata(
@@ -178,17 +166,11 @@ def handle_post_update_metadata(
                 galleries.append(g)
 
         if not galleries:
-            return HttpResponseNotFound(
-                json.dumps({"result": "Gallery does not exist."}),
-                content_type="application/json; charset=utf-8",
-            )
+            raise ApiError.not_found("Gallery does not exist.")
 
         valid_galleries = [g for g in galleries if g.provider]
         if not valid_galleries:
-            return HttpResponseBadRequest(
-                json.dumps({"result": "No galleries with a provider to update."}),
-                content_type="application/json; charset=utf-8",
-            )
+            raise ApiError.bad_request("No galleries with a provider to update.")
 
         links = [g.get_link() for g in valid_galleries]
         task = client.enqueue_gallery_update(
@@ -208,7 +190,7 @@ def handle_post_update_metadata(
                 {
                     "result": "success",
                     "count": len(valid_galleries),
-                    "task_id": task.pk,
+                    **task_reference(request, task),
                     "galleries": [
                         {
                             "id": g.pk,
@@ -240,10 +222,7 @@ def handle_post_update_metadata(
     if has_gid:
         gallery = get_gallery_by_gid(data, body)
         if not gallery:
-            return HttpResponseNotFound(
-                json.dumps({"result": "Gallery does not exist."}),
-                content_type="application/json; charset=utf-8",
-            )
+            raise ApiError.not_found("Gallery does not exist.")
     elif has_gallery_id:
         raw_gallery_id = _get_str(data, "gallery").strip()
         if not raw_gallery_id and isinstance(body, dict):
@@ -251,10 +230,7 @@ def handle_post_update_metadata(
         try:
             gallery = Gallery.objects.get(pk=int(raw_gallery_id))
         except (ValueError, TypeError, Gallery.DoesNotExist):
-            return HttpResponseNotFound(
-                json.dumps({"result": "Gallery does not exist."}),
-                content_type="application/json; charset=utf-8",
-            )
+            raise ApiError.not_found("Gallery does not exist.")
     elif has_archive_id:
         raw_archive_id = _get_str(data, "archive").strip()
         if not raw_archive_id and isinstance(body, dict):
@@ -262,27 +238,15 @@ def handle_post_update_metadata(
         try:
             archive = Archive.objects.select_related("gallery").get(pk=int(raw_archive_id))
         except (ValueError, TypeError, Archive.DoesNotExist):
-            return HttpResponseNotFound(
-                json.dumps({"result": "Archive does not exist."}),
-                content_type="application/json; charset=utf-8",
-            )
+            raise ApiError.not_found("Archive does not exist.")
         if not archive.gallery:
-            return HttpResponseBadRequest(
-                json.dumps({"result": "No gallery associated with this archive."}),
-                content_type="application/json; charset=utf-8",
-            )
+            raise ApiError.bad_request("No gallery associated with this archive.")
         gallery = archive.gallery
     else:
-        return HttpResponseBadRequest(
-            json.dumps({"result": "Missing gallery identifier (gid, gids, gallery, or archive)."}),
-            content_type="application/json; charset=utf-8",
-        )
+        raise ApiError.bad_request("Missing gallery identifier (gid, gids, gallery, or archive).")
 
     if not gallery.provider:
-        return HttpResponseBadRequest(
-            json.dumps({"result": "Gallery has no provider."}),
-            content_type="application/json; charset=utf-8",
-        )
+        raise ApiError.bad_request("Gallery has no provider.")
 
     link = gallery.get_link()
     task = client.enqueue_gallery_update(
@@ -304,7 +268,7 @@ def handle_post_update_metadata(
                 "gid": gallery.gid,
                 "provider": gallery.provider,
                 "link": link,
-                "task_id": task.pk,
+                **task_reference(request, task),
             },
             sort_keys=True,
             ensure_ascii=False,

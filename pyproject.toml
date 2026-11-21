@@ -88,7 +88,7 @@ dependencies = [
     "py7zr==1.1.4",
     "pysocks==1.7.1",
     "python-dateutil==4.0.0",
-    "pyyaml==6.0.3",
+    "pyyaml==6.0.4",
     "rarfile==4.5",
     "requests==2.34.2",
     "transmission-rpc==7.0.12",

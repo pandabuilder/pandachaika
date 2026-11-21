@@ -56,6 +56,16 @@ class ArchiveDownloadQueue(BaseScheduler):
         self._download_part_files: dict[int, str] = {}
         # Serializes process_queue(), which can be called from the scheduler thread and from force_run().
         self._process_lock = threading.Lock()
+        self._wake_event = threading.Event()
+        self._idle_cycles: int = 0
+        self._last_reconcile_mono: float = 0.0
+        self._reconcile_interval: float = 60.0
+        self._max_idle_poll_interval: float = 30.0
+
+    def wake(self) -> None:
+        """Reset idle backoff and wake the scheduler loop promptly when new downloads are queued."""
+        self._idle_cycles = 0
+        self._wake_event.set()
 
     @staticmethod
     def timer_to_seconds(timer: float) -> float:
@@ -127,6 +137,19 @@ class ArchiveDownloadQueue(BaseScheduler):
         claimed_ids: list[int] = []
 
         try:
+            # Fast non-locking check so idle ticks avoid opening a transaction or scanning IN_PROGRESS rows.
+            has_queued = (
+                DownloadEvent.objects.filter(
+                    status=DownloadEvent.Status.QUEUED,
+                    completed=False,
+                    failed=False,
+                )
+                .exclude(download_url="")
+                .exists()
+            )
+            if not has_queued:
+                return []
+
             with transaction.atomic():
                 in_progress_counts = dict(
                     DownloadEvent.objects.filter(
@@ -281,16 +304,18 @@ class ArchiveDownloadQueue(BaseScheduler):
             logger.warning("Failed to reconcile orphaned download events: %s", e)
             return 0
 
-    def process_queue(self) -> None:
+    def process_queue(self) -> bool:
         """Scan active threads, clean up finished/stalled ones, reconcile orphans, and dispatch free download slots.
 
         Serialized, because it can run from the scheduler thread and from ``force_run``. Without the lock,
         ``reconcile_orphaned_events`` could re-queue events that another call just claimed but has not registered yet.
+
+        Returns True when any download activity occurred (or remains active), False when completely idle.
         """
         with self._process_lock:
-            self._process_queue_locked()
+            return self._process_queue_locked()
 
-    def _process_queue_locked(self) -> None:
+    def _process_queue_locked(self) -> bool:
         with self._lock:
             finished = [eid for eid, th in self._active_threads.items() if not th.is_alive()]
             for eid in finished:
@@ -299,9 +324,9 @@ class ArchiveDownloadQueue(BaseScheduler):
                 self._download_cancel_events.pop(eid, None)
                 self._download_responses.pop(eid, None)
                 self._download_part_files.pop(eid, None)
+            has_active_threads = bool(self._active_threads)
 
-        self.check_stalled_downloads()
-        self.reconcile_orphaned_events()
+        stalled_ids = self.check_stalled_downloads() if has_active_threads else []
 
         with self._lock:
             active_count = len(self._active_threads)
@@ -309,13 +334,31 @@ class ArchiveDownloadQueue(BaseScheduler):
         max_concurrency = int(getattr(self.settings, "parallel_archive_downloaders", 0) or 0)
         if max_concurrency <= 0 and getattr(self.settings, "queue_archive_downloads", False):
             max_concurrency = 1
+
+        now_mono = time.monotonic()
+        reconciled = 0
+        should_reconcile = (
+            (max_concurrency > 0 or active_count > 0)
+            and (
+                self._last_reconcile_mono == 0.0
+                or bool(finished)
+                or bool(stalled_ids)
+                or (now_mono - self._last_reconcile_mono) >= self._reconcile_interval
+            )
+        )
+        if should_reconcile:
+            reconciled = self.reconcile_orphaned_events()
+            self._last_reconcile_mono = now_mono
+
+        did_work = bool(finished or stalled_ids or reconciled or active_count > 0)
+
         free_slots = max(0, max_concurrency - active_count)
         if free_slots <= 0:
-            return
+            return did_work
 
         claimed_ids = self.claim_next_events(free_slots)
         if not claimed_ids:
-            return
+            return did_work
 
         now_mono = time.monotonic()
         for event_id in claimed_ids:
@@ -331,6 +374,7 @@ class ArchiveDownloadQueue(BaseScheduler):
                 self._download_cancel_events[event_id] = cancel_ev
                 self._active_threads[event_id] = th
             th.start()
+        return True
 
     def _download_worker(self, event_id: int, cancel_event: threading.Event | None = None) -> None:
         """Execute the HTTP download for a single claimed DownloadEvent."""
@@ -818,25 +862,62 @@ class ArchiveDownloadQueue(BaseScheduler):
                 return self._SHA1_MISMATCH
         return ""
 
+    def _idle_wait_seconds(self) -> float:
+        """Compute delay before the next queue poll, backing off exponentially while idle."""
+        if self.force_run_once:
+            self.force_run_once = False
+            return 0.0
+        if self._idle_cycles <= 0:
+            return self.wait_until_next_run()
+        max_interval = max(self.timer, self._max_idle_poll_interval)
+        return min(max_interval, self.timer * (2 ** min(self._idle_cycles, 5)))
+
+    def _wait_for_next_tick(self, seconds_to_wait: float) -> bool:
+        """Wait up to ``seconds_to_wait``; returns True if stop was requested, False if woken or timed out."""
+        deadline = time.monotonic() + max(0.0, seconds_to_wait)
+        while not self.stop.is_set():
+            if self._wake_event.is_set():
+                self._wake_event.clear()
+                return self.stop.is_set()
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return self.stop.is_set()
+            # Sleep in <=1s slices on _wake_event so both wake() and raw stop.set() return promptly.
+            if self._wake_event.wait(timeout=min(remaining, 1.0)):
+                self._wake_event.clear()
+                return self.stop.is_set()
+        return True
+
     def job(self) -> None:
         """Main scheduler loop."""
+        self._idle_cycles = 0
+        self._last_reconcile_mono = 0.0
+        self._wake_event.clear()
         while not self.stop.is_set():
-            seconds_to_wait = self.wait_until_next_run()
-            if self.stop.wait(timeout=seconds_to_wait):
+            seconds_to_wait = self._idle_wait_seconds()
+            if self._wait_for_next_tick(seconds_to_wait):
                 return
 
             _safe_close_old_connections()
+            did_work = False
             try:
-                self.process_queue()
+                did_work = bool(self.process_queue())
             except Exception as e:
                 logger.error("Error processing archive download queue: %s", e, exc_info=True)
 
-            self.update_last_run(django_tz.now())
+            if did_work:
+                self._idle_cycles = 0
+            else:
+                self._idle_cycles += 1
+
+            # Keep last_run in memory; WorkerRunner.sync_schedulers_state() batches it into SchedulerState.
+            self.update_last_run(django_tz.now(), persist=False)
             _safe_close_old_connections()
 
     def stop_running(self, force_local: bool = False) -> None:
         """Stop running scheduler and reset any locally active downloads to QUEUED."""
         super().stop_running(force_local=force_local)
+        self._wake_event.set()
         is_worker = force_local or getattr(self.settings, "is_worker_process", False)
         if is_worker:
             try:
@@ -894,6 +975,7 @@ class ArchiveDownloadQueue(BaseScheduler):
         if is_worker:
             if self.is_running_locally():
                 self.force_run_once = True
+                self.wake()
                 try:
                     self.process_queue()
                 except Exception as e:

@@ -8,7 +8,7 @@
         width="{{ thumbnail_details.2 }}" height="{{ thumbnail_details.1 }}" src="{% if match_gallery.thumbnail.name %}{{ match_gallery.thumbnail.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}"/>
     {% endwith %}
   </a>
-    <a class="btn btn-info btn-sm" href="{% url 'viewer:col-gallery-update-tool-id' gallery.pk 'add-to-match-group' match_gallery.pk %}">Append to Match Group</a>
+    <button type="submit" form="gmg-single-action-form" formaction="{% url 'viewer:col-gallery-update-tool-id' gallery.pk 'add-to-match-group' match_gallery.pk %}" class="btn btn-info btn-sm">Append to Match Group</button>
   <div>
     {% with gallery_archives=match_gallery.archive_set.all %}
       <span title="Image count">{{ match_gallery.filecount }}</span> | <span title="Total image size">{{ match_gallery.filesize|filesizeformat }}</span> | <span {% if gallery_archives %}class="bg-danger"{% endif %} title="Gallery is linked to another archive directly?">{{ gallery_archives|yesno }}</span> | <a class="tag-preview-g" tabindex="0" role="button" data-bs-toggle="popover" data-bs-trigger="focus" data-bs-pk="{{ match_gallery.pk }}" title="Click to display tags">Tags</a> | <a href="{% url 'viewer:api' %}?gallery={{ match_gallery.pk }}">JSON</a>

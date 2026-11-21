@@ -1,0 +1,50 @@
+<script>
+  (function () {
+    const sidebar = document.querySelector("[data-es-facet-base]");
+    if (!sidebar) return;
+
+    function buildFacetUrl(field, value) {
+      const baseUrl = sidebar.dataset.esFacetBase || window.location.pathname;
+      const params = new URLSearchParams(window.location.search);
+      const current = params.get(field);
+      const values = current ? current.split(",").filter(Boolean) : [];
+      const idx = values.indexOf(value);
+      if (idx >= 0) {
+        values.splice(idx, 1);
+      } else {
+        values.push(value);
+      }
+      if (values.length > 0) {
+        params.set(field, values.join(","));
+      } else {
+        params.delete(field);
+      }
+      params.delete("page");
+      const qs = params.toString();
+      return qs ? baseUrl + "?" + qs : baseUrl;
+    }
+
+    function navigateFacet(event) {
+      const btn = event.target.closest(".es-facet-btn");
+      if (!btn || !sidebar.contains(btn)) return;
+      const field = btn.dataset.facetField;
+      const value = btn.dataset.facetValue;
+      if (!field || value === undefined) return;
+      const url = buildFacetUrl(field, value);
+      if (event.type === "auxclick") {
+        if (event.button !== 1) return;
+        event.preventDefault();
+        window.open(url, "_blank", "noopener");
+        return;
+      }
+      if (event.ctrlKey || event.metaKey || event.shiftKey) {
+        window.open(url, "_blank", "noopener");
+      } else {
+        window.location.assign(url);
+      }
+    }
+
+    sidebar.addEventListener("click", navigateFacet);
+    sidebar.addEventListener("auxclick", navigateFacet);
+  })();
+</script>

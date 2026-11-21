@@ -6,19 +6,14 @@ import logging
 from django.contrib.auth.models import User, AnonymousUser
 from django.db import transaction
 from django.db.models import Prefetch
-from django.http import (
-    HttpResponse,
-    HttpRequest,
-    HttpResponseBadRequest,
-    HttpResponseForbidden,
-    HttpResponseNotFound,
-)
+from django.http import HttpResponse, HttpRequest
 from django.http.request import QueryDict
 
 from core.base.utilities import timestamp_or_zero
 from viewer.models import Archive, ArchiveGroup, ArchiveGroupEntry, Gallery, WantedGallery
 from viewer.utils.actions import event_log
 from viewer.utils.functions import archive_group_entry_to_json, wanted_gallery_to_json
+from viewer.views.api.errors import ApiError
 from viewer.views.api.common import (
     _get_int,
     _get_int_from_data_or_body,
@@ -35,9 +30,7 @@ def handle_put_archive_group(request: HttpRequest, data: QueryDict, body: dict, 
     try:
         archive_group_id = _get_int(data, "archive-group")
     except ValueError:
-        return HttpResponseNotFound(
-            json.dumps({"result": "ArchiveGroup does not exist."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("ArchiveGroup does not exist.")
     try:
         body_entries = {entry["id"]: entry for entry in body["archive_group_entries"]}
 
@@ -96,9 +89,7 @@ def handle_put_archive_group(request: HttpRequest, data: QueryDict, body: dict, 
         return HttpResponse(response, content_type="application/json; charset=utf-8")
 
     except ArchiveGroup.DoesNotExist:
-        return HttpResponseNotFound(
-            json.dumps({"result": "ArchiveGroup does not exist."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("ArchiveGroup does not exist.")
 
 
 def handle_put_archive_group_entry(
@@ -107,10 +98,7 @@ def handle_put_archive_group_entry(
     try:
         archive_group_entry_id = _get_int(data, "archive-group-entry")
     except ValueError:
-        return HttpResponseNotFound(
-            json.dumps({"result": "ArchiveGroupEntry does not exist."}),
-            content_type="application/json; charset=utf-8",
-        )
+        raise ApiError.not_found("ArchiveGroupEntry does not exist.")
     try:
         with transaction.atomic():
             archive_group_entry = (
@@ -146,10 +134,7 @@ def handle_put_archive_group_entry(
             return HttpResponse(response, content_type="application/json; charset=utf-8")
 
     except ArchiveGroupEntry.DoesNotExist:
-        return HttpResponseNotFound(
-            json.dumps({"result": "ArchiveGroupEntry does not exist."}),
-            content_type="application/json; charset=utf-8",
-        )
+        raise ApiError.not_found("ArchiveGroupEntry does not exist.")
 
 
 def handle_put_wanted_gallery(
@@ -158,10 +143,7 @@ def handle_put_wanted_gallery(
     try:
         wanted_gallery_id = _get_int_from_data_or_body(data, "wanted-gallery", body)
     except (ValueError, TypeError):
-        return HttpResponseNotFound(
-            json.dumps({"result": "WantedGallery does not exist."}),
-            content_type="application/json; charset=utf-8",
-        )
+        raise ApiError.not_found("WantedGallery does not exist.")
 
     try:
         with transaction.atomic():
@@ -193,16 +175,10 @@ def handle_put_wanted_gallery(
         )
 
     except WantedGallery.DoesNotExist:
-        return HttpResponseNotFound(
-            json.dumps({"result": "WantedGallery does not exist."}),
-            content_type="application/json; charset=utf-8",
-        )
+        raise ApiError.not_found("WantedGallery does not exist.")
     except Exception as e:
         logger.exception("Error updating WantedGallery: %s", e)
-        return HttpResponseBadRequest(
-            json.dumps({"result": f"Error updating WantedGallery: {str(e)}"}),
-            content_type="application/json; charset=utf-8",
-        )
+        raise ApiError.bad_request(f"Error updating WantedGallery: {str(e)}")
 
 
 VALID_GALLERY_STATUS_ACTIONS = {
@@ -212,31 +188,15 @@ VALID_GALLERY_STATUS_ACTIONS = {
 }
 
 
-def _validate_gallery_status_request(
-    data: QueryDict, body: dict, user: User | AnonymousUser | None
-) -> tuple[str | None, str, HttpResponse | None]:
+def _validate_gallery_status_request(data: QueryDict, body: dict, user: User | AnonymousUser | None) -> tuple[str, str]:
     raw_status = get_str_from_data_or_body(data, body, "status").lower()
     if raw_status not in VALID_GALLERY_STATUS_ACTIONS:
-        return (
-            None,
-            "",
-            HttpResponseBadRequest(
-                json.dumps({"result": "Invalid status. Must be one of: deleted, denied, normal."}),
-                content_type="application/json; charset=utf-8",
-            ),
-        )
+        raise ApiError.bad_request("Invalid status. Must be one of: deleted, denied, normal.")
     required_perm, _, _ = VALID_GALLERY_STATUS_ACTIONS[raw_status]
     if not user or not user.has_perm(required_perm):
-        return (
-            None,
-            "",
-            HttpResponseForbidden(
-                json.dumps({"result": "Not authorized"}),
-                content_type="application/json; charset=utf-8",
-            ),
-        )
+        raise ApiError.forbidden()
     reason = get_str_from_data_or_body(data, body, "reason")[:200]
-    return raw_status, reason, None
+    return raw_status, reason
 
 
 def _apply_gallery_status(
@@ -258,10 +218,7 @@ def _apply_gallery_status(
             if user and getattr(user, "is_authenticated", False):
                 event_log(user, event_action, content_object=gallery, result=event_result, reason=reason)
     except Gallery.DoesNotExist:
-        return HttpResponseNotFound(
-            json.dumps({"result": "Gallery does not exist."}),
-            content_type="application/json; charset=utf-8",
-        )
+        raise ApiError.not_found("Gallery does not exist.")
 
     logger.info(
         "User %s: Gallery %s (gid=%s) marked as %s%s",
@@ -281,34 +238,22 @@ def _apply_gallery_status(
 
 
 def handle_put_gid(request: HttpRequest, data: QueryDict, body: dict, user: User | AnonymousUser | None):
-    status, reason, err_response = _validate_gallery_status_request(data, body, user)
-    if err_response is not None:
-        return err_response
-    assert status is not None
+    status, reason = _validate_gallery_status_request(data, body, user)
 
     gallery = get_gallery_by_gid(data, body)
     if not gallery:
-        return HttpResponseNotFound(
-            json.dumps({"result": "Gallery does not exist."}),
-            content_type="application/json; charset=utf-8",
-        )
+        raise ApiError.not_found("Gallery does not exist.")
 
     return _apply_gallery_status(gallery.pk, status, reason, user)
 
 
 def handle_put_gallery(request: HttpRequest, data: QueryDict, body: dict, user: User | AnonymousUser | None):
-    status, reason, err_response = _validate_gallery_status_request(data, body, user)
-    if err_response is not None:
-        return err_response
-    assert status is not None
+    status, reason = _validate_gallery_status_request(data, body, user)
 
     try:
         gallery_id = _get_int_from_data_or_body(data, "gallery", body)
     except (ValueError, TypeError):
-        return HttpResponseNotFound(
-            json.dumps({"result": "Gallery does not exist."}),
-            content_type="application/json; charset=utf-8",
-        )
+        raise ApiError.not_found("Gallery does not exist.")
 
     return _apply_gallery_status(gallery_id, status, reason, user)
 

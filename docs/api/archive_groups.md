@@ -15,7 +15,7 @@ All endpoints use the public JSON API at `/api/` (or `/jsearch/`, or slashless `
   - `viewer.delete_archivegroup`: Required to delete an `ArchiveGroup`.
   - `viewer.delete_archivegroupentry`: Required to delete an `ArchiveGroupEntry`.
 
-Requests lacking authentication or required permissions return `403 Forbidden` (`{"result": "Not authorized"}`).
+Requests without authentication return `401 Unauthorized`; requests without the required permission return `403 Forbidden`. Errors use the envelope described in [README.md](README.md#errors).
 
 ---
 
@@ -93,7 +93,7 @@ curl "https://example.chaika.moe/api/?archive-group=1"
 **Error (404 Not Found)**
 ```json
 {
-  "result": "ArchiveGroup does not exist."
+  "error": {"code": "not_found", "message": "ArchiveGroup does not exist."}
 }
 ```
 

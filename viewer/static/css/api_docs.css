@@ -1,0 +1,195 @@
+/* Swagger UI on /api/v1/docs/ in the site's dark blue theme.
+   The page sets html.dark-mode, which enables Swagger UI's own dark styles
+   (vendor/swagger-ui.css); these rules only re-tint its neutral greys to the
+   site's navy palette (main.css: body #001122, cards #001a4c / #002855,
+   borders #17428b, inputs #29527a, links rgb(54, 176, 249)). The per-method
+   operation colors (GET blue, POST green, DELETE red...) are kept. */
+
+html.dark-mode {
+  --api-bg: #001122;
+  --api-surface: #001a4c;
+  --api-raised: #002855;
+  --api-code-bg: #000a17;
+  --api-border: #17428b;
+  --api-input: #0d2a4f;
+  --api-input-border: #4d76a3;
+  --api-text: #e2e8f0;
+  --api-muted: #a9bad0;
+  --api-link: rgb(54, 176, 249);
+  background: var(--api-bg);
+}
+
+html.dark-mode .swagger-ui {
+  background: transparent;
+  color: var(--api-text);
+  font-family: inherit;
+}
+
+/* Headings, info block and markdown text */
+html.dark-mode .swagger-ui .info .title,
+html.dark-mode .swagger-ui .info h1,
+html.dark-mode .swagger-ui .info h2,
+html.dark-mode .swagger-ui .info h3,
+html.dark-mode .swagger-ui .info h4,
+html.dark-mode .swagger-ui .info h5 {
+  color: #ffffff;
+}
+
+html.dark-mode .swagger-ui .info .title small {
+  background: #29527a;
+}
+
+html.dark-mode .swagger-ui .info a,
+html.dark-mode .swagger-ui .opblock-tag a.link,
+html.dark-mode .swagger-ui .dialog-ux .modal-ux .scopes a {
+  color: var(--api-link);
+}
+
+html.dark-mode .swagger-ui .markdown code,
+html.dark-mode .swagger-ui .renderedMarkdown code {
+  background: var(--api-raised);
+  color: #93c5fd;
+  border-radius: 3px;
+  padding: 1px 4px;
+}
+
+/* Servers / Authorize bar: a card instead of Swagger UI's full-bleed band */
+html.dark-mode .swagger-ui .scheme-container {
+  background: var(--api-surface);
+  border: 1px solid var(--api-border);
+  border-radius: 6px;
+  box-shadow: none;
+  /* Same width as the content column (.wrapper: 1460px minus its padding) */
+  margin: 0 auto 1.5rem;
+  max-width: 1420px;
+  width: calc(100% - 40px);
+}
+
+/* Form controls (main.css' global input/select rules lose to Swagger UI's) */
+html.dark-mode .swagger-ui input,
+html.dark-mode .swagger-ui select,
+html.dark-mode .swagger-ui select[multiple],
+html.dark-mode .swagger-ui input.invalid,
+html.dark-mode .swagger-ui select.invalid,
+html.dark-mode .swagger-ui textarea.invalid {
+  background-color: var(--api-input);
+  border-color: var(--api-input-border);
+  color: var(--api-text);
+}
+
+html.dark-mode .swagger-ui input.invalid,
+html.dark-mode .swagger-ui select.invalid,
+html.dark-mode .swagger-ui textarea.invalid {
+  border-color: #ff5f5f;
+}
+
+html.dark-mode .swagger-ui textarea {
+  background: var(--api-code-bg);
+  border-color: var(--api-border);
+  color: var(--api-text);
+}
+
+html.dark-mode .swagger-ui textarea[disabled] {
+  background-color: var(--api-surface);
+  border-color: var(--api-surface);
+  color: var(--api-muted);
+}
+
+html.dark-mode .swagger-ui .filter .operation-filter-input {
+  border: 1px solid var(--api-input-border);
+}
+
+/* Tag sections. a.nostyle wraps tag names and operation paths; it would
+   otherwise take main.css' global link color. */
+html.dark-mode .swagger-ui a.nostyle,
+html.dark-mode .swagger-ui a.nostyle:visited {
+  color: inherit;
+}
+
+html.dark-mode .swagger-ui .opblock-tag {
+  border-bottom-color: var(--api-border);
+  color: var(--api-text);
+}
+
+html.dark-mode .swagger-ui .opblock-tag:hover {
+  background: rgba(41, 82, 122, 0.35);
+}
+
+html.dark-mode .swagger-ui .opblock-tag small {
+  color: var(--api-muted);
+}
+
+/* Code blocks, examples, curl */
+html.dark-mode .swagger-ui .opblock .highlight-code pre.microlight,
+html.dark-mode .swagger-ui .opblock pre.microlight {
+  background: var(--api-code-bg) !important;
+}
+
+html.dark-mode .swagger-ui .opblock .curl-command .btn {
+  background: var(--api-raised) !important;
+  border-color: var(--api-border) !important;
+}
+
+html.dark-mode .swagger-ui .opblock .curl-command .btn.active {
+  background: var(--api-code-bg) !important;
+}
+
+html.dark-mode .swagger-ui .copy-to-clipboard,
+html.dark-mode .swagger-ui .download-contents {
+  background: #29527a;
+}
+
+html.dark-mode .swagger-ui .opblock .btn.execute {
+  background: var(--api-link);
+  border-color: var(--api-link);
+}
+
+/* Schemas */
+html.dark-mode .swagger-ui section.models {
+  background: var(--api-surface);
+}
+
+html.dark-mode .swagger-ui section.models,
+html.dark-mode .swagger-ui section.models h4 {
+  border-color: var(--api-border);
+}
+
+html.dark-mode .swagger-ui section.models .model-container,
+html.dark-mode .swagger-ui .model-box,
+html.dark-mode .swagger-ui .json-schema-2020-12,
+html.dark-mode .swagger-ui .json-schema-2020-12 button {
+  background: var(--api-raised);
+}
+
+html.dark-mode .swagger-ui section.models .model-container:hover {
+  background: #003366;
+}
+
+/* Authorize dialog */
+html.dark-mode .swagger-ui .dialog-ux .backdrop-ux {
+  background: rgba(0, 8, 20, 0.75);
+}
+
+html.dark-mode .swagger-ui .dialog-ux .modal-ux {
+  background-color: var(--api-surface);
+  border: 1px solid var(--api-border);
+}
+
+html.dark-mode .swagger-ui .dialog-ux .modal-ux-header,
+html.dark-mode .swagger-ui .dialog-ux .modal-ux .auth-container {
+  border-color: var(--api-border);
+}
+
+html.dark-mode .swagger-ui .dialog-ux .modal-ux .checkbox input[type=checkbox] + label > .item {
+  background-color: #29527a;
+}
+
+/* Error boxes */
+html.dark-mode .swagger-ui .info .errors-wrapper,
+html.dark-mode .swagger-ui .opblock .validation-errors.errors-wrapper {
+  background: var(--api-raised);
+}
+
+html.dark-mode .swagger-ui .loading-container .loading:before {
+  border-color: var(--api-text) var(--api-border) var(--api-border);
+}

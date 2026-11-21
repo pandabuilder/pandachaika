@@ -19,7 +19,6 @@ EXCLUDED_SETTINGS_ATTRIBUTES = {
     "ftps",
     "ftp_configs",
     "torrent",
-    "remote_site",
     # System / environment / paths
     "db_engine",
     "MEDIA_ROOT",
@@ -27,6 +26,7 @@ EXCLUDED_SETTINGS_ATTRIBUTES = {
     "default_dir",
     "log_location",
     "log_level",
+    "sql_log_level",
     "disable_sql_log",
     # Runtime & worker process control
     "is_worker_process",
@@ -54,6 +54,7 @@ EXCLUDED_SETTINGS_ATTRIBUTES = {
     "allowed_model",
     "locations_model",
     "match_params_model",
+    "_base_settings",
 }
 
 # Keys written by older versions, when Settings also kept the section models next to dict copies. Their content
@@ -123,8 +124,104 @@ def _serialize_provider_settings(prov_settings: Any) -> dict[str, Any]:
     return prov_dict
 
 
-def serialize_settings_options(options: Any) -> dict[str, Any]:
-    """Serialize Settings, sub-settings, or dict into a JSON-serializable dictionary."""
+def _serialize_settings_object(options: Any) -> dict[str, Any]:
+    clean_dict: dict[str, Any] = {}
+
+    raw_items: Iterable[tuple[str, Any]]
+    if isinstance(options, Settings):
+        raw_items = options.attribute_items()
+    elif hasattr(options, "__dict__"):
+        raw_items = vars(options).items()
+    elif hasattr(options, "__slots__"):
+        raw_items = [(k, getattr(options, k)) for k in options.__slots__ if hasattr(options, k)]
+    else:
+        raw_items = []
+
+    for key, val in raw_items:
+        if key in EXCLUDED_SETTINGS_ATTRIBUTES:
+            continue
+
+        if key == "archive_user":
+            if val and getattr(val, "is_authenticated", False) and getattr(val, "pk", None):
+                clean_dict["user_id"] = val.pk
+            continue
+
+        if key == "monitored_link":
+            if val and getattr(val, "pk", None):
+                clean_dict["monitored_link_id"] = val.pk
+            continue
+
+        if key == "_proxy":
+            clean_dict["proxy"] = _to_serializable_value(val)
+            continue
+
+        if key == "providers" and isinstance(val, dict):
+            providers_data: dict[str, Any] = {}
+            for prov_name, prov_settings in val.items():
+                prov_serialized = _serialize_provider_settings(prov_settings)
+                if prov_serialized:
+                    providers_data[prov_name] = prov_serialized
+            if providers_data:
+                clean_dict["providers"] = providers_data
+            continue
+
+        clean_dict[key] = _to_serializable_value(val)
+
+    opt_proxy = getattr(cast(Any, options), "proxy", None)
+    if "proxy" not in clean_dict and opt_proxy:
+        clean_dict["proxy"] = _to_serializable_value(opt_proxy)
+    opt_proxies = getattr(cast(Any, options), "proxies", None)
+    if "proxies" not in clean_dict and opt_proxies:
+        clean_dict["proxies"] = _to_serializable_value(opt_proxies)
+
+    return clean_dict
+
+
+def _diff_serialized_settings(full: dict[str, Any], base: dict[str, Any]) -> dict[str, Any]:
+    """Keep only keys (and nested provider/downloader/matcher entries) that differ from ``base``."""
+    diff: dict[str, Any] = {}
+    for k, v in full.items():
+        if k in ("user_id", "monitored_link_id"):
+            diff[k] = v
+            continue
+        if k not in base:
+            diff[k] = v
+            continue
+        base_v = base[k]
+        if v == base_v:
+            continue
+        if k == "providers" and isinstance(v, dict) and isinstance(base_v, dict):
+            prov_diff: dict[str, Any] = {}
+            for prov_name, prov_dict in v.items():
+                base_prov = base_v.get(prov_name)
+                if isinstance(prov_dict, dict) and isinstance(base_prov, dict):
+                    attr_diff = {
+                        pk: pv
+                        for pk, pv in prov_dict.items()
+                        if pk not in base_prov or base_prov[pk] != pv
+                    }
+                    if attr_diff:
+                        prov_diff[prov_name] = attr_diff
+                elif prov_dict != base_prov:
+                    prov_diff[prov_name] = prov_dict
+            if prov_diff:
+                diff["providers"] = prov_diff
+        elif k in ("downloaders", "matchers") and isinstance(v, dict) and isinstance(base_v, dict):
+            entry_diff = {dk: dv for dk, dv in v.items() if dk not in base_v or base_v[dk] != dv}
+            if entry_diff:
+                diff[k] = entry_diff
+        else:
+            diff[k] = v
+    return diff
+
+
+def serialize_settings_options(options: Any, base_settings: Settings | None = None) -> dict[str, Any]:
+    """Serialize Settings, sub-settings, or dict into a JSON-serializable dictionary.
+
+    When ``base_settings`` is supplied for a ``Settings`` object, only keys differing from
+    ``base_settings`` (plus per-task context like ``user_id``/``monitored_link_id``) are emitted,
+    avoiding repeating the full static configuration into ``TaskQueue.options``.
+    """
     if options is None:
         return {}
 
@@ -146,56 +243,21 @@ def serialize_settings_options(options: Any) -> dict[str, Any]:
         return clean_dict
 
     if hasattr(options, "__dict__") or hasattr(options, "__slots__"):
-        clean_dict = {}
+        if base_settings is not None and isinstance(options, Settings):
+            if options is base_settings:
+                minimal: dict[str, Any] = {}
+                arch_user = getattr(options, "archive_user", None)
+                if arch_user and getattr(arch_user, "is_authenticated", False) and getattr(arch_user, "pk", None):
+                    minimal["user_id"] = arch_user.pk
+                monitored_link = getattr(options, "monitored_link", None)
+                if monitored_link and getattr(monitored_link, "pk", None):
+                    minimal["monitored_link_id"] = monitored_link.pk
+                return minimal
+            full = _serialize_settings_object(options)
+            base = _serialize_settings_object(base_settings)
+            return _diff_serialized_settings(full, base)
 
-        raw_items: Iterable[tuple[str, Any]]
-        if isinstance(options, Settings):
-            raw_items = options.attribute_items()
-        elif hasattr(options, "__dict__"):
-            raw_items = vars(options).items()
-        elif hasattr(options, "__slots__"):
-            raw_items = [(k, getattr(options, k)) for k in options.__slots__ if hasattr(options, k)]
-        else:
-            raw_items = []
-
-        for key, val in raw_items:
-            if key in EXCLUDED_SETTINGS_ATTRIBUTES:
-                continue
-
-            if key == "archive_user":
-                if val and getattr(val, "is_authenticated", False) and getattr(val, "pk", None):
-                    clean_dict["user_id"] = val.pk
-                continue
-
-            if key == "monitored_link":
-                if val and getattr(val, "pk", None):
-                    clean_dict["monitored_link_id"] = val.pk
-                continue
-
-            if key == "_proxy":
-                clean_dict["proxy"] = _to_serializable_value(val)
-                continue
-
-            if key == "providers" and isinstance(val, dict):
-                providers_data: dict[str, Any] = {}
-                for prov_name, prov_settings in val.items():
-                    prov_serialized = _serialize_provider_settings(prov_settings)
-                    if prov_serialized:
-                        providers_data[prov_name] = prov_serialized
-                if providers_data:
-                    clean_dict["providers"] = providers_data
-                continue
-
-            clean_dict[key] = _to_serializable_value(val)
-
-        opt_proxy = getattr(cast(Any, options), "proxy", None)
-        if "proxy" not in clean_dict and opt_proxy:
-            clean_dict["proxy"] = _to_serializable_value(opt_proxy)
-        opt_proxies = getattr(cast(Any, options), "proxies", None)
-        if "proxies" not in clean_dict and opt_proxies:
-            clean_dict["proxies"] = _to_serializable_value(opt_proxies)
-
-        return clean_dict
+        return _serialize_settings_object(options)
 
     return {}
 
@@ -215,6 +277,7 @@ def deserialize_settings_options(base_settings: Settings | None, options: dict[s
         new_settings = Settings(load_from_disk=False)
 
     if base_settings is not None:
+        setattr(new_settings, "_base_settings", base_settings)
         if not new_settings.providers and hasattr(base_settings, "providers"):
             new_settings.providers = cast(Any, dict(base_settings.providers))
         if not new_settings.downloaders and hasattr(base_settings, "downloaders"):

@@ -693,7 +693,8 @@ class BaseParser[T_ProviderSettings: ProviderSettings]:
             from workers.serialization import serialize_settings_options
 
             links = [g.link for g in gallery_data_list if g.link] or [f"{g.provider}:{g.gid}" for g in gallery_data_list]
-            task_options = serialize_settings_options(self.settings)
+            base_settings = getattr(self.settings, "_base_settings", None)
+            task_options = serialize_settings_options(self.settings, base_settings=base_settings)
             task_options["provider"] = self.name
             task_options["force_provider"] = force_provider
             task_options["galleries_data"] = [g.to_dict() for g in gallery_data_list]
@@ -957,7 +958,7 @@ class BaseParser[T_ProviderSettings: ProviderSettings]:
                     downloader[0].original_gallery.hidden = True
                     downloader[0].update_gallery_db()
                     if downloader[0].gallery_db_entry:
-                        logger.warning(
+                        logger.error(
                             "Download completed unsuccessfully using downloader: {},"
                             " set as failed as it's the last one. Gallery link: {}".format(
                                 downloader[0], downloader[0].gallery_db_entry.get_absolute_url()
@@ -976,12 +977,12 @@ class BaseParser[T_ProviderSettings: ProviderSettings]:
                                 downloader[0].gallery_db_entry.mark_as_deleted()
 
                     else:
-                        logger.warning(
+                        logger.error(
                             "Download completed unsuccessfully using downloader: {},"
                             " could not set as failed, no entry was updated on the database".format(downloader[0])
                         )
                 else:
-                    logger.warning(
+                    logger.error(
                         "Download completed unsuccessfully using downloader: {},"
                         " no entry was updated on the database".format(downloader[0])
                     )

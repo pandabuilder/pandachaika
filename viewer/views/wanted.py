@@ -5,7 +5,7 @@ import logging
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import EmptyPage, InvalidPage, Page, Paginator
-from django.http import Http404, HttpResponseRedirect, HttpRequest, HttpResponse
+from django.http import Http404, HttpResponseNotAllowed, HttpResponseRedirect, HttpRequest, HttpResponse
 from django.shortcuts import render
 from django.urls import reverse
 from django.conf import settings
@@ -81,9 +81,12 @@ def wanted_gallery(request: HttpRequest, pk: int) -> HttpResponse:
     elif can_change:
         edit_form = WantedGalleryCreateOrEditForm(instance=wanted_gallery_instance)
 
-    # Handle tools
-    tool = request.GET.get("tool", "")
-    tool_use_id = request.GET.get("tool-id", "")
+    # Handle tools (state-changing: POST-only)
+    if request.method != "POST" and request.GET.get("tool"):
+        return HttpResponseNotAllowed(["POST"])
+
+    tool = (request.POST.get("tool") or request.GET.get("tool", "")) if request.method == "POST" else ""
+    tool_use_id = (request.POST.get("tool-id") or request.GET.get("tool-id", "")) if request.method == "POST" else ""
     referer = get_safe_referer(request, reverse("viewer:wanted-gallery", args=[wanted_gallery_instance.pk]))
 
     if tool:
@@ -142,7 +145,7 @@ def wanted_gallery(request: HttpRequest, pk: int) -> HttpResponse:
 
         if is_staff:
             if tool == "create-possible-matches-internally":
-                provider = request.GET.get("provider", "")
+                provider = request.POST.get("provider", request.GET.get("provider", ""))
                 wanted_gallery_instance.create_gallery_matches_internally(provider_filter=provider)
                 logger.info(
                     "Wanted gallery {} ({}) internal gallery match resulted in {} possible matches.".format(
@@ -159,7 +162,7 @@ def wanted_gallery(request: HttpRequest, pk: int) -> HttpResponse:
                 wanted_gallery_instance.create_found_galleries_internally()
                 return HttpResponseRedirect(referer)
             elif tool == "backlog-search":
-                urls_to_match = request.GET.getlist("urls-to-match", [])
+                urls_to_match = request.POST.getlist("urls-to-match") or request.GET.getlist("urls-to-match", [])
                 url_query = wanted_gallery_instance.backlog_url_query
 
                 current_settings = Settings(load_from_config=crawler_settings.config)

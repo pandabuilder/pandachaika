@@ -1,423 +1,439 @@
 {% extends "viewer/base.html" %}
+{% load static dict_key viewer_extras %}
 {% block title %}{{ title }} | {{ block.super }}{% endblock %}
 {% block sidebar %}{% endblock %}
-{% load static %}
-{% load dict_key %}
-{% load viewer_extras %}
 
 {% block extra_head %}
-<style>
-    .generic-table {
-        --bs-table-color: lightgrey;
-        --bs-table-hover-bg: #354759;
-        --bs-table-hover-color: #ffffff;
-    }
-    .generic-table > tbody > tr:hover > * {
-        --bs-table-color-state: #ffffff !important;
-        --bs-table-bg-state: #354759 !important;
-        color: #ffffff !important;
-    }
-    .generic-table > tbody > tr:hover {
-        background-color: #354759 !important;
-        color: #ffffff !important;
-    }
-    .generic-table > tbody > tr:hover a:not(.badge) {
-        color: #58a6ff !important;
-    }
-    .generic-table > tbody > tr:hover .small,
-    .generic-table > tbody > tr:hover .text-muted,
-    .generic-table > tbody > tr:hover .text-secondary {
-        color: #cbd5e1 !important;
-    }
-    .generic-table > tbody > tr:hover code {
-        color: #93c5fd !important;
-    }
-</style>
+  {% load compress %}
+  {% compress css %}
+    <link href="{% static 'css/dm-pages.css' %}" type="text/css" rel="stylesheet" />
+  {% endcompress %}
+  <style>
+    .ml-name { font-weight: 600; }
+    .ml-desc { font-size: 0.78rem; color: var(--pg-text-secondary); }
+    .ml-url { font-size: 0.8rem; max-width: 20rem; }
+  </style>
 {% endblock %}
 
 {% block content %}
-    {% if messages %}
-        {% for message in messages %}
-        <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
-        {% endfor %}
-    {% endif %}
+<div class="container-fluid py-3">
+  {% include "viewer/include/dm_messages.html" %}
 
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <div>
-            <h2>{{ title }}</h2>
-            <p class="lead mb-0">Showing {{ results|length }} of {{ results.paginator.count }} monitored links</p>
-        </div>
-        {% if perms.viewer.add_monitoredlink %}
-        <div>
-            <button class="btn btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#add-monitored-link-form" aria-expanded="false" aria-controls="add-monitored-link-form">
-                <i class="fas fa-plus"></i> Add Monitored Link
-            </button>
-            <a class="btn btn-outline-secondary ms-1" href="{% url 'viewer:col-create-monitored-link' %}">
-                <i class="fas fa-external-link-alt"></i> New Page
-            </a>
-        </div>
-        {% endif %}
+  <!-- Header -->
+  <div class="dm-page-header">
+    <div>
+      <h2 class="h3 mb-1"><i class="fas fa-satellite-dish text-info me-2"></i>{{ title }}</h2>
+      <p class="mb-0 small">
+        Periodic feed and index URLs monitored by background worker schedulers.
+      </p>
     </div>
+    <div class="d-flex flex-wrap gap-2">
+      {% if user.is_staff %}
+        <a href="{% url 'viewer:stats-workers' %}" class="btn btn-outline-info btn-sm">
+          <i class="fas fa-tasks me-1"></i>Workers Dashboard
+        </a>
+      {% endif %}
+      {% if perms.viewer.add_monitoredlink %}
+        <button class="btn btn-primary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#add-monitored-link-form"
+                aria-expanded="{% if edit_form.errors %}true{% else %}false{% endif %}" aria-controls="add-monitored-link-form">
+          <i class="fas fa-plus me-1"></i>Add Monitored Link
+        </button>
+        <a class="btn btn-outline-secondary btn-sm" href="{% url 'viewer:col-create-monitored-link' %}">
+          <i class="fas fa-external-link-alt me-1"></i>New Page
+        </a>
+      {% endif %}
+    </div>
+  </div>
 
-    {% if perms.viewer.add_monitoredlink %}
+  <!-- Summary tiles -->
+  <div class="row g-2 mb-3">
+    <div class="col-6 col-md-3">
+      <a class="dm-stat{% if not request.GET.status and not request.GET.enabled %} active{% endif %}" href="{% url 'viewer:monitored-links' %}">
+        <div class="dm-lbl">Total links</div>
+        <div class="dm-val text-info">{{ stats.total }}</div>
+        <div class="dm-stat-sub">all configured monitors</div>
+      </a>
+    </div>
+    <div class="col-6 col-md-3">
+      <a class="dm-stat{% if request.GET.status == 'running' %} active{% endif %}" href="?{% url_filter 'status' 'running' %}">
+        <div class="dm-lbl">Running</div>
+        <div class="dm-val text-success">{{ stats.running }}</div>
+        <div class="dm-stat-sub">active in worker</div>
+      </a>
+    </div>
+    <div class="col-6 col-md-3">
+      <a class="dm-stat{% if request.GET.status == 'stopped' %} active{% endif %}" href="?{% url_filter 'status' 'stopped' %}">
+        <div class="dm-lbl">Stopped</div>
+        <div class="dm-val text-secondary">{{ stats.stopped }}</div>
+        <div class="dm-stat-sub">paused or idle</div>
+      </a>
+    </div>
+    <div class="col-6 col-md-3">
+      <a class="dm-stat{% if request.GET.enabled == 'yes' %} active{% endif %}" href="?{% url_filter 'enabled' 'yes' %}">
+        <div class="dm-lbl">Enabled</div>
+        <div class="dm-val text-primary">{{ stats.enabled }}</div>
+        <div class="dm-stat-sub">{{ stats.auto_start }} auto-start · {{ stats.disabled }} disabled</div>
+      </a>
+    </div>
+  </div>
+
+  {% if perms.viewer.add_monitoredlink %}
     <!-- Collapsible Add Form -->
-    <div class="collapse mb-4" id="add-monitored-link-form">
-        <div class="card shadow-sm">
-            <div class="card-header">
-                <h5 class="mb-0">Add New Monitored Link</h5>
-                <small class="text-muted">Create a new monitored URL that worker schedulers will crawl periodically.</small>
-            </div>
-            <div class="card-body">
-            <form action="{% url 'viewer:monitored-links' %}" method="POST">
-                {% csrf_token %}
-                <div class="row g-3">
-                    <div class="col-md-6">
-                        <label class="form-label" for="id_name"><strong>Name</strong></label>
-                        {{ edit_form.name }}
-                        {% if edit_form.name.errors %}<div class="text-danger small">{{ edit_form.name.errors }}</div>{% endif %}
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label" for="id_url"><strong>URL</strong></label>
-                        {{ edit_form.url }}
-                        {% if edit_form.url.errors %}<div class="text-danger small">{{ edit_form.url.errors }}</div>{% endif %}
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label" for="id_provider"><strong>Provider</strong></label>
-                        {{ edit_form.provider }}
-                        {% if edit_form.provider.errors %}<div class="text-danger small">{{ edit_form.provider.errors }}</div>{% endif %}
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label" for="id_frequency"><strong>Frequency</strong> (e.g. 01:00:00)</label>
-                        {{ edit_form.frequency }}
-                        {% if edit_form.frequency.errors %}<div class="text-danger small">{{ edit_form.frequency.errors }}</div>{% endif %}
-                    </div>
-                    <div class="col-md-3">
-                        <div class="form-check">
-                            {{ edit_form.separate_frequencies }}
-                            <label class="form-check-label" for="id_separate_frequencies" title="{{ edit_form.separate_frequencies.help_text }}"><strong>Separate frequencies</strong></label>
-                        </div>
-                        <label class="form-label" for="id_capture_frequency"><strong>Capture frequency</strong> (e.g. 01:00:00)</label>
-                        {{ edit_form.capture_frequency }}
-                        {% if edit_form.capture_frequency.errors %}<div class="text-danger small">{{ edit_form.capture_frequency.errors }}</div>{% endif %}
-                        <div class="form-text text-muted">Frequency above then only processes the captured links.</div>
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label" for="id_priority"><strong>Priority</strong> (default 10)</label>
-                        {{ edit_form.priority }}
-                        {% if edit_form.priority.errors %}<div class="text-danger small">{{ edit_form.priority.errors }}</div>{% endif %}
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label" for="id_stop_page"><strong>Stop page</strong> (optional)</label>
-                        {{ edit_form.stop_page }}
-                        {% if edit_form.stop_page.errors %}<div class="text-danger small">{{ edit_form.stop_page.errors }}</div>{% endif %}
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label" for="id_stop_on_seen_link"><strong>Stop on Seen</strong></label>
-                        {{ edit_form.stop_on_seen_link }}
-                        {% if edit_form.stop_on_seen_link.errors %}<div class="text-danger small">{{ edit_form.stop_on_seen_link.errors }}</div>{% endif %}
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label" for="id_already_seen_links_mode"><strong>Seen Links Mode</strong></label>
-                        {{ edit_form.already_seen_links_mode }}
-                        {% if edit_form.already_seen_links_mode.errors %}<div class="text-danger small">{{ edit_form.already_seen_links_mode.errors }}</div>{% endif %}
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label" for="id_how_long_after_already_seen"><strong>Seen Window</strong> (e.g. 1 00:00:00)</label>
-                        {{ edit_form.how_long_after_already_seen }}
-                        {% if edit_form.how_long_after_already_seen.errors %}<div class="text-danger small">{{ edit_form.how_long_after_already_seen.errors }}</div>{% endif %}
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label" for="id_proxy"><strong>Proxy</strong> (optional)</label>
-                        {{ edit_form.proxy }}
-                        {% if edit_form.proxy.errors %}<div class="text-danger small">{{ edit_form.proxy.errors }}</div>{% endif %}
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label" for="id_description"><strong>Description</strong></label>
-                        {{ edit_form.description }}
-                        {% if edit_form.description.errors %}<div class="text-danger small">{{ edit_form.description.errors }}</div>{% endif %}
-                    </div>
-                    <div class="col-md-12">
-                        <div class="form-check form-check-inline">
-                            {{ edit_form.enabled }}
-                            <label class="form-check-label" for="id_enabled">Enabled</label>
-                        </div>
-                        <div class="form-check form-check-inline">
-                            {{ edit_form.auto_start }}
-                            <label class="form-check-label" for="id_auto_start">Auto-start on worker boot</label>
-                        </div>
-                        <div class="form-check form-check-inline">
-                            {{ edit_form.use_limited_wanted_galleries }}
-                            <label class="form-check-label" for="id_use_limited_wanted_galleries">Restrict to specific Wanted Galleries</label>
-                        </div>
-                    </div>
-                    <div class="col-md-12">
-                        <label class="form-label" for="id_limited_wanted_galleries"><strong>Limited Wanted Galleries</strong></label>
-                        {{ edit_form.limited_wanted_galleries }}
-                        {% if edit_form.limited_wanted_galleries.errors %}<div class="text-danger small">{{ edit_form.limited_wanted_galleries.errors }}</div>{% endif %}
-                    </div>
-                    <div class="col-12">
-                        <button type="submit" name="submit-monitored-link" value="1" class="btn btn-primary">Create Monitored Link</button>
-                        <button type="button" class="btn btn-secondary ms-2" data-bs-toggle="collapse" data-bs-target="#add-monitored-link-form">Cancel</button>
-                    </div>
-                </div>
-            </form>
-            </div>
+    <div class="collapse{% if edit_form.errors %} show{% endif %}" id="add-monitored-link-form">
+      <div class="dm-card">
+        <div class="dm-card-header d-flex justify-content-between align-items-center">
+          <div>
+            <i class="fas fa-plus-circle text-info me-1"></i>Add New Monitored Link
+            <span class="small dm-muted fw-normal ms-2">Create a monitored URL that worker schedulers will crawl periodically.</span>
+          </div>
+          <button type="button" class="btn-close btn-close-white btn-sm" data-bs-toggle="collapse" data-bs-target="#add-monitored-link-form" aria-label="Close"></button>
         </div>
-    </div>
-    {% endif %}
-
-    <!-- Filter and Search Bar -->
-    <div class="card mb-3">
-        <div class="card-body py-2">
-            <form action="{% url 'viewer:monitored-links' %}" method="GET">
-                <div class="row g-2 align-items-center">
-                    <div class="col-md-2">
-                        {{ filter_form.name }}
-                    </div>
-                    <div class="col-md-2">
-                        {{ filter_form.url }}
-                    </div>
-                    <div class="col-md-2">
-                        {{ filter_form.provider }}
-                    </div>
-                    <div class="col-md-1">
-                        {{ filter_form.priority }}
-                    </div>
-                    <div class="col-md-1">
-                        {{ filter_form.enabled }}
-                    </div>
-                    <div class="col-md-2">
-                        {{ filter_form.status }}
-                    </div>
-                    <div class="col-md-1">
-                        {{ filter_form.sort }}
-                    </div>
-                    <div class="col-md-1">
-                        {{ filter_form.asc_desc }}
-                    </div>
-                    <div class="col-12 d-flex gap-2">
-                        <button type="submit" class="btn btn-info btn-sm">
-                            <i class="fas fa-search"></i> Search
-                        </button>
-                        <a href="{% url 'viewer:monitored-links' %}" class="btn btn-light btn-sm">
-                            Clear
-                        </a>
-                    </div>
+        <div class="p-3">
+          <form action="{% url 'viewer:monitored-links' %}" method="POST">
+            {% csrf_token %}
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label dm-lbl" for="id_name">Name</label>
+                {{ edit_form.name }}
+                {% if edit_form.name.errors %}<div class="text-danger small">{{ edit_form.name.errors }}</div>{% endif %}
+              </div>
+              <div class="col-md-6">
+                <label class="form-label dm-lbl" for="id_url">URL</label>
+                {{ edit_form.url }}
+                {% if edit_form.url.errors %}<div class="text-danger small">{{ edit_form.url.errors }}</div>{% endif %}
+              </div>
+              <div class="col-md-3">
+                <label class="form-label dm-lbl" for="id_provider">Provider</label>
+                {{ edit_form.provider }}
+                {% if edit_form.provider.errors %}<div class="text-danger small">{{ edit_form.provider.errors }}</div>{% endif %}
+              </div>
+              <div class="col-md-3">
+                <label class="form-label dm-lbl" for="id_frequency">Frequency (e.g. 01:00:00)</label>
+                {{ edit_form.frequency }}
+                {% if edit_form.frequency.errors %}<div class="text-danger small">{{ edit_form.frequency.errors }}</div>{% endif %}
+              </div>
+              <div class="col-md-3">
+                <div class="form-check mb-1">
+                  {{ edit_form.separate_frequencies }}
+                  <label class="form-check-label small" for="id_separate_frequencies" title="{{ edit_form.separate_frequencies.help_text }}">Separate frequencies</label>
                 </div>
-            </form>
+                <label class="form-label dm-lbl" for="id_capture_frequency">Capture frequency (e.g. 01:00:00)</label>
+                {{ edit_form.capture_frequency }}
+                {% if edit_form.capture_frequency.errors %}<div class="text-danger small">{{ edit_form.capture_frequency.errors }}</div>{% endif %}
+                <div class="form-text small">Frequency above then only processes the captured links.</div>
+              </div>
+              <div class="col-md-3">
+                <label class="form-label dm-lbl" for="id_priority">Priority (default 10)</label>
+                {{ edit_form.priority }}
+                {% if edit_form.priority.errors %}<div class="text-danger small">{{ edit_form.priority.errors }}</div>{% endif %}
+              </div>
+              <div class="col-md-3">
+                <label class="form-label dm-lbl" for="id_stop_page">Stop page (optional)</label>
+                {{ edit_form.stop_page }}
+                {% if edit_form.stop_page.errors %}<div class="text-danger small">{{ edit_form.stop_page.errors }}</div>{% endif %}
+              </div>
+              <div class="col-md-3">
+                <label class="form-label dm-lbl" for="id_stop_on_seen_link">Stop on Seen</label>
+                {{ edit_form.stop_on_seen_link }}
+                {% if edit_form.stop_on_seen_link.errors %}<div class="text-danger small">{{ edit_form.stop_on_seen_link.errors }}</div>{% endif %}
+              </div>
+              <div class="col-md-3">
+                <label class="form-label dm-lbl" for="id_already_seen_links_mode">Seen Links Mode</label>
+                {{ edit_form.already_seen_links_mode }}
+                {% if edit_form.already_seen_links_mode.errors %}<div class="text-danger small">{{ edit_form.already_seen_links_mode.errors }}</div>{% endif %}
+              </div>
+              <div class="col-md-3">
+                <label class="form-label dm-lbl" for="id_how_long_after_already_seen">Seen Window (e.g. 1 00:00:00)</label>
+                {{ edit_form.how_long_after_already_seen }}
+                {% if edit_form.how_long_after_already_seen.errors %}<div class="text-danger small">{{ edit_form.how_long_after_already_seen.errors }}</div>{% endif %}
+              </div>
+              <div class="col-md-3">
+                <label class="form-label dm-lbl" for="id_proxy">Proxy (optional)</label>
+                {{ edit_form.proxy }}
+                {% if edit_form.proxy.errors %}<div class="text-danger small">{{ edit_form.proxy.errors }}</div>{% endif %}
+              </div>
+              <div class="col-md-9">
+                <label class="form-label dm-lbl" for="id_description">Description</label>
+                {{ edit_form.description }}
+                {% if edit_form.description.errors %}<div class="text-danger small">{{ edit_form.description.errors }}</div>{% endif %}
+              </div>
+              <div class="col-12 d-flex flex-wrap gap-3">
+                <div class="form-check">
+                  {{ edit_form.enabled }}
+                  <label class="form-check-label small" for="id_enabled">Enabled</label>
+                </div>
+                <div class="form-check">
+                  {{ edit_form.auto_start }}
+                  <label class="form-check-label small" for="id_auto_start">Auto-start on worker boot</label>
+                </div>
+                <div class="form-check">
+                  {{ edit_form.use_limited_wanted_galleries }}
+                  <label class="form-check-label small" for="id_use_limited_wanted_galleries">Restrict to specific Wanted Galleries</label>
+                </div>
+              </div>
+              <div class="col-12">
+                <label class="form-label dm-lbl" for="id_limited_wanted_galleries">Limited Wanted Galleries</label>
+                {{ edit_form.limited_wanted_galleries }}
+                {% if edit_form.limited_wanted_galleries.errors %}<div class="text-danger small">{{ edit_form.limited_wanted_galleries.errors }}</div>{% endif %}
+              </div>
+              <div class="col-12 d-flex gap-2">
+                <button type="submit" name="submit-monitored-link" value="1" class="btn btn-primary btn-sm">
+                  <i class="fas fa-check me-1"></i>Create Monitored Link
+                </button>
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="collapse" data-bs-target="#add-monitored-link-form">Cancel</button>
+              </div>
+            </div>
+          </form>
         </div>
-    </div>
-
-    <!-- Pagination Top -->
-    {% if results.object_list and results.paginator.num_pages > 1 %}
-      <div class="mb-2">
-        <nav aria-label="Monitored links pagination">
-          <ul class="pagination pagination-sm justify-content-center my-0">
-            <li class="page-item{% if results.number == 1 %} disabled{% endif %}">
-              <a class="page-link" href="?{% url_replace 'page' '1' %}" aria-label="First">&laquo;</a>
-            </li>
-            {% if results.has_previous %}
-              <li class="page-item"><a class="page-link" href="?{% url_replace 'page' results.previous_page_number %}">Previous</a></li>
-            {% else %}
-              <li class="page-item disabled"><a class="page-link" href="#">Previous</a></li>
-            {% endif %}
-            <li class="page-item disabled">
-              <span class="page-link text-dark">Page {{ results.number }} of {{ results.paginator.num_pages }}</span>
-            </li>
-            {% if results.has_next %}
-              <li class="page-item"><a class="page-link" href="?{% url_replace 'page' results.next_page_number %}">Next</a></li>
-            {% else %}
-              <li class="page-item disabled"><a class="page-link" href="#">Next</a></li>
-            {% endif %}
-            <li class="page-item{% if results.number == results.paginator.num_pages %} disabled{% endif %}">
-              <a class="page-link" href="?{% url_replace 'page' results.paginator.num_pages %}" aria-label="Last">&raquo;</a>
-            </li>
-          </ul>
-        </nav>
       </div>
-    {% endif %}
+    </div>
+  {% endif %}
 
-    <!-- Table of Monitored Links -->
+  <!-- Filters -->
+  <form action="{% url 'viewer:monitored-links' %}" method="GET" class="dm-card" id="filter-form">
+    <div class="p-3">
+      <div class="row g-2 align-items-end">
+        <div class="col-md-6 col-lg-2">
+          <label class="form-label dm-lbl" for="{{ filter_form.name.id_for_label }}">Name</label>
+          {{ filter_form.name }}
+        </div>
+        <div class="col-md-6 col-lg-3">
+          <label class="form-label dm-lbl" for="{{ filter_form.url.id_for_label }}">URL</label>
+          {{ filter_form.url }}
+        </div>
+        <div class="col-6 col-lg-2">
+          <label class="form-label dm-lbl" for="{{ filter_form.provider.id_for_label }}">Provider</label>
+          {{ filter_form.provider }}
+        </div>
+        <div class="col-6 col-lg-1">
+          <label class="form-label dm-lbl" for="{{ filter_form.status.id_for_label }}">Activity</label>
+          {{ filter_form.status }}
+        </div>
+        <div class="col-6 col-lg-1">
+          <label class="form-label dm-lbl" for="{{ filter_form.enabled.id_for_label }}">Enabled</label>
+          {{ filter_form.enabled }}
+        </div>
+        <div class="col-6 col-lg-1">
+          <label class="form-label dm-lbl" for="{{ filter_form.priority.id_for_label }}">Priority</label>
+          {{ filter_form.priority }}
+        </div>
+        <div class="col-lg-2 d-flex flex-wrap gap-2">
+          <button type="submit" class="btn btn-info btn-sm"><i class="fas fa-search me-1"></i>Search</button>
+          <a href="{% url 'viewer:monitored-links' %}" class="btn btn-outline-light btn-sm" title="Clear all filters"><i class="fas fa-times me-1"></i>Clear</a>
+        </div>
+      </div>
+
+      <div class="row g-2 align-items-end mt-2">
+        <div class="col-6 col-md-3 col-lg-2">
+          <label class="form-label dm-lbl" for="{{ filter_form.auto_start.id_for_label }}">Auto-start</label>
+          {{ filter_form.auto_start }}
+        </div>
+        <div class="col-6 col-md-3 col-lg-2">
+          <label class="form-label dm-lbl" for="{{ filter_form.sort.id_for_label }}">Sort by</label>
+          {{ filter_form.sort }}
+        </div>
+        <div class="col-6 col-md-3 col-lg-2">
+          <label class="form-label dm-lbl" for="{{ filter_form.asc_desc.id_for_label }}">Order</label>
+          {{ filter_form.asc_desc }}
+        </div>
+        <div class="col-6 col-md-3 col-lg-6 text-end d-none d-md-block">
+          <span class="small dm-dim">Press <kbd>/</kbd> to search name</span>
+        </div>
+      </div>
+
+      <div class="mt-3 d-none" data-dm-chips-wrapper>
+        <div class="d-flex flex-wrap align-items-center gap-2">
+          <span class="dm-lbl"><i class="fas fa-filter me-1"></i>Active</span>
+          <div class="dm-chips" id="filter-chips"></div>
+        </div>
+      </div>
+    </div>
+  </form>
+
+  <!-- Results -->
+  <div class="dm-card">
+    <div class="dm-card-header">
+      {% include "viewer/include/dm_pagination.html" with page_obj=results noun="monitored links" per_page_options=per_page_options per_page=limit %}
+    </div>
     <div class="table-responsive">
-      <table class="table table-bordered table-hover table-sm generic-table align-middle">
-        <thead class="table-dark">
-        <tr>
-          <th>Status</th>
-          <th>Name</th>
-          <th>URL</th>
-          <th>Provider</th>
-          <th>Frequency</th>
-          <th>Priority</th>
-          <th>Config</th>
-          <th>Restriction</th>
-          <th title="Stop crawling at page number">Stop page</th>
-          <th>Last Run</th>
-          <th>Next Run</th>
-          <th>Next In</th>
-          <th class="text-center" style="min-width: 170px;">Actions</th>
-        </tr>
+      <table class="table table-dm table-hover table-sm mb-0" id="monitored-links-table">
+        <thead>
+          <tr>
+            <th>Status</th>
+            <th>Name</th>
+            <th>URL</th>
+            <th>Provider</th>
+            <th>Frequency</th>
+            <th class="text-center">Priority</th>
+            <th>Config</th>
+            <th>Restriction</th>
+            <th class="text-end" title="Stop crawling at page number">Stop page</th>
+            <th>Last Run</th>
+            <th>Next Run</th>
+            <th>Next In</th>
+            <th class="text-center" style="min-width: 10.5rem;">Actions</th>
+          </tr>
         </thead>
         <tbody>
-        {% for monitored_link in results %}
+          {% for monitored_link in results %}
             {% with sched=schedulers|dict_key:monitored_link.pk %}
-          <tr>
-            <td class="text-center">
+            <tr>
+              <td class="text-nowrap">
                 {% if sched and sched.is_running %}
-                    <span class="badge bg-success" title="Running in background worker"><i class="fas fa-play"></i> Running</span>
+                  <span class="badge bg-success" title="Running in background worker"><i class="fas fa-play me-1"></i>Running</span>
                 {% else %}
-                    <span class="badge bg-secondary" title="Stopped"><i class="fas fa-stop"></i> Stopped</span>
+                  <span class="badge bg-secondary" title="Stopped"><i class="fas fa-stop me-1"></i>Stopped</span>
                 {% endif %}
-            </td>
-            <td>
-              {% if perms.viewer.change_monitoredlink %}
-              <a href="{% url 'viewer:col-edit-monitored-link' monitored_link.pk %}" class="fw-bold text-decoration-none">
-                  {{ monitored_link.name }}
-              </a>
-              {% else %}
-              <span class="fw-bold">{{ monitored_link.name }}</span>
-              {% endif %}
-              {% if monitored_link.description %}
-                  <div class="small">{{ monitored_link.description|truncatechars:60 }}</div>
-              {% endif %}
-            </td>
-            <td class="text-break" style="max-width: 280px;">
-                {{ monitored_link.url|urlize_all_rel }}
-            </td>
-            <td>
-              {{ monitored_link.provider.slug|default:"-" }}
-            </td>
-            <td>
-              {% if monitored_link.uses_separate_frequencies %}
-                  <div title="Interval to capture new links from the pages/feeds">Capture: <code>{{ monitored_link.capture_frequency }}</code></div>
-                  <div title="Interval to process the captured links (API, comparison, downloads)">Process: <code>{{ monitored_link.frequency }}</code></div>
-              {% else %}
-                  <code>{{ monitored_link.frequency }}</code>
-              {% endif %}
-            </td>
-            <td>
-              <span class="badge bg-secondary">{{ monitored_link.priority }}</span>
-            </td>
-            <td>
-              {% if monitored_link.enabled %}
-                  <span class="badge bg-primary">Enabled</span>
-              {% else %}
-                  <span class="badge bg-dark">Disabled</span>
-              {% endif %}
-              {% if monitored_link.auto_start %}
-                  <span class="badge bg-info text-dark" title="Auto-starts when workers boot">Auto</span>
-              {% endif %}
-            </td>
-            <td>
-              {% if monitored_link.use_limited_wanted_galleries %}
-                  {% for wg in monitored_link.limited_wanted_galleries.all %}
-                    <a href="{% url 'viewer:wanted-gallery' wg.pk %}" class="badge bg-light text-dark border text-decoration-none">{{ wg.pk }}</a>
-                  {% empty %}
-                    <span class="small">None</span>
-                  {% endfor %}
-              {% else %}
-                  <span class="small">All</span>
-              {% endif %}
-            </td>
-            <td>
-              {{ monitored_link.stop_page|default_if_none:"-" }}
-            </td>
-            <td class="small">
-                {% if sched and sched.last_run %}
-                    {{ sched.last_run|date:"y-m-d, H:i:s" }}
-                {% else %}
-                    -
-                {% endif %}
-            </td>
-            <td class="small">
-                {% if sched and sched.next_run %}
-                    {{ sched.next_run|date:"y-m-d, H:i:s" }}
-                {% else %}
-                    -
-                {% endif %}
-            </td>
-            <td class="small">
-                {% if sched and sched.next_run %}
-                    {% if sched.is_running %}
-                        {{ sched.next_run|timeuntil }}
-                    {% else %}
-                        <span class="text-secondary" title="Scheduler is stopped">{{ sched.next_run|timeuntil }} (stopped)</span>
-                    {% endif %}
-                {% else %}
-                    -
-                {% endif %}
-            </td>
-            <td class="text-center">
-              {% if perms.viewer.change_monitoredlink %}
-              <form id="monitored-link-actions-{{ monitored_link.pk }}" method="POST" class="d-none">{% csrf_token %}</form>
-              {% endif %}
-              <div class="btn-group btn-group-sm" role="group">
+              </td>
+              <td class="dm-wrap" style="min-width: 11rem;">
                 {% if perms.viewer.change_monitoredlink %}
-                {% if sched and sched.is_running %}
-                  <button type="submit" form="monitored-link-actions-{{ monitored_link.pk }}" formaction="{% url 'viewer:col-monitored-link-action' monitored_link.pk 'stop' %}" class="btn btn-outline-warning" title="Stop scheduler">
-                    <i class="fas fa-stop"></i>
-                  </button>
+                  <a href="{% url 'viewer:col-edit-monitored-link' monitored_link.pk %}" class="ml-name text-decoration-none">
+                    {{ monitored_link.name }}
+                  </a>
                 {% else %}
-                  <button type="submit" form="monitored-link-actions-{{ monitored_link.pk }}" formaction="{% url 'viewer:col-monitored-link-action' monitored_link.pk 'start' %}" class="btn btn-outline-success" title="Start scheduler">
-                    <i class="fas fa-play"></i>
-                  </button>
+                  <span class="ml-name">{{ monitored_link.name }}</span>
                 {% endif %}
-                <button type="submit" form="monitored-link-actions-{{ monitored_link.pk }}" formaction="{% url 'viewer:col-monitored-link-action' monitored_link.pk 'force_run' %}" class="btn btn-outline-primary" title="Force immediate run">
-                  <i class="fas fa-bolt"></i>
-                </button>
-                <a href="{% url 'viewer:col-edit-monitored-link' monitored_link.pk %}" class="btn btn-outline-secondary" title="Edit">
-                  <i class="fas fa-edit"></i>
-                </a>
+                {% if monitored_link.description %}
+                  <div class="ml-desc" title="{{ monitored_link.description }}">{{ monitored_link.description|truncatechars:60 }}</div>
                 {% endif %}
-                {% if perms.viewer.delete_monitoredlink %}
-                <a href="{% url 'viewer:col-delete-monitored-link' monitored_link.pk %}" class="btn btn-outline-danger" title="Delete">
-                  <i class="fas fa-trash"></i>
-                </a>
+              </td>
+              <td class="ml-url dm-break-all">
+                {{ monitored_link.url|urlize_all_rel }}
+              </td>
+              <td class="text-nowrap">
+                {% if monitored_link.provider %}
+                  <span class="badge bg-secondary">{{ monitored_link.provider.slug }}</span>
+                {% else %}
+                  <span class="dm-dim">-</span>
                 {% endif %}
-              </div>
-            </td>
-          </tr>
+              </td>
+              <td class="small text-nowrap">
+                {% if monitored_link.uses_separate_frequencies %}
+                  <div title="Interval to capture new links from the pages/feeds"><span class="dm-muted">Capture:</span> <code>{{ monitored_link.capture_frequency }}</code></div>
+                  <div title="Interval to process the captured links (API, comparison, downloads)"><span class="dm-muted">Process:</span> <code>{{ monitored_link.frequency }}</code></div>
+                {% else %}
+                  <code>{{ monitored_link.frequency }}</code>
+                {% endif %}
+              </td>
+              <td class="text-center">
+                <span class="badge dm-badge-outline text-info">{{ monitored_link.priority }}</span>
+              </td>
+              <td class="text-nowrap">
+                {% if monitored_link.enabled %}
+                  <span class="badge bg-primary">Enabled</span>
+                {% else %}
+                  <span class="badge bg-dark border border-secondary">Disabled</span>
+                {% endif %}
+                {% if monitored_link.auto_start %}
+                  <span class="badge bg-info text-dark" title="Auto-starts when workers boot">Auto</span>
+                {% endif %}
+              </td>
+              <td class="small">
+                {% if monitored_link.use_limited_wanted_galleries %}
+                  {% for wg in monitored_link.limited_wanted_galleries.all %}
+                    <a href="{% url 'viewer:wanted-gallery' wg.pk %}" class="badge dm-badge-outline text-info text-decoration-none me-1">#{{ wg.pk }}</a>
+                  {% empty %}
+                    <span class="dm-dim">None</span>
+                  {% endfor %}
+                {% else %}
+                  <span class="dm-muted">All</span>
+                {% endif %}
+              </td>
+              <td class="text-end font-monospace small">
+                {{ monitored_link.stop_page|default_if_none:"-" }}
+              </td>
+              <td class="small text-nowrap">
+                {% if sched and sched.last_run %}
+                  <span data-dm-reltime="{{ sched.last_run|date:'c' }}">{{ sched.last_run|date:"Y-m-d H:i:s" }}</span>
+                {% else %}
+                  <span class="dm-dim">-</span>
+                {% endif %}
+              </td>
+              <td class="small text-nowrap">
+                {% if sched and sched.next_run %}
+                  {{ sched.next_run|date:"Y-m-d H:i:s" }}
+                {% else %}
+                  <span class="dm-dim">-</span>
+                {% endif %}
+              </td>
+              <td class="small text-nowrap">
+                {% if sched and sched.next_run %}
+                  {% if sched.is_running %}
+                    {{ sched.next_run|timeuntil }}
+                  {% else %}
+                    <span class="dm-muted" title="Scheduler is stopped">{{ sched.next_run|timeuntil }} (stopped)</span>
+                  {% endif %}
+                {% else %}
+                  <span class="dm-dim">-</span>
+                {% endif %}
+              </td>
+              <td class="text-center text-nowrap">
+                {% if perms.viewer.change_monitoredlink %}
+                  <form id="monitored-link-actions-{{ monitored_link.pk }}" method="POST" class="d-none">{% csrf_token %}</form>
+                {% endif %}
+                <div class="btn-group btn-group-sm" role="group">
+                  {% if perms.viewer.change_monitoredlink %}
+                    {% if sched and sched.is_running %}
+                      <button type="submit" form="monitored-link-actions-{{ monitored_link.pk }}" formaction="{% url 'viewer:col-monitored-link-action' monitored_link.pk 'stop' %}" class="btn btn-outline-warning" title="Stop scheduler" aria-label="Stop scheduler">
+                        <i class="fas fa-stop"></i>
+                      </button>
+                    {% else %}
+                      <button type="submit" form="monitored-link-actions-{{ monitored_link.pk }}" formaction="{% url 'viewer:col-monitored-link-action' monitored_link.pk 'start' %}" class="btn btn-outline-success" title="Start scheduler" aria-label="Start scheduler">
+                        <i class="fas fa-play"></i>
+                      </button>
+                    {% endif %}
+                    <button type="submit" form="monitored-link-actions-{{ monitored_link.pk }}" formaction="{% url 'viewer:col-monitored-link-action' monitored_link.pk 'force_run' %}" class="btn btn-outline-info" title="Force immediate run" aria-label="Force immediate run">
+                      <i class="fas fa-bolt"></i>
+                    </button>
+                    <a href="{% url 'viewer:col-edit-monitored-link' monitored_link.pk %}" class="btn btn-outline-light" title="Edit" aria-label="Edit">
+                      <i class="fas fa-edit"></i>
+                    </a>
+                  {% endif %}
+                  {% if perms.viewer.delete_monitoredlink %}
+                    <a href="{% url 'viewer:col-delete-monitored-link' monitored_link.pk %}" class="btn btn-outline-danger" title="Delete" aria-label="Delete">
+                      <i class="fas fa-trash"></i>
+                    </a>
+                  {% endif %}
+                </div>
+                {% if not perms.viewer.change_monitoredlink and not perms.viewer.delete_monitoredlink %}
+                  <span class="dm-dim small">-</span>
+                {% endif %}
+              </td>
+            </tr>
             {% endwith %}
-        {% empty %}
-          <tr>
-            <td colspan="12" class="text-center py-4">
-              <em>No monitored links found matching your filters.</em>
-            </td>
-          </tr>
-        {% endfor %}
+          {% empty %}
+            <tr>
+              <td colspan="13" class="dm-empty">
+                <i class="fas fa-satellite-dish"></i>No monitored links found matching your filters.
+              </td>
+            </tr>
+          {% endfor %}
         </tbody>
       </table>
     </div>
-
-    <!-- Pagination Bottom -->
-    {% if results.object_list and results.paginator.num_pages > 1 %}
-      <div class="mt-3">
-        <nav aria-label="Monitored links pagination bottom">
-          <ul class="pagination pagination-sm justify-content-center">
-            <li class="page-item{% if results.number == 1 %} disabled{% endif %}">
-              <a class="page-link" href="?{% url_replace 'page' '1' %}" aria-label="First">&laquo;</a>
-            </li>
-            {% if results.has_previous %}
-              <li class="page-item"><a class="page-link" href="?{% url_replace 'page' results.previous_page_number %}">Previous</a></li>
-            {% else %}
-              <li class="page-item disabled"><a class="page-link" href="#">Previous</a></li>
-            {% endif %}
-            <li class="page-item disabled">
-              <span class="page-link text-dark">Page {{ results.number }} of {{ results.paginator.num_pages }}</span>
-            </li>
-            {% if results.has_next %}
-              <li class="page-item"><a class="page-link" href="?{% url_replace 'page' results.next_page_number %}">Next</a></li>
-            {% else %}
-              <li class="page-item disabled"><a class="page-link" href="#">Next</a></li>
-            {% endif %}
-            <li class="page-item{% if results.number == results.paginator.num_pages %} disabled{% endif %}">
-              <a class="page-link" href="?{% url_replace 'page' results.paginator.num_pages %}" aria-label="Last">&raquo;</a>
-            </li>
-          </ul>
-        </nav>
+    {% if results.paginator.num_pages > 1 %}
+      <div class="p-2 border-top" style="border-color: var(--pg-border) !important;">
+        {% include "viewer/include/dm_pagination.html" with page_obj=results noun="monitored links" compact=1 %}
       </div>
     {% endif %}
-{% endblock %}
-{% block afterJQ %}
-  {{ edit_form.media }}
+  </div>
+</div>
 {% endblock %}
 
+{% block afterJQ %}
+  {{ edit_form.media }}
+  {% load compress %}
+  {% compress js %}
+    <script src="{% static 'js/dm-pages.js' %}"></script>
+  {% endcompress %}
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      const nameInput = document.getElementById('{{ filter_form.name.id_for_label }}');
+      if (nameInput) nameInput.dataset.dmHotkey = '/';
+      DM.filterChips(document.getElementById('filter-form'), document.getElementById('filter-chips'), {
+        ignore: ['limit'],
+        defaults: { sort: 'create_date', asc_desc: 'desc' },
+      });
+    });
+  </script>
+{% endblock %}

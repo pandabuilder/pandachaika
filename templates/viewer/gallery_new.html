@@ -72,9 +72,12 @@
     <span class="card-field-title me-1"><i class="fas fa-tools me-1"></i>Tools:</span>
 
     {% if perms.viewer.publish_gallery %}
-      <a class="btn btn-outline-warning btn-sm" href="{% url 'viewer:gallery-tool' gallery.pk 'toggle-public' %}">
-        <i class="fas fa-exchange-alt me-1"></i>Set {% if gallery.public %}Private{% else %}Public{% endif %}
-      </a>
+      <form method="POST" action="{% url 'viewer:gallery-tool' gallery.pk 'toggle-public' %}" class="d-inline">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-outline-warning btn-sm">
+          <i class="fas fa-exchange-alt me-1"></i>Set {% if gallery.public %}Private{% else %}Public{% endif %}
+        </button>
+      </form>
     {% endif %}
 
     <div class="dropdown">
@@ -118,22 +121,34 @@
       </button>
       <ul class="dropdown-menu dropdown-menu-end bg-dark border-secondary">
         {% if perms.viewer.update_metadata %}
-          <li>
-            <a class="dropdown-item text-light" href="{% url 'viewer:gallery-tool' gallery.pk 'recall-api' %}">
-              <i class="fas fa-sync-alt me-2 text-info"></i>Recall API
-            </a>
+          <li class="task-action">
+            <form method="POST" action="{% url 'viewer:gallery-tool' gallery.pk 'recall-api' %}"
+                  hx-post="{% url 'viewer:gallery-tool' gallery.pk 'recall-api' %}" hx-target="#gallery-task-recall-api" hx-swap="innerHTML">
+              {% csrf_token %}
+              <button type="submit" class="dropdown-item text-light">
+                <i class="fas fa-sync-alt me-2 text-info"></i>Recall API
+              </button>
+            </form>
           </li>
-          <li>
-            <a class="dropdown-item text-light" href="{% url 'viewer:gallery-tool' gallery.pk 'refetch-thumbnail' %}">
-              <i class="fas fa-image me-2 text-info"></i>Refetch Thumbnail
-            </a>
+          <li class="task-action">
+            <form method="POST" action="{% url 'viewer:gallery-tool' gallery.pk 'refetch-thumbnail' %}"
+                  hx-post="{% url 'viewer:gallery-tool' gallery.pk 'refetch-thumbnail' %}" hx-target="#gallery-task-refetch-thumbnail" hx-swap="innerHTML">
+              {% csrf_token %}
+              <button type="submit" class="dropdown-item text-light">
+                <i class="fas fa-image me-2 text-info"></i>Refetch Thumbnail
+              </button>
+            </form>
           </li>
         {% endif %}
         {% if perms.viewer.download_gallery %}
-          <li>
-            <a class="dropdown-item text-light" href="{% url 'viewer:gallery-tool' gallery.pk 'download' %}">
-              <i class="fas fa-download me-2 text-success"></i>Default Download
-            </a>
+          <li class="task-action">
+            <form method="POST" action="{% url 'viewer:gallery-tool' gallery.pk 'download' %}"
+                  hx-post="{% url 'viewer:gallery-tool' gallery.pk 'download' %}" hx-target="#gallery-task-download" hx-swap="innerHTML">
+              {% csrf_token %}
+              <button type="submit" class="dropdown-item text-light">
+                <i class="fas fa-download me-2 text-success"></i>Default Download
+              </button>
+            </form>
           </li>
         {% endif %}
         {% if perms.viewer.upload_with_metadata_archive %}
@@ -147,9 +162,12 @@
           <li><hr class="dropdown-divider border-secondary"></li>
           <li class="dropdown-header text-info small fw-bold">Admin Actions</li>
           <li>
-            <a class="dropdown-item text-light" href="{% url 'viewer:gallery-tool' gallery.pk 'toggle-hidden' %}">
-              <i class="fas fa-eye-slash me-2 text-warning"></i>Toggle Hidden
-            </a>
+            <form method="POST" action="{% url 'viewer:gallery-tool' gallery.pk 'toggle-hidden' %}">
+              {% csrf_token %}
+              <button type="submit" class="dropdown-item text-light">
+                <i class="fas fa-eye-slash me-2 text-warning"></i>Toggle Hidden
+              </button>
+            </form>
           </li>
           <li>
             <a class="dropdown-item text-light" href="{% url 'admin:viewer_gallery_change' gallery.pk %}">
@@ -160,17 +178,27 @@
             <li><hr class="dropdown-divider border-secondary"></li>
             <li class="dropdown-header text-info small fw-bold">Force Download</li>
             {% for downloader, priority in settings.downloaders.items %}
-              <li>
-                <a class="dropdown-item text-light small" href="#"
-                   onclick="sendJSONAPICommand('{% url 'viewer:json-parser' %}', '{% static 'favicon-160.png' %}', 'webcrawler', {link: '{{ gallery.get_link }}', downloader: '{{ downloader }}'}); return false;">
-                  <i class="fas fa-cloud-download-alt me-2 text-info"></i>{{ downloader }}
-                </a>
+              <li class="task-action">
+                <form method="POST" action="{% url 'viewer:gallery-tool' gallery.pk 'download' %}"
+                      hx-post="{% url 'viewer:gallery-tool' gallery.pk 'download' %}"
+                      hx-target="#gallery-task-download" hx-swap="innerHTML">
+                  {% csrf_token %}
+                  <input type="hidden" name="downloader" value="{{ downloader }}">
+                  <button type="submit" class="dropdown-item text-light small">
+                    <i class="fas fa-cloud-download-alt me-2 text-info"></i>{{ downloader }}
+                  </button>
+                </form>
               </li>
             {% endfor %}
           {% endif %}
         {% endif %}
       </ul>
     </div>
+
+    {# Live polling status for background operations started from the Operations dropdown #}
+    <span class="task-tray" id="gallery-task-recall-api">{% if active_tasks.recall_api %}{% task_status active_tasks.recall_api %}{% endif %}</span>
+    <span class="task-tray" id="gallery-task-refetch-thumbnail">{% if active_tasks.refetch_thumbnail %}{% task_status active_tasks.refetch_thumbnail %}{% endif %}</span>
+    <span class="task-tray" id="gallery-task-download">{% if active_tasks.download %}{% task_status active_tasks.download %}{% endif %}</span>
 
     {% if user.is_staff %}
       <a class="btn btn-sm btn-outline-light ms-auto" href="{% url 'admin:viewer_gallery_change' gallery.pk %}">
@@ -632,6 +660,10 @@
 
 {% block afterJQ %}
 <script type="text/javascript" src="{% static 'js/view_toggles.js' %}"></script>
+{% if user.is_authenticated %}
+  <script type="text/javascript" src="{% static 'js/vendor/htmx.min.js' %}"></script>
+  <script type="text/javascript" src="{% static 'js/task_actions.js' %}"></script>
+{% endif %}
 {% if user.is_staff %}
   <script type="text/javascript" src="{% static 'js/admin.js' %}"></script>
   {% include "viewer/include/viewer_modal.html" %}

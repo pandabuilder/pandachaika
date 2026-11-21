@@ -6,7 +6,7 @@ from typing import Any
 
 import django.utils.timezone as django_tz
 from django.conf import settings
-from django.db import models
+from django.db import models, transaction
 from django.db.models import F, Q, QuerySet
 
 logger = logging.getLogger(__name__)
@@ -46,6 +46,12 @@ class TaskQueue(models.Model):
     finished_at = models.DateTimeField(null=True, blank=True)
     error_message = models.TextField(blank=True, default="")
     traceback = models.TextField(blank=True, default="")
+    result = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="What the task did, as recorded by the worker when it completed (counts, created objects). "
+        "Null when the task type records nothing.",
+    )
     worker_pid = models.IntegerField(null=True, blank=True)
     attempts = models.PositiveIntegerField(
         default=0,
@@ -65,6 +71,21 @@ class TaskQueue(models.Model):
         ordering = ["priority", "created_at", "id"]
         indexes = [
             models.Index(fields=["status", "priority", "created_at"]),
+            models.Index(
+                fields=["priority", "created_at", "id"],
+                condition=Q(status="pending"),
+                name="taskqueue_pending_order_idx",
+            ),
+            models.Index(
+                fields=["task_type"],
+                condition=Q(status="processing"),
+                name="taskqueue_processing_type_idx",
+            ),
+            models.Index(
+                fields=["-finished_at", "-id"],
+                condition=Q(status__in=["completed", "failed", "cancelled"]),
+                name="taskqueue_finished_order_idx",
+            ),
         ]
 
     def __str__(self) -> str:
@@ -135,44 +156,49 @@ class WorkerProcess(models.Model):
     @classmethod
     def cleanup_dead_workers(cls, threshold_seconds: int = 60) -> int:
         cutoff = django_tz.now() - timedelta(seconds=threshold_seconds)
-        stopped_count = cls.objects.filter(status="running", last_heartbeat__lt=cutoff).update(status="stopped")
-        active_pids = list(
-            cls.objects.filter(status="running", last_heartbeat__gte=cutoff).values_list("pid", flat=True)
-        )
-        SchedulerState.objects.filter(is_running=True, worker_pid__isnull=False).exclude(
-            worker_pid__in=active_pids
-        ).update(is_running=False)
-        TaskQueue.release_interrupted(
-            TaskQueue.objects.filter(status=TaskQueue.Status.PROCESSING, worker_pid__isnull=False).exclude(
-                worker_pid__in=active_pids
-            ),
-            reason="Worker stopped unexpectedly while running this task too many times.",
-        )
-        try:
-            from django.db.models.functions import Greatest
-            from viewer.models import DownloadEvent
-
-            DownloadEvent.objects.filter(
-                completed=False,
-                status=DownloadEvent.Status.IN_PROGRESS,
-                worker_pid__isnull=False,
-            ).exclude(download_url="").exclude(worker_pid__in=active_pids).update(
-                status=DownloadEvent.Status.QUEUED,
-                worker_pid=None,
-                progress=0.0,
-                attempts=Greatest(F("attempts") - 1, 0),
+        with transaction.atomic():
+            stopped_count = cls.objects.filter(status="running", last_heartbeat__lt=cutoff).update(status="stopped")
+            active_pids = list(
+                cls.objects.filter(status="running", last_heartbeat__gte=cutoff).values_list("pid", flat=True)
             )
-        except Exception:
-            logger.warning("Could not release the downloads of dead workers", exc_info=True)
+            SchedulerState.objects.filter(is_running=True, worker_pid__isnull=False).exclude(
+                worker_pid__in=active_pids
+            ).update(is_running=False)
+            TaskQueue.release_interrupted(
+                TaskQueue.objects.filter(status=TaskQueue.Status.PROCESSING, worker_pid__isnull=False).exclude(
+                    worker_pid__in=active_pids
+                ),
+                reason="Worker stopped unexpectedly while running this task too many times.",
+            )
+            try:
+                from django.db.models.functions import Greatest
+                from viewer.models import DownloadEvent
+
+                DownloadEvent.objects.filter(
+                    completed=False,
+                    status=DownloadEvent.Status.IN_PROGRESS,
+                    worker_pid__isnull=False,
+                ).exclude(download_url="").exclude(worker_pid__in=active_pids).update(
+                    status=DownloadEvent.Status.QUEUED,
+                    worker_pid=None,
+                    progress=0.0,
+                    attempts=Greatest(F("attempts") - 1, 0),
+                )
+            except Exception:
+                logger.warning("Could not release the downloads of dead workers", exc_info=True)
         return stopped_count
 
 
 class SchedulerState(models.Model):
     """Tracks state and control commands for background schedulers across process boundaries."""
 
+    TYPE_SCHEDULER = "scheduler"
+    TYPE_CONTROL = "control"
+    CONTROL_NAMES = frozenset({"worker_runner", "worker_process"})
+
     name = models.CharField(max_length=100, primary_key=True)
     display_name = models.CharField(max_length=200, blank=True, default="")
-    schedule_type = models.CharField(max_length=50, default="scheduler")
+    schedule_type = models.CharField(max_length=50, default=TYPE_SCHEDULER)
     is_running = models.BooleanField(default=False, db_index=True)
     last_run = models.DateTimeField(null=True, blank=True)
     next_run = models.DateTimeField(null=True, blank=True)
@@ -223,24 +249,40 @@ class SchedulerState(models.Model):
         ).exists()
 
     @classmethod
-    def request_command(cls, name: str, command: str, arg: str = "") -> None:
-        """Request a control command (start, stop, force_run) to be processed by the worker runner."""
+    def schedulers(cls) -> QuerySet["SchedulerState"]:
+        """Return periodic scheduler rows, excluding internal IPC control rows."""
+        return cls.objects.exclude(schedule_type=cls.TYPE_CONTROL)
+
+    @classmethod
+    def request_command(
+        cls,
+        name: str,
+        command: str,
+        arg: str = "",
+        schedule_type: str | None = None,
+    ) -> None:
+        """Request a control command (start, stop, force_run, restart) to be processed by the worker runner."""
+        defaults: dict[str, Any] = {
+            "command_requested": command,
+            "command_arg": arg,
+        }
+        effective_type = schedule_type or (cls.TYPE_CONTROL if name in cls.CONTROL_NAMES else None)
+        if effective_type is not None:
+            defaults["schedule_type"] = effective_type
         cls.objects.update_or_create(
             name=name,
-            defaults={
-                "command_requested": command,
-                "command_arg": arg,
-            },
+            defaults=defaults,
         )
 
     @classmethod
     def get_all_statuses(cls, threshold_seconds: int = 30) -> dict[str, bool]:
         """Return dict of {name: is_running} for all known schedulers."""
         cutoff = django_tz.now() - timedelta(seconds=threshold_seconds)
+        qs = cls.schedulers()
         active_names = set(
-            cls.objects.filter(is_running=True, last_heartbeat__gte=cutoff).values_list("name", flat=True)
+            qs.filter(is_running=True, last_heartbeat__gte=cutoff).values_list("name", flat=True)
         )
-        all_names = list(cls.objects.values_list("name", flat=True))
+        all_names = list(qs.values_list("name", flat=True))
         return {name: (name in active_names) for name in all_names}
 
 

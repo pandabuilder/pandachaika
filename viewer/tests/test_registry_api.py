@@ -109,45 +109,49 @@ class RegistryApiDispatchTests(BaseRegistryApiMixin, TestCase):
 
     def test_unknown_command_get(self):
         response = self._api_get(self.anon_client, non_existent_key="123")
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 400)
         data = json.loads(response.content)
         self.assertEqual(data["result"], "Unknown command")
 
     def test_unknown_command_post_authenticated(self):
         response = self._api_post(self.auth_client, query_str="unknown_cmd=1", body={"key": "val"})
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 400)
         data = json.loads(response.content)
         self.assertEqual(data["result"], "Unknown command")
 
     def test_unknown_command_put_authenticated(self):
         response = self._api_put(self.auth_client, query_str="unknown_cmd=1", body={"key": "val"})
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 400)
         data = json.loads(response.content)
         self.assertEqual(data["result"], "Unknown command")
 
     def test_unknown_command_delete_authenticated(self):
         response = self._api_delete(self.auth_client, query_str="unknown_cmd=1")
-        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.status_code, 400)
         data = json.loads(response.content)
         self.assertEqual(data["result"], "Unknown command")
+        self.assertEqual(data["error"], {"code": "unknown_command", "message": "Unknown command"})
 
-    def test_unauthenticated_post_returns_403(self):
+    def test_unauthenticated_post_returns_401(self):
         response = self._api_post(self.anon_client, query_str="wanted-gallery=", body={"title": "Test"})
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, 401)
         data = json.loads(response.content)
-        self.assertEqual(data["result"], "Not authorized")
+        self.assertEqual(data["result"], "Authentication required.")
+        self.assertEqual(data["error"]["code"], "not_authenticated")
 
-    def test_unauthenticated_put_returns_403(self):
+    def test_unauthenticated_put_returns_401(self):
         response = self._api_put(self.anon_client, query_str="wanted-gallery=1", body={"title": "Test"})
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, 401)
         data = json.loads(response.content)
-        self.assertEqual(data["result"], "Not authorized")
+        self.assertEqual(data["result"], "Authentication required.")
+        self.assertEqual(data["error"]["code"], "not_authenticated")
 
-    def test_unauthenticated_delete_returns_403(self):
+    def test_unauthenticated_delete_returns_401(self):
         response = self._api_delete(self.anon_client, query_str="wanted-gallery=1")
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, 401)
         data = json.loads(response.content)
-        self.assertEqual(data["result"], "Not authorized")
+        self.assertEqual(data["result"], "Authentication required.")
+        self.assertEqual(data["error"]["code"], "not_authenticated")
 
     def test_invalid_json_body_post(self):
         url = f"{reverse('viewer:api')}?wanted-gallery="
@@ -368,7 +372,7 @@ class RegistryApiArchiveEndpointsTests(BaseRegistryApiMixin, TestCase):
 
     def test_get_archives_invalid_id(self):
         response = self._api_get(self.anon_client, archives=["abc", "123"])
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 400)
         data = json.loads(response.content)
         self.assertEqual(data["result"], "Invalid Archive ID.")
 
@@ -466,7 +470,7 @@ class RegistryApiArchiveEndpointsTests(BaseRegistryApiMixin, TestCase):
 
     def test_get_aid_archive_images_data_invalid_id(self):
         response = self._api_get(self.anon_client, aid=["abc"])
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 400)
         data = json.loads(response.content)
         self.assertEqual(data["result"], "Invalid Archive ID.")
 
@@ -1186,9 +1190,9 @@ class RegistryApiArchiveGroupEndpointsTests(BaseRegistryApiMixin, TestCase):
             "position": 1,
             "archive_group_entries": [],
         }
-        # Anon -> 403
+        # Anon -> 401
         response = self._api_post(self.anon_client, query_str="archive-group=", body=payload)
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, 401)
 
         # User without change_archivegroup perm -> 403
         response = self._api_post(self.regular_client, query_str="archive-group=", body=payload)
@@ -1582,7 +1586,7 @@ class RegistryApiWantedGalleryEndpointsTests(BaseRegistryApiMixin, TestCase):
 
     def test_get_wanted_galleries_invalid_id(self):
         response = self._api_get(self.anon_client, **{"wanted-galleries": ["abc"]})
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 400)
         data = json.loads(response.content)
         self.assertEqual(data["result"], "Invalid WantedGallery ID.")
 
@@ -1887,22 +1891,23 @@ class RegistryApiGalleryStatusArchiveDeleteAndUpdateMetadataTests(BaseRegistryAp
 
     # --- PUT ?gid= / PUT ?gallery= (status change) ---
 
-    def test_put_gid_status_unauthenticated_403(self):
+    def test_put_gid_status_unauthenticated_401(self):
         resp = self._api_put(self.anon_client, query_str="gid=77001&provider=panda", body={"status": "deleted"})
-        self.assertEqual(resp.status_code, 403)
+        self.assertEqual(resp.status_code, 401)
 
     def test_put_gid_status_regular_user_403(self):
         resp = self._api_put(self.regular_client, query_str="gid=77001&provider=panda", body={"status": "deleted"})
         self.assertEqual(resp.status_code, 403)
 
-    def test_put_gid_status_read_only_token_403(self):
+    def test_put_gid_status_read_only_token_401(self):
+        # On the legacy /api/ a token without the write scope is treated as no token at all.
         resp = self._api_put(
             self.anon_client,
             query_str="gid=77001&provider=panda",
             body={"status": "deleted"},
             HTTP_AUTHORIZATION=f"Bearer {self.read_only_token_str}",
         )
-        self.assertEqual(resp.status_code, 403)
+        self.assertEqual(resp.status_code, 401)
 
     def test_put_gid_status_deleted_and_normal_with_mark_delete_perm(self):
         resp = self._api_put(

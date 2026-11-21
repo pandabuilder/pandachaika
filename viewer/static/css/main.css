@@ -1059,6 +1059,45 @@ autocomplete-light[loading] input {
   display: contents;
 }
 
+/* Keep task status buttons at a stable width across stages (queued -> running -> done) with clean ellipsis */
+.task-status-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.task-status-btn .task-status-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* Full-width block variant for stacked list-group tools (e.g. /tools/) */
+.task-status.task-status-block {
+  display: block;
+  width: 100%;
+}
+
+.task-status.task-status-block .task-status-block-btn {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+}
+
+/* Non-shifting worker heartbeat warning appended below the toolbar/list card */
+.task-worker-warning {
+  padding: 0.3rem 0.75rem;
+  font-size: 0.8rem;
+  color: #f8d7da;
+  background-color: rgba(220, 53, 69, 0.18);
+  border-top: 1px solid rgba(220, 53, 69, 0.35);
+}
+
 /* Badge links hover contrast & readability */
 a.badge {
   text-decoration: none;
@@ -1247,8 +1286,82 @@ html.hide-regular-viewer #btn-toggle-regular-viewer .btn-text-off {
   opacity: 1;
 }
 
+/* Staff image editor of the archive edit form (js/archive_images_edit.js) */
+.image-editor-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  gap: .5rem;
+}
 
+.image-editor-card {
+  background: #272727;
+  border: 1px solid #495057;
+  border-radius: .375rem;
+  padding: .35rem;
+  cursor: grab;
+  user-select: none;
+  transition: border-color .15s, opacity .15s, transform .15s;
+}
 
+.image-editor-card:hover {
+  border-color: #adb5bd;
+}
 
+.image-editor-card.is-dragging {
+  opacity: .35;
+  transform: scale(.96);
+  cursor: grabbing;
+}
 
+.image-editor-card.is-moved {
+  border-color: #0d6efd;
+}
 
+.image-editor-card.is-deleted {
+  border-color: #dc3545;
+  opacity: .45;
+}
+
+.image-editor-card.is-deleted .image-editor-thumb img {
+  filter: grayscale(1);
+}
+
+.image-editor-card.is-flash {
+  animation: image-editor-flash .8s ease-out;
+}
+
+@keyframes image-editor-flash {
+  from { box-shadow: 0 0 0 3px #0d6efd; }
+  to { box-shadow: 0 0 0 3px transparent; }
+}
+
+.image-editor-thumb {
+  height: 140px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  margin-bottom: .25rem;
+}
+
+.image-editor-thumb img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.image-editor-name {
+  font-size: .75rem;
+  color: #adb5bd;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: .25rem;
+}
+
+.image-editor-card input[type="number"] {
+  min-width: 0;
+  padding-left: .15rem;
+  padding-right: .15rem;
+}

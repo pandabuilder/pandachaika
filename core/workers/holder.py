@@ -1,8 +1,14 @@
+import logging
 import typing
+from datetime import timedelta
 from time import sleep
+
+import django.utils.timezone as django_tz
 
 from core.base import setup
 from core.base.setup_utilities import check_for_running_threads
+
+logger = logging.getLogger(__name__)
 
 if typing.TYPE_CHECKING:
     from core.workers.download_progress import DownloadProgressChecker
@@ -53,7 +59,7 @@ class WorkerContext:
         """
         try:
             from workers.models import SchedulerState
-            states_by_name = {s.name: s for s in SchedulerState.objects.all()}
+            states_by_name = {s.name: s for s in SchedulerState.schedulers()}
             if states_by_name:
                 workers = []
                 initialized = self.get_active_initialized_workers()
@@ -72,9 +78,6 @@ class WorkerContext:
                         workers.append(s)
                         seen_names.add(name)
                 return workers
-            states = list(SchedulerState.objects.all())
-            if states:
-                return states
         except Exception:
             pass
         return self.get_active_initialized_workers()
@@ -247,7 +250,14 @@ class WorkerContext:
         )
         self.archive_download_queue.last_run = obj.last_run
         self.archive_download_queue.pk = obj.name
-        if start_threads and crawler_settings.archive_download_queue_startup:
+        archive_queue_enabled = bool(
+            crawler_settings.queue_archive_downloads
+            or any(
+                getattr(prov, "queue_archive_downloads", False)
+                for prov in getattr(crawler_settings, "providers", {}).values()
+            )
+        )
+        if start_threads and crawler_settings.archive_download_queue_startup and archive_queue_enabled:
             self.archive_download_queue.start_running(timer=crawler_settings.archive_download_queue_cycle_timer)
 
         from core.workers.retention import TimedDatabasePruner
@@ -292,6 +302,45 @@ class WorkerContext:
         self.timed_admin_reporter.pk = obj.name
         if start_threads and admin_report_cfg.enable:
             self.timed_admin_reporter.start_running(timer=admin_report_cfg.check_interval_minutes)
+
+        if start_threads and self.is_worker_process:
+            self.prune_stale_scheduler_states()
+
+    def prune_stale_scheduler_states(self) -> int:
+        """Remove obsolete SchedulerState rows that no longer match any active scheduler."""
+        initialized_workers = list(self.get_active_initialized_workers())
+        if not initialized_workers:
+            return 0
+        try:
+            from workers.models import SchedulerState
+
+            known_names = {s.thread_name for s in initialized_workers}
+            try:
+                from viewer.models import MonitoredLink
+
+                known_names.update(
+                    f"link_monitor_{pk}" for pk in MonitoredLink.objects.values_list("pk", flat=True)
+                )
+            except Exception:
+                pass
+
+            cutoff = django_tz.now() - timedelta(seconds=30)
+            stale_qs = (
+                SchedulerState.schedulers()
+                .exclude(name__in=known_names)
+                .exclude(
+                    is_running=True,
+                    last_heartbeat__gte=cutoff,
+                    worker_pid__isnull=False,
+                )
+            )
+            deleted, _ = stale_qs.delete()
+            if deleted:
+                logger.info("Pruned %d stale SchedulerState row(s)", deleted)
+            return deleted
+        except Exception as e:
+            logger.warning("Failed to prune stale scheduler states: %s", e)
+            return 0
 
     @property
     def is_worker_process(self) -> bool:

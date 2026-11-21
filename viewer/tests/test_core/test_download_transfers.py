@@ -234,6 +234,34 @@ class DownloadTransferTest(TestCase):
         self.assertEqual(result, TransferResult.PROCESSED)
         self.assert_zip_contents(archive, ["001.jpg"])
 
+    def test_transfer_torrent_archive_with_extra_files(self):
+        archive, _ = self.create_download("torrent")
+        os.makedirs(os.path.join(self.torrent_dir, "123", "Folder"))
+        self.write_torrent_file(gid=os.path.join("123", "Folder"), name="Title [ENG].zip")
+        self.write_torrent_images("123", "Folder", names=("Thanks[x3n0] for UPload.txt", "info.nfo"))
+
+        result, mock_process = self.transfer_torrent(archive)
+
+        self.assertEqual(result, TransferResult.PROCESSED)
+        mock_process.assert_called_once()
+        self.assert_zip_contents(archive, ["001.jpg"])
+
+    def test_transfer_torrent_extra_files_beside_root_folder_and_images(self):
+        archive, _ = self.create_download("torrent")
+        self.write_torrent_images("123", names=("readme.txt",))
+        self.write_torrent_images("123", "Folder", names=("001.jpg", "002.png", "credits.txt"))
+
+        result, _ = self.transfer_torrent(archive)
+
+        self.assertEqual(result, TransferResult.PROCESSED)
+        self.assert_zip_contents(archive, ["001.jpg", "002.png"])
+
+    def test_transfer_torrent_only_extra_files_is_not_found(self):
+        archive, _ = self.create_download("torrent")
+        self.write_torrent_images("123", names=("readme.txt", "link.url"))
+
+        self.assertEqual(self.transfer_torrent(archive)[0], TransferResult.NOT_FOUND)
+
     def test_transfer_torrent_partial_files_are_incomplete(self):
         archive, _ = self.create_download("torrent")
         self.write_torrent_images("123", names=("001.jpg", "002.jpg.!qB"))

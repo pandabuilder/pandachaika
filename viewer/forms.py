@@ -11,7 +11,6 @@ from django.forms.models import (
     BaseModelFormSet,
     modelformset_factory,
     ModelChoiceField,
-    ModelMultipleChoiceField,
     ModelForm,
     inlineformset_factory,
     BaseInlineFormSet,
@@ -30,14 +29,13 @@ from core.base.utilities import available_filename
 from viewer.models import (
     AdminReportSubscription,
     Archive,
-    ArchiveMatches,
-    Image,
     Gallery,
     Profile,
     UserLongLivedToken,
     WantedGallery,
     ArchiveGroup,
     ArchiveGroupEntry,
+    ArchiveTag,
     Tag,
     ArchiveManageEntry,
     GalleryMatchGroup,
@@ -382,72 +380,6 @@ class ArchiveGroupSelectForm(forms.Form):
         widget=autocomplete.ModelAlightMultiple(
             url="archive-group-select-autocomplete",
             attrs={"size": 1, "data-placeholder": "Group name", "class": "form-control"},
-        ),
-    )
-
-
-class ArchiveModForm(forms.ModelForm):
-
-    class Meta:
-        model = Archive
-        fields = [
-            "title",
-            "title_jpn",
-            "source_type",
-            "reason",
-            "possible_matches",
-            "tags",
-            "zipped",
-            "alternative_sources",
-            "archive_groups",
-            "details",
-        ]
-        widgets = {
-            "tags": autocomplete.ModelAlightMultiple(
-                url="customtag-autocomplete",
-                attrs={"size": 1, "data-placeholder": "Custom tag name", "class": "form-control", "data-width": "100%"},
-            ),
-            "alternative_sources": autocomplete.ModelAlightMultiple(
-                url="gallery-select-autocomplete",
-                attrs={
-                    "size": 1,
-                    "data-placeholder": "Alternative source",
-                    "class": "form-control",
-                    "data-width": "100%",
-                },
-            ),
-            "title": forms.widgets.TextInput(attrs={"class": "form-control"}),
-            "title_jpn": forms.widgets.TextInput(attrs={"class": "form-control"}),
-            "source_type": forms.widgets.TextInput(attrs={"class": "form-control"}),
-            "reason": forms.widgets.TextInput(attrs={"class": "form-control"}),
-            "zipped": forms.widgets.TextInput(attrs={"class": "form-control"}),
-            "details": forms.widgets.Textarea(attrs={"class": "form-control"}),
-        }
-
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        super(ArchiveModForm, self).__init__(*args, **kwargs)
-        cast(MatchesModelChoiceField, self.fields["possible_matches"]).queryset = (
-            self.instance.possible_matches.order_by("-archivematches__match_accuracy")
-        )
-        cast(ModelMultipleChoiceField, self.fields["archive_groups"]).queryset = (
-            self.instance.archive_groups.all()
-        )
-        tags_field = cast(ModelMultipleChoiceField, self.fields["tags"])
-        tags_field.label = "Custom Tags"
-        tags_field.queryset = self.instance.custom_tags()
-
-    possible_matches = MatchesModelChoiceField(
-        required=False,
-        queryset=ArchiveMatches.objects.none(),
-        widget=forms.widgets.Select(attrs={"class": "form-control"}),
-    )
-
-    archive_groups = forms.models.ModelMultipleChoiceField(
-        required=False,
-        queryset=ArchiveGroup.objects.none(),
-        widget=autocomplete.ModelAlightMultiple(
-            url="archive-group-select-autocomplete",
-            attrs={"size": 1, "data-placeholder": "Archive groups", "class": "form-control", "data-width": "100%"},
         ),
     )
 
@@ -1109,6 +1041,14 @@ class ArchiveCreateForm(ModelForm):
 
 
 class ArchiveEditForm(ModelForm):
+    """Inline edit form on the archive page.
+
+    Users with ``viewer.change_archive`` edit the metadata fields. With ``staff=True`` the form also edits the
+    fields that touch the file system or the matching state (renaming the file, picking a possible match, custom
+    tags, archive groups). Those fields aren't part of ``Meta.fields``: the view applies them with
+    ``apply_staff_changes`` after saving.
+    """
+
     old_gallery_to_alt = forms.BooleanField(
         initial=False, required=False, help_text="When changing the main Gallery, add the old one as Alternative Source"
     )
@@ -1124,6 +1064,8 @@ class ArchiveEditForm(ModelForm):
         required=False,
         help_text="When an associated gallery updates its tags, don't update this Archive's gallery tags.",
     )
+
+    STAFF_FIELDS = ("possible_matches", "custom_tags", "archive_groups", "zipped")
 
     class Meta:
         model = Archive
@@ -1141,8 +1083,116 @@ class ArchiveEditForm(ModelForm):
                 url="gallery-select-autocomplete",
                 attrs={"size": 1, "data-placeholder": "Gallery", "class": "form-control", "data-width": "100%"},
             ),
-            "details": forms.widgets.Textarea(attrs={"class": "form-control"}),
+            "details": forms.widgets.Textarea(attrs={"class": "form-control", "rows": 3}),
         }
+
+    def __init__(self, *args: Any, staff: bool = False, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.staff = staff
+        # Nullable text fields: a blank input keeps the archive's stored empty value ("" or None) instead of turning
+        # "" into None, which the change log would record as a change.
+        for name in ("title", "title_jpn", "source_type", "reason", "details"):
+            field = self.fields[name]
+            if isinstance(field, forms.CharField) and getattr(self.instance, name) is not None:
+                field.empty_value = ""
+        if not staff:
+            return
+        archive = self.instance
+        self.fields["possible_matches"] = MatchesModelChoiceField(
+            required=False,
+            queryset=archive.possible_matches.order_by("-archivematches__match_accuracy"),
+            widget=forms.widgets.Select(attrs={"class": "form-control"}),
+            help_text="Sets it as the main Gallery (overrides the Gallery field) and clears the possible matches.",
+        )
+        self.fields["custom_tags"] = forms.ModelMultipleChoiceField(
+            required=False,
+            queryset=Tag.objects.all(),
+            initial=archive.custom_tags(),
+            widget=autocomplete.ModelAlightMultiple(
+                url="customtag-autocomplete",
+                attrs={"size": 1, "data-placeholder": "Custom tag name", "class": "form-control", "data-width": "100%"},
+            ),
+        )
+        self.fields["archive_groups"] = forms.ModelMultipleChoiceField(
+            required=False,
+            queryset=ArchiveGroup.objects.all(),
+            initial=archive.archive_groups.all(),
+            widget=autocomplete.ModelAlightMultiple(
+                url="archive-group-select-autocomplete",
+                attrs={"size": 1, "data-placeholder": "Archive groups", "class": "form-control", "data-width": "100%"},
+            ),
+        )
+        self.fields["zipped"] = forms.CharField(
+            label="File",
+            required=False,
+            max_length=500,
+            initial=archive.zipped.name,
+            widget=forms.widgets.TextInput(attrs={"class": "form-control"}),
+            help_text="Path relative to the media root. Changing it renames the file on disk.",
+        )
+        self.order_fields(
+            [
+                "title", "title_jpn", "gallery", "possible_matches", "old_gallery_to_alt", "alternative_sources",
+                "source_type", "reason", "details", "custom_tags", "archive_groups", "zipped",
+                "freeze_titles", "freeze_tags",
+            ]
+        )
+
+    def clean_zipped(self) -> str:
+        zipped = self.cleaned_data["zipped"].strip()
+        if zipped and zipped != self.instance.zipped.name:
+            if os.path.isabs(zipped) or ".." in zipped.split("/"):
+                raise ValidationError("The file name must be a path relative to the media root")
+            if os.path.exists(os.path.join(settings.MEDIA_ROOT, zipped)):
+                raise ValidationError("There is already a file with that name on the file system")
+        return zipped
+
+    def clean(self) -> dict[str, Any]:
+        cleaned_data = super().clean() or self.cleaned_data
+        if self.staff and cleaned_data.get("possible_matches"):
+            cleaned_data["gallery"] = cleaned_data["possible_matches"]
+        return cleaned_data
+
+    def apply_staff_changes(self, archive: Archive) -> list[str]:
+        """Apply the staff-only fields to the saved archive. Returns error messages for the changes that failed."""
+        if not self.staff:
+            return []
+        errors: list[str] = []
+        data = self.cleaned_data
+
+        matched_gallery = data.get("possible_matches")
+        if matched_gallery:
+            archive.match_type = "manual:cutoff"
+            archive.simple_save()
+            archive.possible_matches.clear()
+            if matched_gallery.dl_type and "failed" in matched_gallery.dl_type:
+                matched_gallery.dl_type = "manual:matched"
+                matched_gallery.save()
+
+        # Only add and remove the differences, so unchanged custom tags don't show up in the change log.
+        wanted_tags = {tag.pk for tag in data["custom_tags"]}
+        current_custom = ArchiveTag.objects.filter(archive=archive, origin=ArchiveTag.ORIGIN_USER)
+        current_tags = set(current_custom.values_list("tag_id", flat=True))
+        if current_tags - wanted_tags:
+            current_custom.filter(tag_id__in=current_tags - wanted_tags).delete()
+        for tag_pk in wanted_tags - current_tags:
+            ArchiveTag.objects.create(archive=archive, tag_id=tag_pk, origin=ArchiveTag.ORIGIN_USER)
+
+        wanted_groups = {group.pk for group in data["archive_groups"]}
+        current_entries = ArchiveGroupEntry.objects.filter(archive=archive)
+        current_groups = set(current_entries.values_list("archive_group_id", flat=True))
+        if current_groups - wanted_groups:
+            current_entries.filter(archive_group_id__in=current_groups - wanted_groups).delete()
+        for group in data["archive_groups"]:
+            if group.pk not in current_groups:
+                ArchiveGroupEntry(archive=archive, archive_group=group).save()
+
+        zipped = data["zipped"]
+        if zipped and zipped != archive.zipped.name:
+            if not archive.rename_zipped_pathname(zipped):
+                errors.append("File {} already exists, renaming failed".format(zipped))
+
+        return errors
 
 
 class ArchiveManageEditForm(ModelForm):
@@ -1183,36 +1233,6 @@ class ArchiveManageEditForm(ModelForm):
 ArchiveManageEditFormSet = inlineformset_factory(
     Archive, ArchiveManageEntry, form=ArchiveManageEditForm, extra=1, can_delete=True
 )
-
-
-class ImageForm(forms.ModelForm):
-    position = forms.IntegerField(required=True, widget=forms.NumberInput(attrs={"size": 10}))
-
-    class Meta:
-        model = Image
-        fields = ["position"]
-
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        super(ImageForm, self).__init__(*args, **kwargs)
-        if self.instance.image:
-            self.fields["position"].label = os.path.basename(self.instance.image.path)
-        else:
-            self.fields["position"].label = self.instance.position
-
-
-class BaseImageFormSet(BaseModelFormSet):
-    def clean(self) -> None:
-        if any(self.errors):
-            return
-        positions: list[int] = []
-        for form in self.forms:
-            position = form.cleaned_data["position"]
-            if position in positions:
-                raise forms.ValidationError("Images positions must be unique: {}".format(position))
-            positions.append(position)
-
-
-ImageFormSet = modelformset_factory(Image, form=ImageForm, extra=0, formset=BaseImageFormSet, can_delete=True)
 
 
 class BootstrapPasswordChangeForm(PasswordChangeForm):

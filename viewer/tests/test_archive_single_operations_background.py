@@ -69,7 +69,7 @@ class ArchiveSingleOperationsBackgroundTests(TestCase):
         self.regular_client.login(username="regular_user", password="password123")
 
     def test_reduce_permission_required(self):
-        resp = self.regular_client.get(reverse("viewer:archive-reduce", args=[self.archive.pk]), follow=True)
+        resp = self.regular_client.post(reverse("viewer:archive-reduce", args=[self.archive.pk]), follow=True)
         self.assertEqual(resp.status_code, 200)
         messages_list = list(resp.context["messages"])
         self.assertTrue(any("don't have the permission" in str(m) for m in messages_list))
@@ -78,7 +78,7 @@ class ArchiveSingleOperationsBackgroundTests(TestCase):
         self.archive.extracted = True
         self.archive.save()
 
-        resp = self.expand_client.get(reverse("viewer:archive-reduce", args=[self.archive.pk]))
+        resp = self.expand_client.post(reverse("viewer:archive-reduce", args=[self.archive.pk]))
         self.assertEqual(resp.status_code, 302)
 
         task = TaskQueue.objects.filter(task_type="reduce_worker").latest("pk")
@@ -87,12 +87,12 @@ class ArchiveSingleOperationsBackgroundTests(TestCase):
         self.assertEqual(task.status, TaskQueue.Status.PENDING)
 
         # Calling again while task is active should not enqueue a duplicate
-        resp2 = self.expand_client.get(reverse("viewer:archive-reduce", args=[self.archive.pk]))
+        resp2 = self.expand_client.post(reverse("viewer:archive-reduce", args=[self.archive.pk]))
         self.assertEqual(resp2.status_code, 302)
         self.assertEqual(TaskQueue.objects.filter(task_type="reduce_worker").count(), 1)
 
     def test_check_and_convert_filetype_enqueues_task(self):
-        resp = self.staff_client.get(reverse("viewer:check-convert-type", args=[self.archive.pk]))
+        resp = self.staff_client.post(reverse("viewer:check-convert-type", args=[self.archive.pk]))
         self.assertEqual(resp.status_code, 302)
 
         task = TaskQueue.objects.filter(task_type="convert_archive_worker").latest("pk")
@@ -100,7 +100,7 @@ class ArchiveSingleOperationsBackgroundTests(TestCase):
         self.assertEqual(task.event_action, "CONVERT_TO_ZIP")
 
     def test_check_and_convert_filetype_requires_staff(self):
-        resp = self.regular_client.get(reverse("viewer:check-convert-type", args=[self.archive.pk]), follow=True)
+        resp = self.regular_client.post(reverse("viewer:check-convert-type", args=[self.archive.pk]), follow=True)
         self.assertEqual(resp.status_code, 200)
         messages_list = list(resp.context["messages"])
         self.assertTrue(any("need to be an admin" in str(m) for m in messages_list))
@@ -179,7 +179,7 @@ class ArchiveSingleOperationsBackgroundTests(TestCase):
         self.assertEqual(task.event_action, "RECALCULATE_FILEINFO")
 
     def test_mark_similar_archives_enqueues_task(self):
-        resp = self.similar_client.get(
+        resp = self.similar_client.post(
             reverse("viewer:archive-mark-similar", args=[self.archive.pk]) + "?use-recycled=1"
         )
         self.assertEqual(resp.status_code, 302)
@@ -194,7 +194,7 @@ class ArchiveSingleOperationsBackgroundTests(TestCase):
         self.archive.gallery = None
         self.archive.save()
 
-        resp = self.staff_client.get(
+        resp = self.staff_client.post(
             reverse("viewer:archive-generate-matches", args=[self.archive.pk]) + "?cutoff=0.6&max-matches=5&provider=panda"
         )
         self.assertEqual(resp.status_code, 302)

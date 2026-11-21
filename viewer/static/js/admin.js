@@ -7,17 +7,26 @@ function sendJSONAPICommand(url, iconUrl, operation, args) {
     var params = JSON.stringify( body );
 
     xmlhttp.onreadystatechange = function () {
-        if (xmlhttp.readyState === 4 && xmlhttp.status === 200) {
-            var jsonResponse = JSON.parse(xmlhttp.responseText);
-            if(jsonResponse.hasOwnProperty('message')) {
-                spawnNotification(jsonResponse.message, iconUrl, "Panda Backup");
-            }
-            else if (jsonResponse.hasOwnProperty('error')) {
-                spawnNotification("ERROR: " + jsonResponse.error, iconUrl, "Panda Backup");
-            }
-            else {
-                spawnNotification("Could not parse server response", iconUrl, "Panda Backup");
-            }
+        if (xmlhttp.readyState !== 4) {
+            return;
+        }
+        var jsonResponse;
+        try {
+            jsonResponse = JSON.parse(xmlhttp.responseText);
+        } catch (e) {
+            spawnNotification("Could not parse server response", iconUrl, "Panda Backup");
+            return;
+        }
+        if (jsonResponse.error) {
+            // API error envelope: {"error": {"code": "...", "message": "..."}}
+            var errorMessage = typeof jsonResponse.error === "object" ? jsonResponse.error.message : jsonResponse.error;
+            spawnNotification("ERROR: " + errorMessage, iconUrl, "Panda Backup");
+        }
+        else if (jsonResponse.hasOwnProperty('message')) {
+            spawnNotification(jsonResponse.message, iconUrl, "Panda Backup");
+        }
+        else {
+            spawnNotification("Could not parse server response", iconUrl, "Panda Backup");
         }
     };
     xmlhttp.open("POST", url, true);
@@ -25,7 +34,9 @@ function sendJSONAPICommand(url, iconUrl, operation, args) {
     const token = localStorage.getItem("activeUserToken");
 
     xmlhttp.setRequestHeader("Content-type", "application/json");
-    xmlhttp.setRequestHeader("Authorization", "Bearer " + token);
+    if (token) {
+        xmlhttp.setRequestHeader("Authorization", "Bearer " + token);
+    }
 
     xmlhttp.send(params);
 

@@ -70,15 +70,16 @@ def sync_gallery_db_entry(
             gallery_db_entry.tag_list(), force_check=True
         )
         if settings.recheck_wanted_on_update:
-            wanted_found = WantedGallery.objects.filter(foundgallery__gallery=gallery_db_entry)
+            wanted_found_qs = WantedGallery.objects.filter(foundgallery__gallery=gallery_db_entry)
+            wanted_found = list(wanted_found_qs)
+            if wanted_found:
+                rematch_wanted = gallery_db_entry.match_against_wanted_galleries(
+                    wanted_filters=wanted_found_qs, skip_already_found=False
+                )
 
-            rematch_wanted = gallery_db_entry.match_against_wanted_galleries(
-                wanted_filters=wanted_found, skip_already_found=False
-            )
-
-            for single_wanted_found in wanted_found:
-                if single_wanted_found not in rematch_wanted:
-                    wanted_invalidated.append(single_wanted_found)
+                for single_wanted_found in wanted_found:
+                    if single_wanted_found not in rematch_wanted:
+                        wanted_invalidated.append(single_wanted_found)
 
     for archive in gallery_db_entry.archive_set.all():
         if not archive.gallery:

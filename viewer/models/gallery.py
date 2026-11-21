@@ -647,18 +647,6 @@ class Gallery(TrackedChangesMixin, models.Model):
 
         indexes = [
             models.Index(
-                F("create_date").desc(nulls_last=True),
-                F("public").asc(nulls_last=True),
-                "status",
-                name="gallery_pub_norm_create_date",
-            ),
-            models.Index(
-                F("posted").desc(nulls_last=True),
-                F("public").asc(nulls_last=True),
-                "status",
-                name="gallery_pub_norm_pub_date",
-            ),
-            models.Index(
                 "status",
                 "public",
                 F("posted").desc(nulls_last=True),
@@ -1081,9 +1069,9 @@ class Gallery(TrackedChangesMixin, models.Model):
     ) -> "list[WantedGallery]":
         from viewer.models.wanted import WantedGallery
 
-        found_wanted_galleries = []
+        found_wanted_galleries: list[WantedGallery] = []
 
-        if not wanted_filters:
+        if wanted_filters is None:
             wanted_filters = WantedGallery.objects.all()
 
         if skip_already_found:
@@ -1183,29 +1171,37 @@ class Gallery(TrackedChangesMixin, models.Model):
                 Q(wait_for_time__isnull=True) | Q(wait_for_time__lte=django_tz.now() - self.posted)
             )
 
-        for wanted_filter in filtered_wanted:
-            # if wanted_filter.wanted_providers.count():
-            #     if not wanted_filter.wanted_providers.filter(slug=self.provider).first():
-            #         continue
+        filtered_list = list(filtered_wanted.distinct().prefetch_related("wanted_tags", "unwanted_tags"))
+        if not filtered_list:
+            return found_wanted_galleries
+
+        gallery_tags = self.tag_list()
+        gallery_tag_set = set(gallery_tags)
+        gallery_tags_scopes: list[str] | None = None
+
+        for wanted_filter in filtered_list:
             accepted = True
-            if bool(wanted_filter.wanted_tags.all()):
-                if not set(wanted_filter.wanted_tags_list()).issubset(set(self.tag_list())):
+            wanted_tags = [str(x) for x in wanted_filter.wanted_tags.all()]
+            if wanted_tags:
+                wanted_tag_set = set(wanted_tags)
+                if not wanted_tag_set.issubset(gallery_tag_set):
                     accepted = False
                 # Review based on 'accept if none' scope.
                 if not accepted and wanted_filter.wanted_tags_accept_if_none_scope:
-                    missing_tags = set(wanted_filter.wanted_tags_list()).difference(set(self.tag_list()))
+                    missing_tags = wanted_tag_set.difference(gallery_tag_set)
                     # If all the missing tags start with the parameter,
                     # and no other tag is in gallery with this parameter, mark as accepted
                     scope_formatted = wanted_filter.wanted_tags_accept_if_none_scope + ":"
                     if all(x.startswith(scope_formatted) for x in missing_tags) and not any(
-                        x.startswith(scope_formatted) for x in self.tag_list()
+                        x.startswith(scope_formatted) for x in gallery_tags
                     ):
                         accepted = True
                 # Do not accept galleries that have more than 1 tag in the same wanted tag scope.
-                if accepted & wanted_filter.wanted_tags_exclusive_scope:
-                    accepted_tags = set(wanted_filter.wanted_tags_list()).intersection(set(self.tag_list()))
-                    gallery_tags_scopes = [x.split(":", maxsplit=1)[0] for x in self.tag_list() if len(x) > 1]
-                    wanted_gallery_tags_scopes = [x.split(":", maxsplit=1)[0] for x in accepted_tags if len(x) > 1]
+                if accepted and wanted_filter.wanted_tags_exclusive_scope:
+                    accepted_tags = wanted_tag_set.intersection(gallery_tag_set)
+                    if gallery_tags_scopes is None:
+                        gallery_tags_scopes = [x.split(":", maxsplit=1)[0] for x in gallery_tags if len(x) > 1]
+                    wanted_gallery_tags_scopes = {x.split(":", maxsplit=1)[0] for x in accepted_tags if len(x) > 1}
                     scope_count: dict[str, int] = defaultdict(int)
                     for scope_name in gallery_tags_scopes:
                         if scope_name in wanted_gallery_tags_scopes:
@@ -1223,8 +1219,9 @@ class Gallery(TrackedChangesMixin, models.Model):
             if not accepted:
                 continue
 
-            if bool(wanted_filter.unwanted_tags.all()):
-                if any(item in self.tag_list() for item in wanted_filter.unwanted_tags_list()):
+            unwanted_tags = [str(x) for x in wanted_filter.unwanted_tags.all()]
+            if unwanted_tags:
+                if any(item in gallery_tag_set for item in unwanted_tags):
                     continue
 
             if wanted_filter.match_expression:

@@ -1,40 +1,63 @@
-"""URL-facing JSON API views (login, public /api, private jsonapi)."""
+"""URL-facing JSON API views.
+
+``/api/v1/`` is the versioned API: the command dispatcher (``?<command>=``), the remote operations API
+(``/api/v1/remote/``), the OpenAPI document and its interactive docs. The legacy routes call the same code:
+
+- ``/api/``, ``/api``, ``/jsearch/``: the command dispatcher. Kept for public clients, with no end date. Errors keep
+  the ``result`` key next to the error envelope.
+- ``/r-api/...``: the old reader API (see legacy.py), deprecated.
+- ``/admin-api/``, ``/jsonapi/``: the remote operations API, deprecated.
+"""
 
 import json
 import logging
-from collections import defaultdict
+from collections.abc import Callable
 from typing import Any
 
 from django.conf import settings
 from django.contrib.auth import authenticate, login, logout
-from django.http import (
-    HttpResponse,
-    HttpRequest,
-    HttpResponseBadRequest,
-    HttpResponseForbidden,
-    HttpResponseNotAllowed,
-)
+from django.http import HttpRequest, HttpResponse, HttpResponseBadRequest
+from django.shortcuts import render
 from django.urls import reverse
 from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_GET, require_POST
 
-from core.base.setup import Settings
-from core.base.utilities import timestamp_or_zero
-from viewer.models import Archive, Gallery, UserArchivePrefs, UserLongLivedToken
-from viewer.utils.matching import generate_possible_matches_for_archives
-from viewer.utils.requests import authenticate_by_token, double_check_auth, scope_for_method
-from viewer.views.head import gallery_filter_keys
-from workers import client
-from viewer.views.api.dispatch import (
-    json_api_handle_delete,
-    json_api_handle_get,
-    json_api_handle_post,
-    json_api_handle_put,
-)
-from viewer.views.api.filters import filter_galleries_no_request
+from viewer.models import UserLongLivedToken
+from viewer.views.api.auth import authenticate_api_request
+from viewer.views.api.dispatch import dispatch_command, user_has_required_perm
+from viewer.views.api.errors import ApiError, ApiSurface, error_response, json_response
+from viewer.views.api.handlers.remote import handle_remote_get, handle_remote_post
 
-crawler_settings = settings.CRAWLER_SETTINGS
 logger = logging.getLogger(__name__)
+request_logger = logging.getLogger("django.request")
+
+
+def run_api_view(
+    request: HttpRequest,
+    surface: ApiSurface,
+    view: Callable[[HttpRequest], HttpResponse],
+    scope: str | None = None,
+) -> HttpResponse:
+    """Authenticate the request, run ``view`` and render any error in the envelope of ``surface``."""
+    try:
+        authenticate_api_request(request, surface, scope)
+        return view(request)
+    except ApiError as e:
+        return error_response(e, surface)
+    except Exception:
+        if settings.DEBUG:
+            raise
+        # Same logger Django uses for unhandled exceptions, so error mails and log handlers still see them.
+        request_logger.exception("Internal Server Error: %s", request.path, extra={"status_code": 500})
+        return error_response(ApiError.internal(), surface)
+
+
+def deprecated(response: HttpResponse, successor: str) -> HttpResponse:
+    """Mark a response from a deprecated route (RFC 9745 Deprecation header, RFC 8288 successor link)."""
+    response["Deprecation"] = "true"
+    response["Link"] = f'<{successor}>; rel="successor-version"'
+    return response
+
 
 @csrf_exempt
 def api_login(request: HttpRequest) -> HttpResponse:
@@ -69,511 +92,71 @@ def api_logout(request: HttpRequest) -> HttpResponse:
     return HttpResponse(json.dumps(data), content_type="application/json")
 
 
+def _api_v1_index(request: HttpRequest) -> HttpResponse:
+    return json_response(
+        {
+            "version": "1",
+            "openapi": request.build_absolute_uri(reverse("viewer:api-v1-openapi")),
+            "docs": request.build_absolute_uri(reverse("viewer:api-v1-docs")),
+            "authenticated": request.api.authenticated,  # type: ignore[attr-defined]
+        }
+    )
 
-# NOTE: This is used by 3rd parties, do not modify, at most create a new function if something needs changing
-# Public API, does not check for any token, but filters if the user is authenticated or not.
+
+@csrf_exempt
+def api_v1(request: HttpRequest) -> HttpResponse:
+    """The versioned command API: ``/api/v1/?<command>=<value>``."""
+
+    def view(req: HttpRequest) -> HttpResponse:
+        if req.method == "GET" and not req.GET:
+            return _api_v1_index(req)
+        return dispatch_command(req)
+
+    return run_api_view(request, ApiSurface.V1, view)
+
+
+# NOTE: This is used by 3rd parties (/jsearch/ in particular): keep its successful responses as they are.
+# Anonymous callers only get public data; a session or a token gives access to the rest and to write commands.
 @csrf_exempt
 def json_api(request: HttpRequest) -> HttpResponse:
+    return run_api_view(request, ApiSurface.LEGACY_API, dispatch_command)
 
-    token_valid, token_user = authenticate_by_token(request, scope_for_method(request))
 
-    user_is_authenticated = request.user.is_authenticated or token_valid
-
+def _remote_view(request: HttpRequest) -> HttpResponse:
+    user = request.api.user  # type: ignore[attr-defined]
+    if user is None:
+        raise ApiError.not_authenticated()
+    if not user_has_required_perm(user, "viewer.use_remote_api"):
+        raise ApiError.forbidden()
+    if request.method == "POST":
+        return handle_remote_post(request, user)
     if request.method == "GET":
-        return json_api_handle_get(request, user_is_authenticated)
-    elif request.method == "POST":
-        if user_is_authenticated:
-            return json_api_handle_post(request, token_user or request.user)
-        else:
-            return HttpResponseForbidden(
-                json.dumps({"result": "Not authorized"}), content_type="application/json; charset=utf-8"
-            )
-    elif request.method == "PUT":
-        if user_is_authenticated:
-            return json_api_handle_put(request, token_user or request.user)
-        else:
-            return HttpResponseForbidden(
-                json.dumps({"result": "Not authorized"}), content_type="application/json; charset=utf-8"
-            )
-    elif request.method == "DELETE":
-        if user_is_authenticated:
-            return json_api_handle_delete(request, token_user or request.user)
-        else:
-            return HttpResponseForbidden(
-                json.dumps({"result": "Not authorized"}), content_type="application/json; charset=utf-8"
-            )
-    else:
-        return HttpResponseNotAllowed(
-            ["GET", "POST", "PUT", "DELETE"],
-            json.dumps({"result": "Unsupported request method"}),
-            content_type="application/json; charset=utf-8",
-        )
+        return handle_remote_get(request)
+    raise ApiError.method_not_allowed(["GET", "POST"], f"Unsupported method: {request.method}")
 
 
-
-def _find_archive_for_link(parsers: list[Any], link: str) -> Archive | None:
-    for parser in parsers:
-        if parser.id_from_url_implemented():
-            urls_filtered = parser.filter_accepted_urls((link,))
-            for url_filtered in urls_filtered:
-                gallery_gid = parser.id_from_url(url_filtered)
-                if gallery_gid:
-                    archive = Archive.objects.filter(
-                        gallery__gid=gallery_gid, gallery__provider=parser.name
-                    ).first()
-                    if archive:
-                        return archive
-            if urls_filtered:
-                break
-    return None
+@csrf_exempt
+def api_v1_remote(request: HttpRequest) -> HttpResponse:
+    """Remote operations: needs the ``remote`` token scope and the ``viewer.use_remote_api`` permission."""
+    return run_api_view(request, ApiSurface.V1, _remote_view, scope=UserLongLivedToken.SCOPE_REMOTE)
 
 
-def _find_existing_archives_count(parsers: list[Any], links: list[str]) -> int:
-    count = 0
-    for link in links:
-        if _find_archive_for_link(parsers, link):
-            count += 1
-    return count
-
-
-# Private API, checks for the API key.
+# Deprecated aliases of /api/v1/remote/ (/admin-api/ is what older userscripts and remote instances call).
 @csrf_exempt
 def json_parser(request: HttpRequest) -> HttpResponse:
-    response = {}
+    response = run_api_view(request, ApiSurface.LEGACY_REMOTE, _remote_view, scope=UserLongLivedToken.SCOPE_REMOTE)
+    return deprecated(response, reverse("viewer:api-v1-remote"))
 
-    authenticated, actual_user = double_check_auth(request, UserLongLivedToken.SCOPE_REMOTE)
 
-    if not authenticated or not actual_user or not actual_user.has_perm("viewer.use_remote_api"):
-        response["error"] = "Not authorized"
-        return HttpResponse(json.dumps(response), status=401, content_type="application/json; charset=utf-8")
+@require_GET
+def api_v1_openapi(request: HttpRequest) -> HttpResponse:
+    from viewer.views.api.openapi import render_openapi_document
 
-    if request.method == "POST":
-        if not request.body:
-            response["error"] = "Empty request"
-            return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
-        data = json.loads(request.body.decode("utf-8"))
+    response = HttpResponse(render_openapi_document(), content_type="application/json; charset=utf-8")
+    response["Access-Control-Allow-Origin"] = "*"
+    return response
 
-        if "operation" not in data or "args" not in data:
-            response["error"] = "Wrong format"
-        else:
-            args = data["args"]
-            response = {}
-            # Used by internal pages and userscript
-            if data["operation"] == "webcrawler":
-                if not isinstance(args, (dict, list, tuple)):
-                    response["error"] = "Wrong format"
-                    return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
 
-                if isinstance(args, (list, tuple)):
-                    args = {"links": list(args)}
-
-                links: list[str] = []
-
-                def _add_link(lnk: Any) -> None:
-                    if isinstance(lnk, str):
-                        val = lnk.strip()
-                        if val and val not in links:
-                            links.append(val)
-
-                if "links" in args:
-                    raw_links = args["links"]
-                    if isinstance(raw_links, (list, tuple, set)):
-                        for item in raw_links:
-                            _add_link(item)
-                    elif isinstance(raw_links, str):
-                        for line in raw_links.replace(",", "\n").splitlines():
-                            _add_link(line)
-
-                if "link" in args:
-                    raw_link = args["link"]
-                    if isinstance(raw_link, (list, tuple, set)):
-                        for item in raw_link:
-                            _add_link(item)
-                    elif isinstance(raw_link, str):
-                        _add_link(raw_link)
-
-                if not links:
-                    response["error"] = "No links provided"
-                    return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
-
-                ignore_global_filters = bool(
-                    args.get("ignore_global_filters")
-                    or args.get("ignore-global-filters")
-                    or data.get("ignore_global_filters")
-                    or data.get("ignore-global-filters")
-                )
-
-                if "downloader" in args:
-                    current_settings = Settings(load_from_config=crawler_settings.config)
-                    current_settings.allow_downloaders_only([args["downloader"]], True, True, True)
-                    parsers = current_settings.provider_context.get_parsers(current_settings)
-                    current_settings.archive_user = actual_user
-                    current_settings.archive_origin = Archive.ORIGIN_ADD_URL
-                    extra_args = []
-                    if ignore_global_filters:
-                        current_settings.ignore_global_filters = True
-                        extra_args.append("--ignore-global-filters")
-
-                    existing_archives = _find_existing_archives_count(parsers, links)
-                    client.enqueue(
-                        args=links + extra_args,
-                        task_type="web_crawler",
-                        override_options=current_settings,
-                        user=actual_user,
-                    )
-                    if len(links) == 1:
-                        if existing_archives > 0:
-                            response["message"] = "Archive exists, crawling to check for redownload: " + links[0]
-                        else:
-                            response["message"] = "Crawling: " + links[0]
-                    else:
-                        if existing_archives == len(links):
-                            response["message"] = (
-                                f"Archive exists, crawling to check for redownload: {len(links)} links"
-                            )
-                        elif existing_archives > 0:
-                            response["message"] = (
-                                f"Crawling {len(links)} links ({existing_archives} archives exist, checking for redownload)"
-                            )
-                        else:
-                            response["message"] = f"Crawling: {len(links)} links"
-                    response["result"] = str(len(links))
-                else:
-                    current_settings = Settings(load_from_config=crawler_settings.config)
-                    current_settings.archive_user = actual_user
-                    current_settings.archive_origin = Archive.ORIGIN_ADD_URL
-                    extra_args = []
-                    reason = args.get("reason")
-                    if reason:
-                        extra_args.extend(["-reason", reason])
-                        current_settings.archive_reason = reason
-                    if ignore_global_filters:
-                        current_settings.ignore_global_filters = True
-                        extra_args.append("--ignore-global-filters")
-
-                    handled_parent = False
-                    if "parentLink" in args and args["parentLink"]:
-                        parsers = current_settings.provider_context.get_parsers(current_settings)
-                        parent_archive = _find_archive_for_link(parsers, args["parentLink"])
-                        if parent_archive and parent_archive.gallery:
-                            handled_parent = True
-                            parent_link = parent_archive.gallery.get_link()
-                            link_label = links[0] if len(links) == 1 else f"{len(links)} links"
-                            if "action" in args and args["action"] == "replaceFound":
-                                # Preserve old archive extra data
-                                old_user_favorites = list(
-                                    UserArchivePrefs.objects.filter(archive=parent_archive).values(
-                                        "user", "favorite_group"
-                                    )
-                                )
-                                old_extracted = parent_archive.extracted
-
-                                parent_archive.gallery.mark_as_deleted()
-                                parent_archive.gallery = None
-                                parent_archive.delete_all_files()
-                                parent_archive.delete_files_but_archive()
-                                parent_archive.delete()
-                                response["message"] = f"Crawling: {link_label}, deleting parent: {parent_link}"
-                                response["result"] = str(len(links))
-
-                                current_settings.preserve_user_favorites = old_user_favorites
-                                current_settings.preserve_extracted = bool(old_extracted)
-
-                                client.enqueue(
-                                    args=links + extra_args,
-                                    task_type="web_crawler",
-                                    override_options=current_settings,
-                                    user=actual_user,
-                                    reason=reason,
-                                )
-                            elif "action" in args and args["action"] == "queueFound":
-                                response["message"] = f"Crawling: {link_label}, keeping parent: {parent_link}"
-                                response["result"] = str(len(links))
-                                client.enqueue(
-                                    args=links + extra_args,
-                                    task_type="web_crawler",
-                                    override_options=current_settings,
-                                    user=actual_user,
-                                    reason=reason,
-                                )
-                            else:
-                                response["message"] = "Please confirm deletion of parent: " + parent_link
-                                response["action"] = "confirmDeletion"
-
-                    if not handled_parent:
-                        parsers = current_settings.provider_context.get_parsers(current_settings)
-                        existing_archives = _find_existing_archives_count(parsers, links)
-                        if len(links) == 1:
-                            if existing_archives > 0:
-                                response["message"] = (
-                                    "Archive exists, crawling to check for redownload: " + links[0]
-                                )
-                            else:
-                                response["message"] = "Crawling: " + links[0]
-                        else:
-                            if existing_archives == len(links):
-                                response["message"] = (
-                                    f"Archive exists, crawling to check for redownload: {len(links)} links"
-                                )
-                            elif existing_archives > 0:
-                                response["message"] = (
-                                    f"Crawling {len(links)} links ({existing_archives} archives exist, checking for redownload)"
-                                )
-                            else:
-                                response["message"] = f"Crawling: {len(links)} links"
-                        response["result"] = str(len(links))
-
-                        client.enqueue(
-                            args=links + extra_args,
-                            task_type="web_crawler",
-                            override_options=current_settings,
-                            user=actual_user,
-                            reason=reason,
-                        )
-                if not response:
-                    response["error"] = "Could not parse request"
-                return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
-            # Used by remotesite command
-            elif data["operation"] == "archive_request":
-                provider_dict: dict[str, list[str]] = defaultdict(list)
-                for gid_provider in args:
-                    provider_dict[gid_provider[1]].append(gid_provider[0])
-                gallery_ids: list[int] = []
-                for provider, gid_list in provider_dict.items():
-                    pks = Gallery.objects.filter(provider=provider, gid__in=gid_list).values_list("pk", flat=True)
-                    gallery_ids.extend(pks)
-                archives_query = Archive.objects.filter_non_existent(
-                    crawler_settings.MEDIA_ROOT, gallery__pk__in=gallery_ids
-                )
-                archives = [
-                    {
-                        "gid": archive.gallery.gid,
-                        "provider": archive.gallery.provider,
-                        "id": archive.id,
-                        "zipped": archive.zipped.name,
-                        "filesize": archive.filesize,
-                    }
-                    for archive in archives_query
-                    if archive.gallery
-                ]
-                response_text = json.dumps({"result": archives})
-                return HttpResponse(response_text, content_type="application/json; charset=utf-8")
-            elif data["operation"] == "force_queue_archives":
-                pages_links = args
-                if len(pages_links) > 0:
-                    current_settings = Settings(load_from_config=crawler_settings.config)
-                    if "archive_reason" in data:
-                        current_settings.archive_reason = data["archive_reason"]
-                    if "archive_details" in data:
-                        current_settings.archive_details = data["archive_details"]
-                    extra_args = []
-                    if data.get("ignore_global_filters") or data.get("ignore-global-filters"):
-                        current_settings.ignore_global_filters = True
-                        extra_args.append("--ignore-global-filters")
-                    current_settings.allow_type_downloaders_only("fake")
-                    current_settings.set_enable_download()
-                    current_settings.archive_user = actual_user
-                    current_settings.archive_origin = Archive.ORIGIN_ADD_URL
-                    client.enqueue(
-                        args=pages_links + extra_args,
-                        task_type="web_crawler",
-                        override_options=current_settings,
-                        user=actual_user,
-                    )
-                return HttpResponse(
-                    json.dumps({"result": str(len(pages_links))}), content_type="application/json; charset=utf-8"
-                )
-
-            # Used by remotesite command
-            elif data["operation"] in ("queue_archives", "queue_galleries"):
-                urls = args
-                new_urls_set = set()
-                gids_set = set()
-
-                parsers = crawler_settings.provider_context.get_parsers(crawler_settings)
-                for parser in parsers:
-                    if parser.id_from_url_implemented():
-                        urls_filtered = parser.filter_accepted_urls(urls)
-                        for url in urls_filtered:
-                            gid = parser.id_from_url(url)
-                            gids_set.add(gid)
-
-                gids_list = list(gids_set)
-
-                existing_galleries = Gallery.objects.filter(gid__in=gids_list).exclude(
-                    status=Gallery.StatusChoices.DELETED
-                )
-                for gallery_object in existing_galleries:
-                    if gallery_object.is_submitted():
-                        gallery_object.delete()
-                    # Delete queue galleries that failed, and does not have archives.
-                    elif (
-                        data["operation"] == "queue_archives"
-                        and "failed" in gallery_object.dl_type
-                        and not gallery_object.archive_set.all()
-                    ):
-                        gallery_object.delete()
-                    elif data["operation"] == "queue_archives" and not gallery_object.archive_set.all():
-                        gallery_object.delete()
-                already_present_gids = list(Gallery.objects.filter(gid__in=gids_list).values_list("gid", flat=True))
-                # new_gids = list(gids_set - set(already_present_gids))
-
-                for parser in parsers:
-                    if parser.id_from_url_implemented():
-                        urls_filtered = parser.filter_accepted_urls(urls)
-                        for url in urls_filtered:
-                            gid = parser.id_from_url(url)
-                            if gid not in already_present_gids:
-                                new_urls_set.add(url)
-
-                pages_links = list(new_urls_set)
-                if len(pages_links) > 0:
-                    current_settings = Settings(load_from_config=crawler_settings.config)
-                    extra_args = []
-                    if data.get("ignore_global_filters") or data.get("ignore-global-filters"):
-                        current_settings.ignore_global_filters = True
-                        extra_args.append("--ignore-global-filters")
-                    if data["operation"] == "queue_galleries":
-                        current_settings.allow_type_downloaders_only("info")
-                    elif data["operation"] == "queue_archives":
-                        if "archive_reason" in data:
-                            current_settings.archive_reason = data["archive_reason"]
-                        if "archive_details" in data:
-                            current_settings.archive_details = data["archive_details"]
-                        current_settings.allow_type_downloaders_only("fake")
-                    current_settings.archive_user = actual_user
-                    current_settings.archive_origin = Archive.ORIGIN_ADD_URL
-                    client.enqueue(
-                        args=pages_links + extra_args,
-                        task_type="web_crawler",
-                        override_options=current_settings,
-                        user=actual_user,
-                    )
-                return HttpResponse(
-                    json.dumps({"result": str(len(pages_links))}), content_type="application/json; charset=utf-8"
-                )
-            # Used by remotesite command
-            elif data["operation"] == "links":
-                links = args
-                if len(links) > 0:
-                    extra_args = []
-                    override_options = None
-                    if data.get("ignore_global_filters") or data.get("ignore-global-filters"):
-                        override_options = Settings(load_from_config=crawler_settings.config)
-                        override_options.ignore_global_filters = True
-                        extra_args.append("--ignore-global-filters")
-                    client.enqueue(
-                        args=links + extra_args,
-                        task_type="web_crawler",
-                        override_options=override_options,
-                        user=actual_user,
-                    )
-                return HttpResponse(
-                    json.dumps({"result": str(len(links))}), content_type="application/json; charset=utf-8"
-                )
-            # Used by archive page
-            elif data["operation"] == "match_archive":
-                archive_obj = Archive.objects.filter(pk=args["archive"])
-                if archive_obj:
-                    generate_possible_matches_for_archives(
-                        archive_obj,
-                        filters=(args["match_filter"],),
-                        match_local=False,
-                        match_web=True,
-                        auto_link=bool(args.get("auto_link")),
-                    )
-                return HttpResponse(
-                    json.dumps({"message": "web matcher done, check the logs for results"}),
-                    content_type="application/json; charset=utf-8",
-                )
-            elif data["operation"] == "match_archive_internally":
-                archive = Archive.objects.get(pk=args["archive"])
-                if archive:
-                    clear_title = True if "clear" in args else False
-                    provider_filter = args.get("provider", "")
-                    try:
-                        cutoff = float(request.GET.get("cutoff", "0.4"))
-                    except ValueError:
-                        cutoff = 0.4
-                    try:
-                        max_matches = int(request.GET.get("max-matches", "10"))
-                    except ValueError:
-                        max_matches = 10
-
-                    archive.generate_possible_matches(
-                        clear_title=clear_title,
-                        provider_filter=provider_filter,
-                        cutoff=cutoff,
-                        max_matches=max_matches,
-                        auto_link=bool(args.get("auto_link")),
-                    )
-                return HttpResponse(
-                    json.dumps({"message": "internal matcher done, check the archive for results"}),
-                    content_type="application/json; charset=utf-8",
-                )
-            else:
-                response["error"] = "Unknown function"
-    elif request.method == "GET":
-        data = request.GET
-        if "gc" in data:
-            args = data.copy()
-
-            for k in gallery_filter_keys:
-                if k not in args:
-                    args[k] = ""
-
-            keys = ("sort", "asc_desc")
-
-            for k in keys:
-                if k not in args:
-                    args[k] = ""
-
-            # args = data
-            # Already authorized by api key.
-            args["public"] = ""
-
-            results = filter_galleries_no_request(args).prefetch_related("tags")
-            if not results:
-                return HttpResponse(json.dumps([]), content_type="application/json; charset=utf-8")
-            response_text = json.dumps(
-                [
-                    {
-                        "gid": gallery.gid,
-                        "token": gallery.token,
-                        "title": gallery.title,
-                        "title_jpn": gallery.title_jpn,
-                        "category": gallery.category,
-                        "uploader": gallery.uploader,
-                        "comment": gallery.comment,
-                        "posted": int(timestamp_or_zero(gallery.posted)),
-                        "filecount": gallery.filecount,
-                        "filesize": gallery.filesize,
-                        "expunged": gallery.expunged,
-                        "disowned": gallery.disowned,
-                        "rating": gallery.rating,
-                        "hidden": gallery.hidden,
-                        "fjord": gallery.fjord,
-                        "public": gallery.public,
-                        "provider": gallery.provider,
-                        "dl_type": gallery.dl_type,
-                        "tags": gallery.tag_list(),
-                        "link": gallery.get_link(),
-                        "thumbnail": (
-                            request.build_absolute_uri(reverse("viewer:gallery-thumb", args=(gallery.pk,)))
-                            if gallery.thumbnail
-                            else ""
-                        ),
-                        "thumbnail_url": gallery.thumbnail_url,
-                    }
-                    for gallery in results
-                ],
-                # indent=2,
-                sort_keys=True,
-                ensure_ascii=False,
-            )
-            return HttpResponse(response_text, content_type="application/json; charset=utf-8")
-        else:
-            response["error"] = "Unknown function"
-    else:
-        response["error"] = "Unsupported method: {}".format(request.method)
-    return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
+@require_GET
+def api_v1_docs(request: HttpRequest) -> HttpResponse:
+    return render(request, "viewer/api_docs.html", {"openapi_url": reverse("viewer:api-v1-openapi")})

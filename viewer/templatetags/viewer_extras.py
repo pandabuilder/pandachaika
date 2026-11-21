@@ -415,6 +415,6 @@ def event_action_class(action: str | None) -> str:
 
 
 @register.inclusion_tag("viewer/include/task_status.html")
-def task_status(task: Any) -> dict[str, Any]:
+def task_status(task: Any, variant: str = "button") -> dict[str, Any]:
     """Polling status of a queued worker task (see viewer.utils.task_actions)."""
-    return task_status_context(task)
+    return task_status_context(task, variant=variant)

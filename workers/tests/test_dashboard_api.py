@@ -146,6 +146,43 @@ class WorkersDashboardAPITests(TestCase):
         state.refresh_from_db()
         self.assertEqual(state.command_requested, "force_run")
 
+        # Unknown scheduler name is rejected and does not create a row
+        res_unknown = self.staff_client.post(
+            "/api/workers/action/",
+            data=json.dumps({"action": "scheduler_start", "target": "post_downloader"}),
+            content_type="application/json",
+        )
+        self.assertEqual(res_unknown.status_code, 404)
+        self.assertFalse(SchedulerState.objects.filter(name="post_downloader").exists())
+
+        # Control rows cannot be targeted by scheduler actions
+        SchedulerState.request_command("worker_runner", "restart")
+        res_control = self.staff_client.post(
+            "/api/workers/action/",
+            data=json.dumps({"action": "scheduler_start", "target": "worker_runner"}),
+            content_type="application/json",
+        )
+        self.assertEqual(res_control.status_code, 404)
+        self.assertEqual(SchedulerState.objects.get(name="worker_runner").command_requested, "restart")
+
+    def test_workers_status_api_excludes_control_rows(self):
+        from workers.models import SchedulerState
+
+        now = django_tz.now()
+        SchedulerState.objects.update_or_create(
+            name="auto_wanted",
+            defaults={"is_running": True, "last_heartbeat": now},
+        )
+        SchedulerState.request_command("worker_runner", "restart")
+
+        res = self.staff_client.get("/api/workers/status/")
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        names = [s["name"] for s in data["schedulers"]]
+        self.assertIn("auto_wanted", names)
+        self.assertNotIn("worker_runner", names)
+        self.assertEqual(data["summary"]["total_schedulers_count"], len(names))
+
     def test_workers_action_api_task_cancel_and_retry(self):
         from workers.models import TaskQueue
 

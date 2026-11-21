@@ -7,7 +7,7 @@ from typing import Any
 
 from django.core.paginator import Paginator, EmptyPage
 from django.db.models import Q, QuerySet, Prefetch
-from django.http import HttpResponse, HttpRequest, HttpResponseNotFound
+from django.http import HttpResponse, HttpRequest
 from django.http.request import QueryDict
 from django.urls import reverse
 
@@ -36,6 +36,7 @@ from viewer.views.head import (
     wanted_gallery_filter_keys,
     filter_wanted_galleries_simple,
 )
+from viewer.views.api.errors import ApiError
 from viewer.views.api.common import _get_int, _get_str, gallery_by_gid_to_json, get_galleries_from_request
 from viewer.views.api.filters import filter_galleries_no_request, simple_archive_filter
 
@@ -45,20 +46,14 @@ def handle_get_archive(request: HttpRequest, data: QueryDict, user_is_authentica
     try:
         archive_id = _get_int(data, "archive")
     except ValueError:
-        return HttpResponseNotFound(
-            json.dumps({"result": "Archive does not exist."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("Archive does not exist.")
     try:
         archive = Archive.objects.get(pk=archive_id)
     except Archive.DoesNotExist:
-        return HttpResponseNotFound(
-            json.dumps({"result": "Archive does not exist."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("Archive does not exist.")
 
     if not archive.public and not user_is_authenticated:
-        return HttpResponseNotFound(
-            json.dumps({"result": "Archive does not exist."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("Archive does not exist.")
     response = json.dumps(
         {
             "title": archive.title,
@@ -88,27 +83,21 @@ def handle_get_archives(request: HttpRequest, data: QueryDict, user_is_authentic
     try:
         archive_ids: list[str] = data.getlist("archives", [])
     except ValueError:
-        return HttpResponseNotFound(
-            json.dumps({"result": "Archive does not exist."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("Archive does not exist.")
     if not archive_ids:
         return HttpResponse(json.dumps([]), content_type="application/json; charset=utf-8")
 
     try:
         [int(x) for x in archive_ids]
     except ValueError:
-        return HttpResponse(
-            json.dumps({"result": "Invalid Archive ID."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.bad_request("Invalid Archive ID.")
     try:
         if user_is_authenticated:
             archives = Archive.objects.filter(pk__in=archive_ids)
         else:
             archives = Archive.objects.filter(pk__in=archive_ids, public=True)
     except Archive.DoesNotExist:
-        return HttpResponseNotFound(
-            json.dumps({"result": "Archive does not exist."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("Archive does not exist.")
     response = json.dumps(
         archive_search_result_to_json(request, archives, user_is_authenticated),
         # indent=2,
@@ -124,19 +113,13 @@ def handle_get_at(request: HttpRequest, data: QueryDict, user_is_authenticated: 
     try:
         archive_id = _get_int(data, "at")
     except ValueError:
-        return HttpResponseNotFound(
-            json.dumps({"result": "Archive does not exist."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("Archive does not exist.")
     try:
         archive = Archive.objects.get(pk=archive_id)
     except Archive.DoesNotExist:
-        return HttpResponseNotFound(
-            json.dumps({"result": "Archive does not exist."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("Archive does not exist.")
     if not archive.public and not user_is_authenticated:
-        return HttpResponseNotFound(
-            json.dumps({"result": "Archive does not exist."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("Archive does not exist.")
     response = json.dumps(
         {
             "tags": archive.tag_list_sorted(),
@@ -155,19 +138,13 @@ def handle_get_ah(request: HttpRequest, data: QueryDict, user_is_authenticated: 
     try:
         archive_id = _get_int(data, "ah")
     except ValueError:
-        return HttpResponseNotFound(
-            json.dumps({"result": "Archive does not exist."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("Archive does not exist.")
     try:
         archive = Archive.objects.get(pk=archive_id)
     except Archive.DoesNotExist:
-        return HttpResponseNotFound(
-            json.dumps({"result": "Archive does not exist."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("Archive does not exist.")
     if not archive.public and not user_is_authenticated:
-        return HttpResponseNotFound(
-            json.dumps({"result": "Archive does not exist."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("Archive does not exist.")
     response = json.dumps(
         {
             "image_hashes": [x.sha1 for x in archive.image_set.all()],
@@ -186,19 +163,13 @@ def handle_get_aof(request: HttpRequest, data: QueryDict, user_is_authenticated:
     try:
         archive_id = _get_int(data, "aof")
     except ValueError:
-        return HttpResponseNotFound(
-            json.dumps({"result": "Archive does not exist."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("Archive does not exist.")
     try:
         archive = Archive.objects.get(pk=archive_id)
     except Archive.DoesNotExist:
-        return HttpResponseNotFound(
-            json.dumps({"result": "Archive does not exist."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("Archive does not exist.")
     if not archive.public and not user_is_authenticated:
-        return HttpResponseNotFound(
-            json.dumps({"result": "Archive does not exist."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("Archive does not exist.")
     response = json.dumps(
         {
             "other_files": [
@@ -224,26 +195,20 @@ def handle_get_aid(request: HttpRequest, data: QueryDict, user_is_authenticated:
     try:
         archive_ids = data.getlist("aid", [])
     except ValueError:
-        return HttpResponseNotFound(
-            json.dumps({"result": "Archive does not exist."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("Archive does not exist.")
     if not archive_ids:
         return HttpResponse(json.dumps([]), content_type="application/json; charset=utf-8")
     try:
         [int(x) for x in archive_ids]
     except ValueError:
-        return HttpResponse(
-            json.dumps({"result": "Invalid Archive ID."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.bad_request("Invalid Archive ID.")
     try:
         if user_is_authenticated:
             archives = Archive.objects.filter(pk__in=archive_ids)
         else:
             archives = Archive.objects.filter(pk__in=archive_ids, public=True)
     except Archive.DoesNotExist:
-        return HttpResponseNotFound(
-            json.dumps({"result": "Archive does not exist."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("Archive does not exist.")
     response = json.dumps(
         {a.pk: images_data_to_json(a.image_set.all()) for a in archives},
         # indent=2,
@@ -260,19 +225,13 @@ def handle_get_gallery(request: HttpRequest, data: QueryDict, user_is_authentica
     try:
         gallery_id = _get_int(data, "gallery")
     except ValueError:
-        return HttpResponseNotFound(
-            json.dumps({"result": "Gallery does not exist."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("Gallery does not exist.")
     try:
         gallery = Gallery.objects.get(pk=gallery_id)
     except Gallery.DoesNotExist:
-        return HttpResponseNotFound(
-            json.dumps({"result": "Gallery does not exist."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("Gallery does not exist.")
     if not gallery.public and not user_is_authenticated:
-        return HttpResponseNotFound(
-            json.dumps({"result": "Gallery does not exist."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("Gallery does not exist.")
     response = json.dumps(
         {
             "id": gallery.id,
@@ -323,13 +282,9 @@ def _gallery_for_gid(data: QueryDict, gallery_gid: str | list[object]) -> Galler
 def handle_get_gid(request: HttpRequest, data: QueryDict, user_is_authenticated: bool):
     gallery = _gallery_for_gid(data, data["gid"])
     if not gallery:
-        return HttpResponseNotFound(
-            json.dumps({"result": "Gallery does not exist."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("Gallery does not exist.")
     if not gallery.public and not user_is_authenticated:
-        return HttpResponseNotFound(
-            json.dumps({"result": "Gallery does not exist."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("Gallery does not exist.")
     response = json.dumps(
         _gallery_by_gid_to_json(gallery, user_is_authenticated),
         # indent=2,
@@ -365,19 +320,13 @@ def handle_get_gt(request: HttpRequest, data: QueryDict, user_is_authenticated: 
     try:
         gallery_id = _get_int(data, "gt")
     except ValueError:
-        return HttpResponseNotFound(
-            json.dumps({"result": "Gallery does not exist."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("Gallery does not exist.")
     try:
         gallery = Gallery.objects.get(pk=gallery_id)
     except Gallery.DoesNotExist:
-        return HttpResponseNotFound(
-            json.dumps({"result": "Gallery does not exist."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("Gallery does not exist.")
     if not gallery.public and not user_is_authenticated:
-        return HttpResponseNotFound(
-            json.dumps({"result": "Gallery does not exist."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("Gallery does not exist.")
     response = json.dumps(
         {
             "tags": gallery.tag_list_sorted(),
@@ -721,19 +670,13 @@ def handle_get_gd(request: HttpRequest, data: QueryDict, user_is_authenticated: 
     try:
         gallery_id = _get_int(data, "gd")
     except ValueError:
-        return HttpResponseNotFound(
-            json.dumps({"result": "Gallery does not exist."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("Gallery does not exist.")
     try:
         gallery = Gallery.objects.get(pk=gallery_id)
     except Gallery.DoesNotExist:
-        return HttpResponseNotFound(
-            json.dumps({"result": "Gallery does not exist."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("Gallery does not exist.")
     if not gallery.public and not user_is_authenticated:
-        return HttpResponseNotFound(
-            json.dumps({"result": "Gallery does not exist."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("Gallery does not exist.")
     response = json.dumps(
         {
             "id": gallery.pk,
@@ -831,19 +774,13 @@ def handle_get_archive_group(request: HttpRequest, data: QueryDict, user_is_auth
     try:
         archive_group_id = _get_int(data, "archive-group")
     except ValueError:
-        return HttpResponseNotFound(
-            json.dumps({"result": "ArchiveGroup does not exist."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("ArchiveGroup does not exist.")
     try:
         archive_group = ArchiveGroup.objects.get(pk=archive_group_id)
     except ArchiveGroup.DoesNotExist:
-        return HttpResponseNotFound(
-            json.dumps({"result": "ArchiveGroup does not exist."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("ArchiveGroup does not exist.")
     if not archive_group.public and not user_is_authenticated:
-        return HttpResponseNotFound(
-            json.dumps({"result": "ArchiveGroup does not exist."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("ArchiveGroup does not exist.")
 
     archive_group_entries = (
         ArchiveGroupEntry.objects.filter_by_authenticated_status(
@@ -883,25 +820,16 @@ def handle_get_archive_group_entry(request: HttpRequest, data: QueryDict, user_i
     try:
         archive_group_entry_id = _get_int(data, "archive-group-entry")
     except ValueError:
-        return HttpResponseNotFound(
-            json.dumps({"result": "ArchiveGroupEntry does not exist."}),
-            content_type="application/json; charset=utf-8",
-        )
+        raise ApiError.not_found("ArchiveGroupEntry does not exist.")
     try:
         archive_group_entry = ArchiveGroupEntry.objects.get(pk=archive_group_entry_id)
     except ArchiveGroupEntry.DoesNotExist:
-        return HttpResponseNotFound(
-            json.dumps({"result": "ArchiveGroupEntry does not exist."}),
-            content_type="application/json; charset=utf-8",
-        )
+        raise ApiError.not_found("ArchiveGroupEntry does not exist.")
     if (
         not (archive_group_entry.archive_group.public or archive_group_entry.archive.public)
         and not user_is_authenticated
     ):
-        return HttpResponseNotFound(
-            json.dumps({"result": "ArchiveGroupEntry does not exist."}),
-            content_type="application/json; charset=utf-8",
-        )
+        raise ApiError.not_found("ArchiveGroupEntry does not exist.")
 
     response = json.dumps(
         archive_group_entry_to_json(archive_group_entry, user_is_authenticated, request),
@@ -916,19 +844,13 @@ def handle_get_archive_group_entry_archive(request: HttpRequest, data: QueryDict
     try:
         archive_id = _get_int(data, "archive-group-entry-archive")
     except ValueError:
-        return HttpResponseNotFound(
-            json.dumps({"result": "Archive does not exist."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("Archive does not exist.")
     try:
         archive = Archive.objects.get(pk=archive_id)
     except (Archive.DoesNotExist, ArchiveGroupEntry.DoesNotExist):
-        return HttpResponseNotFound(
-            json.dumps({"result": "Archive does not exist."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("Archive does not exist.")
     if not archive.public and not user_is_authenticated:
-        return HttpResponseNotFound(
-            json.dumps({"result": "Archive does not exist."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("Archive does not exist.")
 
     response = json.dumps(
         archive_entry_archive_to_json(archive, user_is_authenticated, request),
@@ -943,29 +865,19 @@ def handle_get_archive_wanted_image(request: HttpRequest, data: QueryDict, user_
     try:
         archive_id = _get_int(data, "archive-wanted-image")
     except ValueError:
-        return HttpResponseNotFound(
-            json.dumps({"result": "Archive does not exist."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("Archive does not exist.")
     try:
         archive = Archive.objects.get(pk=archive_id)
     except (Archive.DoesNotExist, ArchiveGroupEntry.DoesNotExist):
-        return HttpResponseNotFound(
-            json.dumps({"result": "Archive does not exist."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("Archive does not exist.")
     if not user_is_authenticated:
-        return HttpResponseNotFound(
-            json.dumps({"result": "Archive does not exist."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("Archive does not exist.")
 
     result, result_data = archive.get_wanted_images_similarity_mark()
     if result == -1:
-        return HttpResponseNotFound(
-            json.dumps({"result": "Could not run Image Match."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("Could not run Image Match.")
     elif result == -2:
-        return HttpResponseNotFound(
-            json.dumps({"result": "No active WantedImages."}), content_type="application/json; charset=utf-8"
-        )
+        raise ApiError.not_found("No active WantedImages.")
 
     response = json.dumps(
         {
@@ -1015,23 +927,14 @@ def handle_get_wanted_gallery(request: HttpRequest, data: QueryDict, user_is_aut
     try:
         wanted_gallery_id = _get_int(data, "wanted-gallery")
     except ValueError:
-        return HttpResponseNotFound(
-            json.dumps({"result": "WantedGallery does not exist."}),
-            content_type="application/json; charset=utf-8",
-        )
+        raise ApiError.not_found("WantedGallery does not exist.")
     include_found_galleries = _include_found_galleries(data)
     try:
         wanted_gallery = _wanted_galleries_prefetch(include_found_galleries).get(pk=wanted_gallery_id)
     except WantedGallery.DoesNotExist:
-        return HttpResponseNotFound(
-            json.dumps({"result": "WantedGallery does not exist."}),
-            content_type="application/json; charset=utf-8",
-        )
+        raise ApiError.not_found("WantedGallery does not exist.")
     if not wanted_gallery.public and not user_is_authenticated:
-        return HttpResponseNotFound(
-            json.dumps({"result": "WantedGallery does not exist."}),
-            content_type="application/json; charset=utf-8",
-        )
+        raise ApiError.not_found("WantedGallery does not exist.")
     response = json.dumps(
         wanted_gallery_to_json(
             wanted_gallery,
@@ -1049,20 +952,14 @@ def handle_get_wanted_galleries(request: HttpRequest, data: QueryDict, user_is_a
     try:
         wanted_gallery_ids: list[str] = data.getlist("wanted-galleries", [])
     except ValueError:
-        return HttpResponseNotFound(
-            json.dumps({"result": "WantedGallery does not exist."}),
-            content_type="application/json; charset=utf-8",
-        )
+        raise ApiError.not_found("WantedGallery does not exist.")
     if not wanted_gallery_ids:
         return HttpResponse(json.dumps([]), content_type="application/json; charset=utf-8")
 
     try:
         [int(x) for x in wanted_gallery_ids]
     except ValueError:
-        return HttpResponse(
-            json.dumps({"result": "Invalid WantedGallery ID."}),
-            content_type="application/json; charset=utf-8",
-        )
+        raise ApiError.bad_request("Invalid WantedGallery ID.")
     include_found_galleries = _include_found_galleries(data)
     if user_is_authenticated:
         wanted_galleries = _wanted_galleries_prefetch(include_found_galleries).filter(pk__in=wanted_gallery_ids)

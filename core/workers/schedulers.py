@@ -43,8 +43,10 @@ class BaseScheduler(object):
             seconds_until = 0
         return seconds_until
 
-    def update_last_run(self, last_run: datetime.datetime) -> None:
+    def update_last_run(self, last_run: datetime.datetime, persist: bool = True) -> None:
         self.last_run = last_run
+        if not persist:
+            return
         try:
             from workers.models import SchedulerState
             next_run = last_run + datetime.timedelta(seconds=self.timer)

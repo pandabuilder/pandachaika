@@ -1,0 +1,53 @@
+{% load static %}
+{# Staff image editor, loaded into the archive edit form by viewer:archive-images-edit. Behavior: js/archive_images_edit.js #}
+<div id="archive-images-editor">
+  {% if saved %}
+    <div class="alert alert-success py-1 px-2 small mb-2">Images updated. Reload the page to see the changes in the viewer.</div>
+  {% endif %}
+  {% if error %}
+    <div class="alert alert-danger py-1 px-2 small mb-2">{{ error }}</div>
+  {% endif %}
+  {% if images %}
+    <form class="image-editor" data-image-editor
+          hx-post="{% url 'viewer:archive-images-edit' archive.pk %}" hx-target="#archive-images-editor" hx-swap="outerHTML">
+      {% csrf_token %}
+      <input type="hidden" name="order" value="">
+      <div class="image-editor-toolbar d-flex flex-wrap align-items-center gap-2 mb-2">
+        <button type="submit" class="btn btn-primary btn-sm" data-editor-save disabled>
+          <i class="fas fa-save me-1"></i>Save
+        </button>
+        <button type="button" class="btn btn-outline-light btn-sm" data-editor-reset disabled>
+          <i class="fas fa-undo me-1"></i>Reset
+        </button>
+        <button type="button" class="btn btn-outline-light btn-sm" data-editor-sort title="Natural sort by file name">
+          <i class="fas fa-sort-alpha-down me-1"></i>Sort by name
+        </button>
+        <button type="button" class="btn btn-outline-light btn-sm" data-editor-reverse>
+          <i class="fas fa-exchange-alt me-1"></i>Reverse
+        </button>
+        <span class="small text-light opacity-75" data-editor-status>
+          {{ images|length }} image{{ images|length|pluralize }}. Drag to reorder, or type a position.
+        </span>
+      </div>
+      <div class="image-editor-grid" data-editor-grid>
+        {% for img, name in images %}
+          <div class="image-editor-card" draggable="true" data-pk="{{ img.pk }}" data-name="{{ name }}">
+            <div class="image-editor-thumb">
+              <img alt="" loading="lazy" draggable="false"
+                   src="{% if img.extracted and img.thumbnail.name %}{{ img.thumbnail.url }}{% else %}{% static 'imgs/no_cover.png' %}{% endif %}" />
+            </div>
+            <div class="image-editor-name" title="{{ name }}">{{ name|default:"-" }}</div>
+            <div class="d-flex align-items-center gap-1">
+              <input type="number" class="form-control form-control-sm text-center" min="1" value="{{ forloop.counter }}"
+                     data-editor-position aria-label="Position of {{ name }}">
+              <button type="button" class="btn btn-sm btn-outline-danger" data-editor-delete title="Mark for deletion"
+                      aria-pressed="false"><i class="fas fa-trash-alt"></i></button>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </form>
+  {% else %}
+    <div class="small text-light opacity-75">This archive has no images.</div>
+  {% endif %}
+</div>

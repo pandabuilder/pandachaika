@@ -200,11 +200,11 @@ class ArchiveDownloader(BaseDownloader[PandaSettings]):
             logger.info("Checking for download cost.")
             cost = cost_tracker.check_method_cost(self.gallery.root, self.gallery.gid, self.gallery.token, self.type, self)
             if cost is None:
-                logger.error("Could not retrieve cost, skipping download.")
+                logger.warning("Could not retrieve cost, skipping download.")
                 self.return_code = 0
                 return
             if cost > self.own_settings.maximum_gp_cost_for_dls:
-                logger.error("Download cost: {} for gallery: {} using method: {} is higher than the limit: {}, skipping download.".format(cost, self.gallery.link, self.type, self.own_settings.maximum_gp_cost_for_dls))
+                logger.info("Download cost: {} for gallery: {} using method: {} is higher than the limit: {}, skipping download.".format(cost, self.gallery.link, self.type, self.own_settings.maximum_gp_cost_for_dls))
                 self.return_code = 0
                 return
             logger.info("Download cost: {} for gallery: {} using method: {} is below the limit: {}, continuing download.".format(cost, self.gallery.link, self.type, self.own_settings.maximum_gp_cost_for_dls))
@@ -216,11 +216,11 @@ class ArchiveDownloader(BaseDownloader[PandaSettings]):
             logger.info("Checking for download ratio cost.")
             cost = cost_tracker.check_method_cost(self.gallery.root, self.gallery.gid, self.gallery.token, self.type, self)
             if cost is None:
-                logger.error("Could not retrieve cost, skipping download.")
+                logger.warning("Could not retrieve cost, skipping download.")
                 self.return_code = 0
                 return
             if cost / mb_filesize > self.own_settings.maximum_gp_mb_ratio_for_dls:
-                logger.error("Download ratio cost: {} for gallery: {} using method: {} is higher than the limit: {}, skipping download.".format(cost / mb_filesize, self.gallery.link, self.type, self.own_settings.maximum_gp_mb_ratio_for_dls))
+                logger.info("Download ratio cost: {} for gallery: {} using method: {} is higher than the limit: {}, skipping download.".format(cost / mb_filesize, self.gallery.link, self.type, self.own_settings.maximum_gp_mb_ratio_for_dls))
                 self.return_code = 0
                 return
             logger.info("Download ratio cost: {} for gallery: {} using method: {} is below the limit: {}, continuing download.".format(cost / mb_filesize, self.gallery.link, self.type, self.own_settings.maximum_gp_mb_ratio_for_dls))
@@ -231,11 +231,11 @@ class ArchiveDownloader(BaseDownloader[PandaSettings]):
             other_type = 'hath' if self.type == 'archive' else 'archive'
             other_cost = cost_tracker.check_method_cost(self.gallery.root, self.gallery.gid, self.gallery.token, other_type, self)
             if cost is None:
-                logger.error("Could not retrieve cost for method: {}, skipping download.".format(self.type))
+                logger.warning("Could not retrieve cost for method: {}, skipping download.".format(self.type))
                 self.return_code = 0
                 return
             if other_cost is not None and cost > other_cost:
-                logger.error("Download cost: {} for gallery: {} using method: {} is higher than the alternative method {}: {}, skipping download.".format(
+                logger.info("Download cost: {} for gallery: {} using method: {} is higher than the alternative method {}: {}, skipping download.".format(
                     cost, self.gallery.link, self.type, other_type, other_cost))
                 self.return_code = 0
                 return
@@ -274,9 +274,9 @@ class ArchiveDownloader(BaseDownloader[PandaSettings]):
 
         if not r or archive_link == "":
             if not r:
-                logger.error("Could not get download link.")
+                logger.warning("Could not get download link.")
             else:
-                logger.error("Could not find archive link, page text: {}".format(r.text.strip()[:300]))
+                logger.warning("Could not find archive link, page text: {}".format(r.text.strip()[:300]))
             self.return_code = 0
             return
 
@@ -375,7 +375,7 @@ class ArchiveDownloader(BaseDownloader[PandaSettings]):
                     self.download_event = None
 
         if self.return_code != 1:
-            logger.error("Could not download archive")
+            logger.warning("Could not download archive")
             self.return_code = 0
 
     def update_archive_db(self, default_values: DataDict) -> "Archive | None":
@@ -472,7 +472,7 @@ class TorrentDownloader(BaseTorrentDownloader):
         r = self.request_torrent_download(self.gallery.root, self.gallery.gid, self.gallery.token)
 
         if not r:
-            logger.error("Could not get download link.")
+            logger.warning("Could not get download link.")
             self.return_code = 0
             return
 
@@ -482,7 +482,7 @@ class TorrentDownloader(BaseTorrentDownloader):
         torrent_link = torrent_page_parser.torrent
 
         if not torrent_link:
-            logger.error("Could not get torrent link.")
+            logger.info("Could not get torrent link.")
             self.return_code = 0
             return
 
@@ -491,7 +491,7 @@ class TorrentDownloader(BaseTorrentDownloader):
         )
 
         if not validated:
-            logger.error(
+            logger.info(
                 "Torrent for gallery: {} for did not pass validation, reasons: {}"
                 ", skipping.".format(self.gallery.link, " ".join(reasons))
             )
@@ -578,12 +578,12 @@ class TorrentAPIDownloader(BaseTorrentDownloader):
             return
 
         if "torrentcount" not in self.gallery.extra_data or "torrents" not in self.gallery.extra_data:
-            logger.error("Missing required extra data -> torrentcount, torrents.")
+            logger.warning("Missing required extra data -> torrentcount, torrents.")
             self.return_code = 0
             return
 
         if int(self.gallery.extra_data["torrentcount"]) <= 0:
-            logger.error("No torrents reported in API response.")
+            logger.info("No torrents reported in API response.")
             self.return_code = 0
             return
 
@@ -597,7 +597,7 @@ class TorrentAPIDownloader(BaseTorrentDownloader):
 
         if not chosen_torrent:
             self.return_code = 0
-            logger.error(
+            logger.info(
                 "Could not find a suitable torrent from {}.".format(str(len(self.gallery.extra_data["torrents"])))
             )
             return
@@ -667,11 +667,11 @@ class HathDownloader(BaseDownloader):
             logger.info("Checking for download cost.")
             cost = cost_tracker.check_method_cost(self.gallery.root, self.gallery.gid, self.gallery.token, self.type, self)
             if cost is None:
-                logger.error("Could not retrieve cost, skipping download.")
+                logger.warning("Could not retrieve cost, skipping download.")
                 self.return_code = 0
                 return
             if cost > self.own_settings.maximum_gp_cost_for_dls:
-                logger.error("Download cost: {} for gallery: {} using method: {} is higher than the limit: {}, skipping download.".format(cost, self.gallery.link, self.type, self.own_settings.maximum_gp_cost_for_dls))
+                logger.info("Download cost: {} for gallery: {} using method: {} is higher than the limit: {}, skipping download.".format(cost, self.gallery.link, self.type, self.own_settings.maximum_gp_cost_for_dls))
                 self.return_code = 0
                 return
             logger.info("Download cost: {} for gallery: {} using method: {} is below the limit: {}, continuing download.".format(cost, self.gallery.link, self.type, self.own_settings.maximum_gp_cost_for_dls))
@@ -682,11 +682,11 @@ class HathDownloader(BaseDownloader):
             other_type = 'hath' if self.type == 'archive' else 'archive'
             other_cost = cost_tracker.check_method_cost(self.gallery.root, self.gallery.gid, self.gallery.token, other_type, self)
             if cost is None:
-                logger.error("Could not retrieve cost for method: {}, skipping download.".format(self.type))
+                logger.warning("Could not retrieve cost for method: {}, skipping download.".format(self.type))
                 self.return_code = 0
                 return
             if other_cost is not None and cost > other_cost:
-                logger.error("Download cost: {} for gallery: {} using method: {} is higher than the alternative method {}: {}, skipping download.".format(
+                logger.info("Download cost: {} for gallery: {} using method: {} is higher than the alternative method {}: {}, skipping download.".format(
                     cost, self.gallery.link, self.type, other_type, other_cost))
                 self.return_code = 0
                 return
@@ -720,17 +720,17 @@ class HathDownloader(BaseDownloader):
 
         if not container:
             if r and r.status_code == 200:
-                logger.error("Could not find expected text in response, text: {}".format(r.text.strip()[:300]))
+                logger.warning("Could not find expected text in response, text: {}".format(r.text.strip()[:300]))
             elif r:
-                logger.error("Did not get a 200 response, text: {}".format(r.text.strip()[:300]))
+                logger.warning("Did not get a 200 response, text: {}".format(r.text.strip()[:300]))
             else:
-                logger.error("Did not get a response")
+                logger.warning("Did not get a response")
             self.return_code = 0
             return
 
         client_parent = container.parent
         if not client_parent:
-            logger.error("Could not find expected HTML structure.")
+            logger.warning("Could not find expected HTML structure.")
             self.return_code = 0
             return
         client_id = client_parent.find("strong")
@@ -846,26 +846,38 @@ class PandaChaikaDownloader(BaseDownloader):
             post=False,
         )
 
-        if not response:
-            logger.error("Did not get a response from Chaika API.")
+        if response is None:
+            logger.warning("Did not get a response from Chaika API.")
+            self.return_code = 0
+            return
+
+        if response.status_code == 404:
+            logger.info("Gallery gid: {} not found in Chaika API.".format(self.gallery.gid))
+            self.return_code = 0
+            return
+
+        if not response.ok:
+            logger.warning(
+                "Chaika API returned status {}, text: {}".format(response.status_code, response.text.strip()[:300])
+            )
             self.return_code = 0
             return
 
         try:
             json_decoded = response.json()
         except (ValueError, KeyError):
-            logger.error("Could not parse Chaika API response to JSON.")
+            logger.warning("Could not parse Chaika API response to JSON.")
             self.return_code = 0
             return
 
         if "archives" not in json_decoded or not json_decoded["archives"]:
-            logger.error("No archives found in Chaika API response.")
+            logger.info("No archives found in Chaika API response.")
             self.return_code = 0
             return
 
         archive_data = json_decoded["archives"][0]
         if "download" not in archive_data:
-            logger.error("Download link not found in Chaika API response.")
+            logger.warning("Download link not found in Chaika API response.")
             self.return_code = 0
             return
 
@@ -906,7 +918,7 @@ class PandaChaikaDownloader(BaseDownloader):
                     download_request_dict,
                 )
                 if not request_file:
-                    logger.error("Could not download archive (Attempt {}/3)".format(attempt + 1))
+                    logger.warning("Could not download archive (Attempt {}/3)".format(attempt + 1))
                     continue
 
                 total_size = int(request_file.headers.get("Content-Length", 0))
@@ -938,7 +950,7 @@ class PandaChaikaDownloader(BaseDownloader):
                     self.download_event = None
 
         if self.return_code != 1:
-            logger.error("Could not download archive")
+            logger.warning("Could not download archive")
             self.return_code = 0
 
     def update_archive_db(self, default_values: DataDict) -> "Archive | None":

@@ -15,21 +15,24 @@ from django.http import HttpResponseRedirect, HttpRequest, HttpResponse, HttpRes
 from django.shortcuts import render
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
+from django.views.decorators.http import require_POST
 from django_db_logger.models import StatusLog
 
 from viewer.utils.actions import event_log
 
 from core.base.setup import Settings
 from core.base.setup_utilities import get_thread_status
-from core.base.utilities import thread_exists_in_db, get_schedulers_status, timestamp_or_zero
+from core.base.utilities import get_schedulers_status, timestamp_or_zero
 from core.workers.archive_work import ArchiveWorker
 
 from viewer.models import Archive, Tag, Gallery, ArchiveMatches, WantedGallery, FoundGallery, DownloadEvent
-from viewer.utils.general import safe_redirect_back
+from viewer.utils.general import get_safe_referer, safe_redirect_back
+from viewer.utils.task_actions import task_action_response
 from viewer.utils.webserver import WebServerRestartError, restart_web_server
 from django.conf import settings
 from viewer.views.head import render_error
 from workers import client
+from workers.models import TaskQueue
 
 MAIN_LOGGER = settings.MAIN_LOGGER
 crawler_settings = settings.CRAWLER_SETTINGS
@@ -302,6 +305,7 @@ def stats_collection(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
+@require_POST
 def queue_operations(request: HttpRequest, operation: str, arguments: str = "") -> HttpResponse:
 
     if not request.user.is_staff:
@@ -323,6 +327,71 @@ def queue_operations(request: HttpRequest, operation: str, arguments: str = "") 
     return safe_redirect_back(request, reverse("viewer:stats-workers"))
 
 
+def _active_admin_tools_tasks() -> dict[str, TaskQueue]:
+    """Return active background tasks corresponding to /tools/ actions, keyed by tool name."""
+    thumb_aliases = client.get_task_type_aliases("thumbnails_worker")
+    fileinfo_aliases = client.get_task_type_aliases("fileinfo_worker")
+    publish_aliases = client.get_task_type_aliases("publish_worker")
+    match_aliases = client.get_task_type_aliases("match_unmatched_worker")
+    web_search_aliases = client.get_task_type_aliases("web_search_worker")
+    wanted_local_aliases = client.get_task_type_aliases("wanted_local_search_worker")
+    crawler_aliases = client.get_task_type_aliases("web_crawler")
+
+    active_tasks = client.get_active_tasks_by_types(
+        (
+            "thumbnails_worker",
+            "fileinfo_worker",
+            "publish_worker",
+            "match_unmatched_worker",
+            "web_search_worker",
+            "wanted_local_search_worker",
+            "web_crawler",
+        )
+    )
+    found: dict[str, TaskQueue] = {}
+
+    def _record(key: str, task: TaskQueue) -> None:
+        current = found.get(key)
+        if current is None or (
+            current.status != TaskQueue.Status.PROCESSING and task.status == TaskQueue.Status.PROCESSING
+        ):
+            found[key] = task
+
+    for task in active_tasks:
+        opts = task.options if isinstance(task.options, dict) else {}
+        args = task.args if isinstance(task.args, list) else []
+        if task.task_type in thumb_aliases:
+            key = (
+                "regenerate_all_thumbs"
+                if (opts.get("all") or task.task_type == "regenerate_all_thumbs")
+                else "generate_missing_thumbs"
+            )
+            _record(key, task)
+        elif task.task_type in fileinfo_aliases:
+            key = (
+                "recalc_all_file_info"
+                if (opts.get("all") or task.task_type == "recalc_all_file_info")
+                else "calculate_missing_info"
+            )
+            _record(key, task)
+        elif task.task_type in publish_aliases:
+            _record("set_all_hidden_as_public", task)
+        elif task.task_type in match_aliases:
+            _record("generate_possible_matches_internally", task)
+        elif task.task_type in web_search_aliases:
+            _record("search_wanted_galleries_provider_titles", task)
+        elif task.task_type in wanted_local_aliases:
+            _record("wanted_galleries_possible_matches", task)
+        elif task.task_type in crawler_aliases:
+            if "--retry-failed" in args:
+                _record("retry_failed", task)
+            elif "-unt" in args:
+                _record("update_newer_than", task)
+            elif "-umt" in args:
+                _record("update_missing_thumbnails", task)
+    return found
+
+
 @login_required
 def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpResponse:
     """Tools listing."""
@@ -331,6 +400,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
     if tool not in ("main", "modify_settings", "modify_settings_editor"):
         if request.method != "POST":
             return HttpResponseNotAllowed(["POST"])
+    target_url = get_safe_referer(request, reverse("viewer:tools"))
     if tool == "reconcile_downloads":
         from viewer.utils.downloads import reconcile_downloads
 
@@ -344,28 +414,30 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
         )
         return safe_redirect_back(request, reverse("viewer:tools"))
     elif tool == "retry_failed":
-        client.enqueue(
+        task = client.enqueue(
             args=["--retry-failed"], task_type="web_crawler", override_options=crawler_settings, user=request.user
         )
-        return safe_redirect_back(request, reverse("viewer:tools"))
+        return task_action_response(request, task, target_url, "Queued retry of failed downloads.")
     elif tool == "update_newer_than":
         p = request.POST if request.POST else request.GET
         if p and "newer_than" in p:
             newer_than_date = p["newer_than"]
             try:
                 if parse_date(newer_than_date) is not None:
-                    client.enqueue(
+                    task = client.enqueue(
                         args=["-unt", newer_than_date],
                         task_type="web_crawler",
                         override_options=crawler_settings,
                         user=request.user,
                     )
-                    messages.success(request, "Updating galleries posted after " + newer_than_date)
+                    return task_action_response(
+                        request, task, target_url, "Updating galleries posted after " + newer_than_date
+                    )
                 else:
-                    messages.error(request, "Invalid date format.", extra_tags="danger")
+                    return task_action_response(request, None, target_url, "Invalid date format.", messages.ERROR)
             except ValueError:
-                messages.error(request, "Invalid date.", extra_tags="danger")
-            return safe_redirect_back(request, reverse("viewer:tools"))
+                return task_action_response(request, None, target_url, "Invalid date.", messages.ERROR)
+        return task_action_response(request, None, target_url, "Please enter a date.", messages.ERROR)
     elif tool == "update_missing_thumbnails":
         p = request.POST if request.POST else request.GET
         if p and "limit_number" in p:
@@ -374,107 +446,136 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
 
                 provider = p.get("provider", "")
                 if provider:
-                    client.enqueue(
+                    task = client.enqueue(
                         args=["-umt", str(limit_number), "-ip", provider],
                         task_type="web_crawler",
                         override_options=crawler_settings,
                         user=request.user,
                     )
                 else:
-                    client.enqueue(
+                    task = client.enqueue(
                         args=["-umt", str(limit_number)],
                         task_type="web_crawler",
                         override_options=crawler_settings,
                         user=request.user,
                     )
-                messages.success(
-                    request, "Updating galleries missing thumbnails, limiting to older {}".format(limit_number)
+                return task_action_response(
+                    request,
+                    task,
+                    target_url,
+                    "Updating galleries missing thumbnails, limiting to older {}".format(limit_number),
                 )
 
             except ValueError:
-                messages.error(request, "Invalid limit.", extra_tags="danger")
-            return safe_redirect_back(request, reverse("viewer:tools"))
+                return task_action_response(request, None, target_url, "Invalid limit.", messages.ERROR)
+        return task_action_response(request, None, target_url, "Invalid limit.", messages.ERROR)
     elif tool == "generate_missing_thumbs":
-        if thread_exists_in_db("thumbnails_worker"):
-            return render_error(request, "Thumbnails worker is already running.")
+        active_task = client.get_active_task_by_type("thumbnails_worker")
+        if active_task is not None:
+            return task_action_response(
+                request, active_task, target_url, "Thumbnails worker is already running.", messages.ERROR
+            )
 
         archives_no_thumbnail = Archive.objects.filter(thumbnail="")
         archive_pks = list(archives_no_thumbnail.values_list("pk", flat=True))
         if not archive_pks:
-            messages.info(request, "No archives missing thumbnails found.")
-            return safe_redirect_back(request, reverse("viewer:tools"))
+            return task_action_response(
+                request, None, target_url, "No archives missing thumbnails found.", messages.INFO
+            )
 
         logger.info("Generating thumbs for %d archives missing thumbnails", len(archive_pks))
         if crawler_settings.workers.archive_worker:
-            crawler_settings.workers.archive_worker.regenerate_all_thumbs(archives=archive_pks, user=request.user)
+            task = crawler_settings.workers.archive_worker.regenerate_all_thumbs(
+                archives=archive_pks, user=request.user
+            )
         else:
             archive_worker_thread = ArchiveWorker(crawler_settings, 4)
-            archive_worker_thread.regenerate_all_thumbs(archives=archive_pks, user=request.user)
-        messages.success(request, f"Thumbnails worker started in background for {len(archive_pks)} archives.")
-        return safe_redirect_back(request, reverse("viewer:tools"))
+            task = archive_worker_thread.regenerate_all_thumbs(archives=archive_pks, user=request.user)
+        return task_action_response(
+            request, task, target_url, f"Thumbnails worker started in background for {len(archive_pks)} archives."
+        )
     elif tool == "calculate_missing_info":
-        if thread_exists_in_db("fileinfo_worker"):
-            return render_error(request, "File info worker is already running.")
+        active_task = client.get_active_task_by_type("fileinfo_worker")
+        if active_task is not None:
+            return task_action_response(
+                request, active_task, target_url, "File info worker is already running.", messages.ERROR
+            )
 
         archives_missing_info = Archive.objects.filter_by_missing_file_info()
         archive_pks = list(archives_missing_info.values_list("pk", flat=True))
         if not archive_pks:
-            messages.info(request, "No archives with missing file info found.")
-            return safe_redirect_back(request, reverse("viewer:tools"))
+            return task_action_response(
+                request, None, target_url, "No archives with missing file info found.", messages.INFO
+            )
 
         logger.info("Calculating file info for %d archives missing info", len(archive_pks))
         if crawler_settings.workers.archive_worker:
-            crawler_settings.workers.archive_worker.recalc_all_file_info(archives=archive_pks, user=request.user)
+            task = crawler_settings.workers.archive_worker.recalc_all_file_info(
+                archives=archive_pks, user=request.user
+            )
         else:
             archive_worker_thread = ArchiveWorker(crawler_settings, 4)
-            archive_worker_thread.recalc_all_file_info(archives=archive_pks, user=request.user)
-        messages.success(request, f"File info worker started in background for {len(archive_pks)} archives.")
-        return safe_redirect_back(request, reverse("viewer:tools"))
+            task = archive_worker_thread.recalc_all_file_info(archives=archive_pks, user=request.user)
+        return task_action_response(
+            request, task, target_url, f"File info worker started in background for {len(archive_pks)} archives."
+        )
     elif tool == "recalc_all_file_info":
-        if thread_exists_in_db("fileinfo_worker"):
-            return render_error(request, "File info worker is already running.")
+        active_task = client.get_active_task_by_type("fileinfo_worker")
+        if active_task is not None:
+            return task_action_response(
+                request, active_task, target_url, "File info worker is already running.", messages.ERROR
+            )
 
         logger.info("Recalculating file info for all archives")
         if crawler_settings.workers.archive_worker:
-            crawler_settings.workers.archive_worker.recalc_all_file_info(user=request.user)
+            task = crawler_settings.workers.archive_worker.recalc_all_file_info(user=request.user)
         else:
             archive_worker_thread = ArchiveWorker(crawler_settings, 4)
-            archive_worker_thread.recalc_all_file_info(user=request.user)
-        messages.success(request, "File info worker started in background.")
-        return safe_redirect_back(request, reverse("viewer:tools"))
+            task = archive_worker_thread.recalc_all_file_info(user=request.user)
+        return task_action_response(request, task, target_url, "File info worker started in background.")
     elif tool == "set_all_hidden_as_public":
-        if thread_exists_in_db("publish_worker"):
-            return render_error(request, "Publish worker is already running.")
+        active_task = client.get_active_task_by_type("publish_worker")
+        if active_task is not None:
+            return task_action_response(
+                request, active_task, target_url, "Publish worker is already running.", messages.ERROR
+            )
 
         archives = Archive.objects.filter(gallery__hidden=True)
         archive_pks = list(archives.values_list("pk", flat=True))
         if not archive_pks:
-            messages.info(request, "No archives with hidden galleries found.")
-            return safe_redirect_back(request, reverse("viewer:tools"))
+            return task_action_response(
+                request, None, target_url, "No archives with hidden galleries found.", messages.INFO
+            )
 
         logger.info("Publishing %d archives with hidden galleries", len(archive_pks))
         if crawler_settings.workers.archive_worker:
-            crawler_settings.workers.archive_worker.publish_archives(archives=archive_pks, user=request.user)
+            task = crawler_settings.workers.archive_worker.publish_archives(archives=archive_pks, user=request.user)
         else:
             archive_worker_thread = ArchiveWorker(crawler_settings, 4)
-            archive_worker_thread.publish_archives(archives=archive_pks, user=request.user)
-        messages.success(request, f"Publish worker started in background for {len(archive_pks)} archives.")
-        return safe_redirect_back(request, reverse("viewer:tools"))
+            task = archive_worker_thread.publish_archives(archives=archive_pks, user=request.user)
+        return task_action_response(
+            request, task, target_url, f"Publish worker started in background for {len(archive_pks)} archives."
+        )
     elif tool == "regenerate_all_thumbs":
-        if thread_exists_in_db("thumbnails_worker"):
-            return render_error(request, "Thumbnails worker is already running.")
+        active_task = client.get_active_task_by_type("thumbnails_worker")
+        if active_task is not None:
+            return task_action_response(
+                request, active_task, target_url, "Thumbnails worker is already running.", messages.ERROR
+            )
 
         logger.info("Generating thumbs for all archives")
         if crawler_settings.workers.archive_worker:
-            crawler_settings.workers.archive_worker.regenerate_all_thumbs(user=request.user)
+            task = crawler_settings.workers.archive_worker.regenerate_all_thumbs(user=request.user)
         else:
             archive_worker_thread = ArchiveWorker(crawler_settings, 4)
-            archive_worker_thread.regenerate_all_thumbs(user=request.user)
-        messages.success(request, "Thumbnails worker started in background.")
-        return safe_redirect_back(request, reverse("viewer:tools"))
+            task = archive_worker_thread.regenerate_all_thumbs(user=request.user)
+        return task_action_response(request, task, target_url, "Thumbnails worker started in background.")
     elif tool == "generate_possible_matches_internally":
-        if thread_exists_in_db("match_unmatched_worker"):
-            return render_error(request, "Matching worker is already running.")
+        active_task = client.get_active_task_by_type("match_unmatched_worker")
+        if active_task is not None:
+            return task_action_response(
+                request, active_task, target_url, "Matching worker is already running.", messages.ERROR
+            )
         p = request.POST if request.POST else request.GET
         provider = p.get("provider", "")
         try:
@@ -490,7 +591,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
             "for non-matched archives (cutoff: {}, max matches: {}) "
             'using provider filter "{}"'.format(cutoff, max_matches, provider)
         )
-        client.enqueue_matching_task(
+        task = client.enqueue_matching_task(
             task_type="match_unmatched_worker",
             args=None,
             matching_kwargs={
@@ -503,49 +604,55 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
             },
             user=request.user,
         )
-        messages.success(
-            request, "Looking for possible matches, filtering providers: {}, cutoff: {}.".format(provider, cutoff)
+        return task_action_response(
+            request,
+            task,
+            target_url,
+            "Looking for possible matches, filtering providers: {}, cutoff: {}.".format(provider, cutoff),
         )
-        return safe_redirect_back(request, reverse("viewer:tools"))
     elif tool == "clear_all_archive_possible_matches":
         ArchiveMatches.objects.all().delete()
         logger.info("Clearing all possible matches for archives.")
         messages.success(request, "Clearing all possible matches for archives.")
         return safe_redirect_back(request, reverse("viewer:tools"))
     elif tool == "search_wanted_galleries_provider_titles":
-        if thread_exists_in_db("web_search_worker"):
-            messages.error(request, "Web search worker is already running.", extra_tags="danger")
-            return safe_redirect_back(request, reverse("viewer:tools"))
+        active_task = client.get_active_task_by_type("web_search_worker")
+        if active_task is not None:
+            return task_action_response(
+                request, active_task, target_url, "Web search worker is already running.", messages.ERROR
+            )
         results = WantedGallery.objects.eligible_to_search()
 
         if not results:
             logger.info("No wanted galleries eligible to search.")
-            messages.success(request, "No wanted galleries eligible to search.")
-            return safe_redirect_back(request, reverse("viewer:tools"))
+            return task_action_response(request, None, target_url, "No wanted galleries eligible to search.")
 
         p = request.POST if request.POST else request.GET
         provider = p.get("provider", "")
 
         logger.info("Searching for gallery matches in panda for wanted galleries, starting thread.")
-        messages.success(request, "Searching for gallery matches in panda for wanted galleries, starting thread.")
 
-        client.enqueue_matching_task(
+        task = client.enqueue_matching_task(
             task_type="web_search_worker",
             args=results,
             provider=provider,
             user=request.user,
         )
-        return safe_redirect_back(request, reverse("viewer:tools"))
+        return task_action_response(
+            request, task, target_url, "Searching for gallery matches in panda for wanted galleries, starting thread."
+        )
     elif tool == "wanted_galleries_possible_matches":
-        if thread_exists_in_db("wanted_local_search_worker"):
-            return render_error(request, "Wanted local matching worker is already running.")
+        active_task = client.get_active_task_by_type("wanted_local_search_worker")
+        if active_task is not None:
+            return task_action_response(
+                request, active_task, target_url, "Wanted local matching worker is already running.", messages.ERROR
+            )
 
         non_match_wanted = WantedGallery.objects.eligible_to_search()
 
         if not non_match_wanted:
             logger.info("No wanted galleries eligible to search.")
-            messages.success(request, "No wanted galleries eligible to search.")
-            return safe_redirect_back(request, reverse("viewer:tools"))
+            return task_action_response(request, None, target_url, "No wanted galleries eligible to search.")
 
         logger.info("Looking for possible matches in gallery database for wanted galleries (fixed 0.4 cutoff)")
 
@@ -561,13 +668,15 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
         except ValueError:
             max_matches = 10
 
-        client.enqueue_matching_task(
+        task = client.enqueue_matching_task(
             task_type="wanted_local_search_worker",
             args=non_match_wanted,
             matching_kwargs={"provider_filter": provider, "cutoff": cutoff, "max_matches": max_matches},
             user=request.user,
         )
-        return safe_redirect_back(request, reverse("viewer:tools"))
+        return task_action_response(
+            request, task, target_url, "Queued wanted galleries local matching."
+        )
     elif tool == "restart_viewer":
         try:
             message = restart_web_server(request)
@@ -591,7 +700,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
                 except (OSError, ProcessLookupError, PermissionError) as e:
                     logger.warning("Could not send SIGHUP to worker PID %d: %s", wp.pid, e)
 
-        SchedulerState.request_command("worker_runner", "restart")
+        SchedulerState.request_command("worker_runner", "restart", schedule_type=SchedulerState.TYPE_CONTROL)
         if active_workers:
             messages.success(request, f"Restart requested for {len(active_workers)} running worker process(es).")
         else:
@@ -611,7 +720,10 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
         messages.success(request, "Reloaded settings file for Panda Backup")
         return safe_redirect_back(request, reverse("viewer:tools"))
 
-    return render(request, "viewer/tools.html", {"tool": tool})
+    context: dict[str, typing.Any] = {"tool": tool}
+    if tool == "main":
+        context["active_tasks"] = _active_admin_tools_tasks()
+    return render(request, "viewer/tools.html", context)
 
 
 @login_required
