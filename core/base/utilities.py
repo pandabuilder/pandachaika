@@ -42,6 +42,9 @@ WAYBACK_API_URL = "https://web.archive.org/cdx/search/cdx"
 ZIP_CONTAINER_REGEX = re.compile(r"(\.zip|\.cbz)$", re.IGNORECASE)
 IMAGES_REGEX = re.compile(r"(\.jpeg|\.jpg|\.png|\.gif|\.webp)$", re.IGNORECASE)
 ZIP_CONTAINER_EXTENSIONS = [".zip", ".cbz"]
+# ASCII control characters (newlines, tabs, ...), with the whitespace around them. Torrent uploaders sometimes leave
+# them in file names, which breaks FTP (line based) and most tools.
+CONTROL_CHARACTERS_REGEX = re.compile(r"\s*[\x00-\x1f\x7f]+\s*")
 
 REPLACE_CHARS = (
     ("\\", "＼"),
@@ -66,8 +69,37 @@ def discard_string_by_cutoff(base: str, compare: str, cutoff: float) -> bool:
     return False
 
 
+def remove_control_characters(name: str) -> str:
+    """Replace control characters in a file name with a space, without leaving spaces at the ends or before the
+    extension: "Title [Group]\\n.zip" becomes "Title [Group].zip". Names without control characters are unchanged."""
+    if not CONTROL_CHARACTERS_REGEX.search(name):
+        return name
+    stem, extension = os.path.splitext(CONTROL_CHARACTERS_REGEX.sub(" ", name))
+    return stem.strip() + extension.strip()
+
+
+def plan_control_character_renames(paths: Iterable[str]) -> list[tuple[str, str]]:
+    """Renames needed so no component of ``paths`` (relative, "/" separated) has control characters, as
+    (current path, new name of its last component). Deepest paths come first, so each path is still valid when
+    its rename is applied (its parent folders are renamed after it)."""
+    to_rename: set[str] = set()
+    for path in paths:
+        parts = path.split("/")
+        for depth in range(1, len(parts) + 1):
+            if CONTROL_CHARACTERS_REGEX.search(parts[depth - 1]):
+                to_rename.add("/".join(parts[:depth]))
+    renames = []
+    for path in sorted(to_rename, key=lambda x: (-x.count("/"), x)):
+        new_name = remove_control_characters(path.rsplit("/", 1)[-1])
+        if new_name:
+            renames.append((path, new_name))
+    return renames
+
+
 def replace_illegal_name(filepath: str, max_bytes: int = 240) -> str:
     delete_chars = r'\/:*?"<>|'
+
+    filepath = remove_control_characters(filepath)
 
     for c in delete_chars:
         filepath = filepath.replace(c, "")

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Torrent Files With Newlines in Their Names**: Some torrents name their file with an embedded newline (e.g. `Title [Group]` + newline + `.zip`). FTP is line based, so such a file can't be listed or fetched: the transfer asked for the name cut at the newline and failed with `550 No such file or directory`, then retried forever. When a torrent finishes, the download progress checker now has the torrent client (Transmission `torrent-rename-path`, qBittorrent `renameFile`/`renameFolder`) rename every file and folder whose name has control characters before transferring it (`TorrentClient.clean_file_names()`), so the file on the seedbox is fixed too. FTP listings detect the split lines, drop the broken entry and log a warning naming the folder, instead of failing with a vague not-found. `replace_illegal_name()` also strips control characters, so local archive names built from torrent names stay clean.
+
 ## [1.5.0] - 2026-11-21
 
 ### Added

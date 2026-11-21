@@ -90,6 +90,40 @@ class Transmission(TorrentClient):
             return False
         return True
 
+    @staticmethod
+    def _parse_torrent_id(torrent_id: str) -> int | str | None:
+        """Info hashes, and numeric ids from events created before hashes were stored."""
+        if not torrent_id or not isinstance(torrent_id, str):
+            return None
+        cleaned = torrent_id.strip().lower()
+        if cleaned.isdigit():
+            return int(cleaned)
+        if len(cleaned) == 40 and all(c in "0123456789abcdef" for c in cleaned):
+            return cleaned
+        return None
+
+    def get_file_paths(self, torrent_id: str) -> list[str] | None:
+        key = self._parse_torrent_id(torrent_id)
+        if not self.trans or key is None:
+            return None
+        try:
+            torr = self.trans.get_torrent(key, arguments=["id", "files"], timeout=25)
+        except Exception as e:
+            logger.warning(f"Failed to get the files of torrent {torrent_id} from Transmission: {e}")
+            return None
+        return [x["name"] for x in torr.fields.get("files") or []]
+
+    def rename_path(self, torrent_id: str, path: str, new_name: str) -> bool:
+        key = self._parse_torrent_id(torrent_id)
+        if not self.trans or key is None:
+            return False
+        try:
+            self.trans.rename_torrent_path(key, path, new_name, timeout=25)
+        except Exception as e:
+            self.error = str(e)
+            return False
+        return True
+
     def get_download_progress[TorrentKey](
         self, download_list: list[tuple[str, TorrentKey]]
     ) -> list[tuple[TorrentKey, float]] | None:
@@ -97,16 +131,11 @@ class Transmission(TorrentClient):
         if not self.trans:
             return None
 
-        # Accept info hashes, and numeric ids from events created before hashes were stored.
         torrent_id_map: dict[int | str, TorrentKey] = {}
         for dl_id_str, key in download_list:
-            if not dl_id_str or not isinstance(dl_id_str, str):
-                continue
-            cleaned = dl_id_str.strip().lower()
-            if cleaned.isdigit():
-                torrent_id_map[int(cleaned)] = key
-            elif len(cleaned) == 40 and all(c in "0123456789abcdef" for c in cleaned):
-                torrent_id_map[cleaned] = key
+            torrent_id = self._parse_torrent_id(dl_id_str)
+            if torrent_id is not None:
+                torrent_id_map[torrent_id] = key
 
         if not torrent_id_map:
             return []

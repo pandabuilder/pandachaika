@@ -9,6 +9,7 @@ import django.utils.timezone as django_tz
 from django.db import close_old_connections, connection
 
 from core.base.setup import Settings
+from core.base.types import TorrentClient
 from core.downloaders.postdownload import CurrentDownload, PostDownloader, TransferResult, download_kind
 from core.downloaders.torrent import get_torrent_client
 from core.workers.schedulers import BaseScheduler
@@ -295,16 +296,17 @@ class DownloadProgressChecker(BaseScheduler):
         if not pending:
             return
 
-        progress_by_event = self._query_torrent_client(pending)
+        client, progress_by_event = self._query_torrent_client(pending)
 
         for download_event in pending:
             try:
-                if progress_by_event is None:
+                if client is None or progress_by_event is None:
                     # Client unreachable: nothing is known about the torrent, only enforce its lifespan.
                     self.check_torrent_progress(download_event, None)
                 elif download_event.pk in progress_by_event:
                     self.check_torrent_progress(download_event, progress_by_event[download_event.pk])
                     if not download_event.completed and download_event.progress >= 100 and download_event.archive_id:
+                        self._clean_torrent_file_names(client, download_event)
                         self._start_transfer(download_event, TransferReason.FINISHED)
                 elif download_event.archive_id:
                     self._start_transfer(download_event, TransferReason.REMOVED_FROM_CLIENT)
@@ -313,21 +315,39 @@ class DownloadProgressChecker(BaseScheduler):
             except Exception as e:
                 logger.error(f"Error checking torrent download {download_event.name}: {e}")
 
-    def _query_torrent_client(self, download_events: list[DownloadEvent]) -> dict[int, float] | None:
-        """Progress per event pk for the torrents present in the client, or None if the client can't be queried."""
+    def _query_torrent_client(
+        self, download_events: list[DownloadEvent]
+    ) -> tuple[TorrentClient | None, dict[int, float] | None]:
+        """The connected client and the progress per event pk for the torrents present in it, or (None, None) if
+        the client can't be queried."""
         client = get_torrent_client(self.settings.torrent)
         if not client:
-            return None
+            return None, None
         try:
             if not client.connect():
-                return None
+                return None, None
             results = client.get_download_progress([(x.download_id, x) for x in download_events])
         except Exception as e:
             logger.error(f"Error querying torrent client for progress: {e}")
-            return None
+            return None, None
         if results is None:
-            return None
-        return {download_event.pk: progress for download_event, progress in results}
+            return None, None
+        return client, {download_event.pk: progress for download_event, progress in results}
+
+    @staticmethod
+    def _clean_torrent_file_names(client: TorrentClient, download_event: DownloadEvent) -> None:
+        """Have the client rename files with control characters in their names before transferring them: a newline
+        in a name can't be sent over FTP, so the file could never be transferred (nor handled by most tools)."""
+        try:
+            renamed = client.clean_file_names(download_event.download_id)
+        except Exception as e:
+            logger.warning(f"Could not clean the file names of torrent {download_event.name}: {e}")
+            return
+        for path, new_name in renamed or []:
+            logger.info(
+                f"Torrent {download_event.name}: renamed {path!r} to {new_name!r} in {client}, "
+                "its name had control characters"
+            )
 
     def check_hath_downloads(self, download_events: list[DownloadEvent]) -> None:
         mark_completed_and_failed_for_indirect_downloads(download_events)

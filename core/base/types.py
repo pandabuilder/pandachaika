@@ -1,4 +1,5 @@
 import importlib
+import logging
 import statistics
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -7,6 +8,8 @@ from typing import Any, ClassVar
 
 if typing.TYPE_CHECKING:
     from core.base.setup import Settings
+
+logger = logging.getLogger(__name__)
 
 
 # gid and provider are mandatory, since they are a unique constraint on the database.
@@ -286,6 +289,36 @@ class TorrentClient:
 
     def connect(self) -> bool:
         return False
+
+    def get_file_paths(self, torrent_id: str) -> list[str] | None:
+        """Paths of the torrent's files, relative to its save folder ("root folder/file" for multi-file torrents).
+        Empty while the client has no metadata (magnet links). None when the client could not be queried."""
+        return None
+
+    def rename_path(self, torrent_id: str, path: str, new_name: str) -> bool:
+        """Rename the last component of ``path`` (a file or a folder of the torrent) to ``new_name``, on disk too."""
+        return False
+
+    def clean_file_names(self, torrent_id: str) -> list[tuple[str, str]] | None:
+        """Rename the torrent's files and folders whose names have control characters (an embedded newline breaks
+        FTP transfers, see remove_control_characters). Returns the renames done as (old path, new name), or None
+        when the client does not support it or could not be queried."""
+        from core.base.utilities import plan_control_character_renames
+
+        paths = self.get_file_paths(torrent_id)
+        if paths is None:
+            return None
+        done: list[tuple[str, str]] = []
+        for path, new_name in plan_control_character_renames(paths):
+            if self.rename_path(torrent_id, path, new_name):
+                done.append((path, new_name))
+            else:
+                logger.warning(
+                    "Could not rename {!r} to {!r} in torrent {} ({}): {}".format(
+                        path, new_name, torrent_id, self.name, self.error
+                    )
+                )
+        return done
 
 
 type QueueItem = dict[str, Any]

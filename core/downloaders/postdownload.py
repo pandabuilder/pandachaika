@@ -897,11 +897,33 @@ class FTPSource(TransferSource):
             lines = list(self.ftps.mlsd(path=path, facts=["type", "size"]))
         except ftplib.error_perm as e:
             raise FileNotFoundError(path) from e
-        return [
-            SourceEntry(name, facts["type"] == "dir", int(facts.get("size") or 0) if facts["type"] == "file" else 0)
-            for name, facts in lines
-            if name and facts.get("type") in ("file", "dir")
-        ]
+        entries: list[SourceEntry] = []
+        broken_names: list[str] = []
+        previous: SourceEntry | None = None
+        for name, facts in lines:
+            if "type" not in facts:
+                # FTP listings are line based: a newline in a name splits its line, the start looks like an entry
+                # named up to the newline (which doesn't exist) and the rest is a line without facts.
+                if previous is not None:
+                    entries.pop()
+                    broken_names.append(previous.name)
+                previous = None
+                continue
+            previous = None
+            if name and facts["type"] in ("file", "dir"):
+                previous = SourceEntry(
+                    name, facts["type"] == "dir", int(facts.get("size") or 0) if facts["type"] == "file" else 0
+                )
+                entries.append(previous)
+        if broken_names:
+            logger.warning(
+                "FTP folder {}: ignoring entries whose names have a newline, which can't be transferred over FTP "
+                "(names start with: {}). Torrents are renamed in the torrent client when they finish; files no "
+                "longer in the client must be renamed by hand.".format(
+                    posixpath.join(self.root, path), ", ".join(repr(x) for x in broken_names)
+                )
+            )
+        return entries
 
     def fetch(self, path: str, dest: str, size: int = 0, final: bool = False) -> None:
         for attempt in range(1, self.fetch_retries + 1):

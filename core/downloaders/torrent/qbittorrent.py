@@ -33,6 +33,8 @@ class qBittorrent(TorrentClient):
         self.session: requests.Session | None = None
         self.base_url: str = ""
         self.error: str = ""
+        # Hash -> file paths from the last get_file_paths, to tell files from folders when renaming.
+        self._file_paths: dict[str, set[str]] = {}
 
     def __str__(self) -> str:
         return self.name
@@ -276,6 +278,60 @@ class qBittorrent(TorrentClient):
             logger.warning(f"Error adding URL to qBittorrent: {e}")
             return False, None
 
+    @staticmethod
+    def _parse_hash(torrent_id: str) -> str | None:
+        if not torrent_id or not isinstance(torrent_id, str):
+            return None
+        cleaned = torrent_id.strip().lower()
+        if len(cleaned) in (40, 64) and all(c in "0123456789abcdef" for c in cleaned):
+            return cleaned
+        return None
+
+    def get_file_paths(self, torrent_id: str) -> list[str] | None:
+        torrent_hash = self._parse_hash(torrent_id)
+        if torrent_hash is None or (not self.session and not self.connect()):
+            return None
+        assert self.session is not None
+        try:
+            resp = self.session.get(
+                f"{self.base_url}/api/v2/torrents/files", params={"hash": torrent_hash}, timeout=25
+            )
+            if resp.status_code != 200:
+                logger.warning(
+                    f"Failed to get the files of torrent {torrent_hash} from qBittorrent: HTTP {resp.status_code}"
+                )
+                return None
+            files = resp.json()
+        except Exception as e:
+            logger.warning(f"Failed to get the files of torrent {torrent_hash} from qBittorrent: {e}")
+            return None
+        paths = [str(x["name"]) for x in files if isinstance(x, dict) and x.get("name")] if isinstance(files, list) else []
+        self._file_paths[torrent_hash] = set(paths)
+        return paths
+
+    def rename_path(self, torrent_id: str, path: str, new_name: str) -> bool:
+        torrent_hash = self._parse_hash(torrent_id)
+        if torrent_hash is None or (not self.session and not self.connect()):
+            return False
+        assert self.session is not None
+        is_file = path in self._file_paths.get(torrent_hash, set())
+        parent = path.rsplit("/", 1)[0] if "/" in path else ""
+        new_path = f"{parent}/{new_name}" if parent else new_name
+        endpoint = "renameFile" if is_file else "renameFolder"
+        try:
+            resp = self.session.post(
+                f"{self.base_url}/api/v2/torrents/{endpoint}",
+                data={"hash": torrent_hash, "oldPath": path, "newPath": new_path},
+                timeout=25,
+            )
+        except RequestException as e:
+            self.error = str(e)
+            return False
+        if resp.status_code != 200:
+            self.error = f"HTTP {resp.status_code}: {resp.text}"
+            return False
+        return True
+
     def get_download_progress[TorrentKey](
         self, download_list: list[tuple[str, TorrentKey]]
     ) -> list[tuple[TorrentKey, float]] | None:
@@ -285,11 +341,9 @@ class qBittorrent(TorrentClient):
 
         hash_map: dict[str, TorrentKey] = {}
         for dl_id_str, key in download_list:
-            if not dl_id_str or not isinstance(dl_id_str, str):
-                continue
-            cleaned = dl_id_str.strip().lower()
-            if len(cleaned) in (40, 64) and all(c in "0123456789abcdef" for c in cleaned):
-                hash_map[cleaned] = key
+            torrent_hash = self._parse_hash(dl_id_str)
+            if torrent_hash is not None:
+                hash_map[torrent_hash] = key
 
         if not hash_map:
             return []
