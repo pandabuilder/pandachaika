@@ -102,7 +102,8 @@ Write commands that queue worker tasks (`DELETE ?archive=`, `DELETE ?gid=`, `DEL
 `POST ?update-metadata=`, and the queueing operations of `/api/v1/remote/`) answer with a task reference:
 
 - one task: `"task_id": 17, "status_url": "/api/v1/?task=17"`
-- several tasks: `"task_ids": [17, 18], "status_url": "/api/v1/?tasks=17,18"`
+- several tasks: `"task_ids": [17, 18], "status_url": "/api/v1/?tasks=17,18"` (commands that answer with
+  `task_ids` always point to `?tasks=`, even when they queued a single task, so the polled shape doesn't change)
 - nothing queued: `task_id`/`status_url` are `null`.
 
 `status_url` points to the API surface the request was made on (`/api/?task=` for requests to `/api/`).

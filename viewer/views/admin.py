@@ -40,24 +40,6 @@ logger = logging.getLogger(__name__)
 
 
 @login_required
-def stats_settings(request: HttpRequest) -> HttpResponse:
-    """Display settings objects."""
-
-    # Settings objects include credentials (database, providers, torrent clients, secret key),
-    # so they are restricted to superusers rather than all staff.
-    if not request.user.is_superuser:
-        return render_error(request, "You need to be a superuser to view setting objects.")
-
-    stats_dict = {
-        "current_settings": crawler_settings,
-    }
-
-    d = {"stats": stats_dict}
-
-    return render(request, "viewer/stats_settings.html", d)
-
-
-@login_required
 def stats_workers(request: HttpRequest) -> HttpResponse:
     """Display workers stats."""
 
@@ -722,7 +704,20 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
 
     context: dict[str, typing.Any] = {"tool": tool}
     if tool == "main":
-        context["active_tasks"] = _active_admin_tools_tasks()
+        active_tasks = _active_admin_tools_tasks()
+        context["active_tasks"] = active_tasks
+        context["active_task_count"] = len({task.pk for task in active_tasks.values()})
+        context["worker_running"] = client.is_worker_running()
+        context["pending_tasks"] = TaskQueue.objects.filter(status=TaskQueue.Status.PENDING).count()
+        # What each tool would act on, shown next to it.
+        context["counts"] = {
+            "missing_thumbs": Archive.objects.filter(thumbnail="").count(),
+            "missing_info": Archive.objects.filter_by_missing_file_info().count(),
+            "hidden_gallery_archives": Archive.objects.filter(gallery__hidden=True).count(),
+            "unmatched_archives": Archive.objects.filter(gallery__isnull=True).count(),
+            "possible_matches": ArchiveMatches.objects.count(),
+            "wanted_eligible": WantedGallery.objects.eligible_to_search().count(),
+        }
     return render(request, "viewer/tools.html", context)
 
 

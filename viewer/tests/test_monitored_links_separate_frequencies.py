@@ -179,6 +179,52 @@ class SeparateFrequenciesSchedulerTests(TestCase):
         self.assertGreater(monitor.seconds_until_capture(), 57 * 60)
         self.assertLess(monitor.seconds_until_process(), 3 * 60 + 1)
 
+    def simulate_after_switch(self, frequency: timedelta, capture_frequency: timedelta, duration: timedelta):
+        """Switch a combined link (last ran at t0) to separate frequencies and drive the scheduler on a fake clock,
+        jumping straight to each wake-up. Returns the (offset from t0, phase flag) of every enqueued task."""
+        t0 = django_tz.now()
+        clock = {"now": t0}
+        link = make_link(separate_frequencies=False, frequency=frequency, capture_frequency=capture_frequency)
+        web_queue = MagicMock()
+        monitor = make_monitor(link, web_queue)
+        monitor.last_run = t0
+        MonitoredLink.objects.filter(pk=link.pk).update(separate_frequencies=True)
+        monitor.monitored_link = MonitoredLink.objects.get(pk=link.pk)
+
+        runs: list[tuple[timedelta, str]] = []
+        with patch("core.workers.link_monitor.django_tz.now", side_effect=lambda: clock["now"]):
+            while clock["now"] - t0 < duration:
+                clock["now"] += timedelta(seconds=monitor.wait_until_next_run())
+                web_queue.reset_mock()
+                run_one_cycle(monitor)
+                runs.extend((clock["now"] - t0, args[-1]) for args in enqueued_args(web_queue))
+        return runs
+
+    def test_shorter_capture_does_not_starve_processing_after_switch(self):
+        runs = self.simulate_after_switch(
+            frequency=timedelta(hours=1), capture_frequency=timedelta(minutes=5), duration=timedelta(hours=2)
+        )
+        process_runs = [offset for offset, phase in runs if phase == "--skip-link-capture"]
+        self.assertEqual(process_runs, [timedelta(hours=1), timedelta(hours=2)])
+        self.assertEqual(len([1 for _, phase in runs if phase == "--capture-links-only"]), 24)
+
+    def test_shorter_processing_does_not_starve_capture_after_switch(self):
+        runs = self.simulate_after_switch(
+            frequency=timedelta(minutes=5), capture_frequency=timedelta(hours=1), duration=timedelta(hours=2)
+        )
+        capture_runs = [offset for offset, phase in runs if phase == "--capture-links-only"]
+        self.assertEqual(capture_runs, [timedelta(hours=1), timedelta(hours=2)])
+
+    def test_phase_anchor_is_stored_after_switch(self):
+        runs = self.simulate_after_switch(
+            frequency=timedelta(hours=1), capture_frequency=timedelta(minutes=5), duration=timedelta(minutes=5)
+        )
+        self.assertEqual([phase for _, phase in runs], ["--capture-links-only"])
+        link = MonitoredLink.objects.get()
+        # The process phase keeps the last combined run as its anchor, so a worker restart also keeps it.
+        self.assertIsNotNone(link.last_process_run)
+        self.assertLess(link.last_process_run, link.last_capture_run)
+
     def test_phase_options_carry_the_monitored_link_settings(self):
         link = make_link(proxy="socks5://127.0.0.1:9050", priority=4)
         web_queue = MagicMock()

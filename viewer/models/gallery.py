@@ -793,7 +793,7 @@ class Gallery(TrackedChangesMixin, models.Model):
 
     def get_es_source_thumbnail(self) -> str | None:
         if self.thumbnail_url:
-            return self.thumbnail_url
+            return self.get_thumbnail_url()
         else:
             return None
 
@@ -894,6 +894,10 @@ class Gallery(TrackedChangesMixin, models.Model):
 
     def get_link(self) -> str:
         return settings.PROVIDER_CONTEXT.resolve_all_urls(self)
+
+    def get_thumbnail_url(self) -> str:
+        """The URL to fetch the thumbnail from. Some providers store one that doesn't depend on a server address."""
+        return settings.PROVIDER_CONTEXT.resolve_thumbnail_url(self)
 
     def get_absolute_url(self) -> str:
         return reverse("viewer:gallery", args=[str(self.id)])
@@ -1023,7 +1027,7 @@ class Gallery(TrackedChangesMixin, models.Model):
                 if not settings.ES_CLIENT:
                     return
                 try:
-                    settings.ES_CLIENT.options(request_timeout=30).delete(
+                    settings.ES_CLIENT.delete(
                         index=es_index, id=str(prev_pk), refresh=True
                     )
                 except elasticsearch.exceptions.NotFoundError:

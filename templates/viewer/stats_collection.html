@@ -1,309 +1,203 @@
 {% extends "viewer/base.html" %}
-{% block title %}Stats | {{ block.super }}{% endblock %}
+{% load static %}
+{% block title %}Collection Stats | {{ block.super }}{% endblock %}
 {% block sidebar %}{% endblock %}
 
+{% block extra_head %}
+  {% load compress %}
+  {% compress css %}
+    <link href="{% static 'css/dm-pages.css' %}" type="text/css" rel="stylesheet" />
+  {% endcompress %}
+{% endblock %}
+
 {% block content %}
-  {% if messages %}
-    {% for message in messages %}
-      <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
-    {% endfor %}
-  {% endif %}
+<div class="container-fluid py-3">
+  {% include "viewer/include/dm_messages.html" %}
 
-  <!-- Stats  -->
-  <div class="page-header">
-    <h2>Stats</h2>
-    <p class="lead">Aggregated information</p>
-  </div>
-  <h3>Models</h3>
-  <table class="table table-striped">
-    <thead>
-    <tr>
-      <th>Gallery</th><th>Archive</th><th>Wanted Gallery</th><th>Tag</th>
-    </tr>
-    </thead>
-    <tbody>
-    <tr>
-      <td>
-        <table class="table table-striped table-bordered table-sm">
-          <tr>
-            <td class="label-extended">Number of galleries</td>
-            <td>{{ stats.n_galleries }}</td>
-          </tr>
-          <tr>
-            <td class="label-extended">Hidden galleries</td>
-            <td>{{ stats.hidden_galleries }}</td>
-          </tr>
-          <tr>
-            <td class="label-extended">Unpacked filesize for hidden galleries</td>
-            <td>{{ stats.hidden_galleries_size.filesize__sum }} bytes, {{ stats.hidden_galleries_size.filesize__sum|filesizeformat }}</td>
-          </tr>
-          <tr>
-            <td class="label-extended">Expunged galleries</td>
-            <td>{{ stats.expunged_galleries }}</td>
-          </tr>
-          <tr>
-            <td class="label-extended">Disowned galleries</td>
-            <td>{{ stats.disowned_galleries }}</td>
-          </tr>
-          <tr>
-            <td class="label-extended">Fjord galleries</td>
-            <td>{{ stats.fjord_galleries }}</td>
-          </tr>
-          <tr>
-            <td class="label-extended">Sum of unpacked filesize</td>
-            <td>{{ stats.gallery.filesize__sum|default:"0" }} bytes, {{ stats.gallery.filesize__sum|filesizeformat }}</td>
-          </tr>
-          <tr>
-            <td class="label-extended">Average unpacked filesize</td>
-            <td>{{ stats.gallery.filesize__avg|floatformat:"0"|default:"0" }} bytes, {{ stats.gallery.filesize__avg|filesizeformat }}</td>
-          </tr>
-          <tr>
-            <td class="label-extended">Maximum unpacked filesize</td>
-            <td>{{ stats.gallery.filesize__max|default:"0" }} bytes, {{ stats.gallery.filesize__max|filesizeformat }}</td>
-          </tr>
-          <tr>
-            <td class="label-extended">Minimum unpacked filesize</td>
-            <td>{{ stats.gallery.filesize__min|default:"0" }} bytes, {{ stats.gallery.filesize__min|filesizeformat }}</td>
-          </tr>
-          <tr>
-            <td class="label-extended">Average page number</td>
-            <td>{{ stats.gallery.filecount__avg|floatformat:"0"|default:"0" }}</td>
-          </tr>
-          <tr>
-            <td class="label-extended">Total number of pages</td>
-            <td>{{ stats.gallery.filecount__sum|default:"0" }}</td>
-          </tr>
-        </table>
-      </td>
-      <td>
-        <table class="table table-striped table-bordered table-sm">
-          <tr>
-            <td class="label-extended">Number of archives</td>
-            <td>{{ stats.n_archives }}</td>
-          </tr>
-          <tr>
-            <td class="label-extended">Number of expanded archives</td>
-            <td>{{ stats.n_expanded_archives }}</td>
-          </tr>
-          <tr>
-            <td class="label-extended">Number of torrent and H@H downloads in progress</td>
-            <td>{{ stats.n_to_download_archives }}</td>
-          </tr>
-          <tr>
-            <td class="label-extended">Sum of unpacked filesize</td>
-            <td>{{ stats.archive.filesize__sum|default:"0" }} bytes, {{ stats.archive.filesize__sum|filesizeformat }}</td>
-          </tr>
-          <tr>
-            <td class="label-extended">Average unpacked filesize</td>
-            <td>{{ stats.archive.filesize__avg|floatformat:"0"|default:"0" }} bytes, {{ stats.archive.filesize__avg|filesizeformat }}</td>
-          </tr>
-          <tr>
-            <td class="label-extended">Maximum unpacked filesize</td>
-            <td>{{ stats.archive.filesize__max|default:"0" }} bytes, {{ stats.archive.filesize__max|filesizeformat }}</td>
-          </tr>
-          <tr>
-            <td class="label-extended">Minimum unpacked filesize</td>
-            <td>{{ stats.archive.filesize__min|default:"0" }} bytes, {{ stats.archive.filesize__min|filesizeformat }}</td>
-          </tr>
-          <tr>
-            <td class="label-extended">Average page number</td>
-            <td>{{ stats.archive.filecount__avg|floatformat:"0"|default:"0" }}</td>
-          </tr>
-          <tr>
-            <td class="label-extended">Total number of pages</td>
-            <td>{{ stats.archive.filecount__sum|default:"0" }}</td>
-          </tr>
-        </table>
-      </td>
-      <td>
-        <table class="table table-striped table-bordered table-sm">
-          <tr>
-            <td class="label-extended">Total</td>
-            <td>{{ stats.wanted_galleries.total }}</td>
-          </tr>
-          <tr>
-            <td class="label-extended">Found</td>
-            <td>{{ stats.wanted_galleries.found }}</td>
-          </tr>
-          <tr>
-            <td class="label-extended">Galleries found by wanted galleries</td>
-            <td>{{ stats.wanted_galleries.total_galleries_found }}</td>
-          </tr>
-          <tr>
-            <td class="label-extended">User created</td>
-            <td>{{ stats.wanted_galleries.user_created }}</td>
-          </tr>
-        </table>
-      </td>
-      <td>
-        <table class="table table-striped table-bordered table-sm">
-          <tr>
-            <td class="label-extended">Number of tags</td>
-            <td>{{ stats.n_tags }}</td>
-          </tr>
-          <tr>
-            <td class="label-extended">Number of custom tags</td>
-            <td>{{ stats.n_custom_tags }}</td>
-          </tr>
-          <tr>
-            <td class="label-extended">Number of tag scopes</td>
-            <td>{{ stats.n_tag_scopes }}</td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-    </tbody>
-  </table>
-  <h3>Breakdown by Providers</h3>
-  <table class="table table-striped">
-    <thead>
-    <tr>
-      <th>Provider</th><th>Galleries</th><th>Archives</th><th>Wanted Galleries</th>
-    </tr>
-    </thead>
-    <tbody>
-    {% for name, info in providers.items %}
-    <tr>
-      <td>
-        {{ name }}
-      </td>
-      <td>
-        {{ info.galleries }}
-      </td>
-      <td>
-        {{ info.archives }}
-      </td>
-      <td>
-        {{ info.wanted_galleries }}
-      </td>
-    </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-
-  <h3>Breakdown by Categories (for Galleries)</h3>
-  <table class="table table-striped">
-    <thead>
-    <tr>
-      <th>Category</th><th>Galleries</th><th>Total size</th><th>Average size</th><th>Maximum size</th><th>Minimum size</th><th>Average pages</th><th>Total pages</th>
-    </tr>
-    </thead>
-    <tbody>
-    {% for category, category_stats in gallery_categories.items %}
-    <tr>
-      <td>
-        {{ category }}
-      </td>
-      <td>
-        {{ category_stats.n_galleries }}
-      </td>
-      <td>
-        {{ category_stats.gallery.filesize__sum|default:"0" }} bytes ({{ category_stats.gallery.filesize__sum|filesizeformat }})
-      </td>
-      <td>
-        {{ category_stats.gallery.filesize__avg|floatformat:"0"|default:"0" }} bytes ({{ category_stats.gallery.filesize__avg|filesizeformat }})
-      </td>
-      <td>{{ category_stats.gallery.filesize__max|default:"0" }} bytes ({{ category_stats.gallery.filesize__max|filesizeformat }})</td>
-      <td>{{ category_stats.gallery.filesize__min|default:"0" }} bytes ({{ category_stats.gallery.filesize__min|filesizeformat }})</td>
-      <td>{{ category_stats.gallery.filecount__avg|floatformat:"0"|default:"0" }}</td>
-      <td>{{ category_stats.gallery.filecount__sum|default:"0" }}</td>
-    </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  
-  <h3>Breakdown by Language (for Galleries)</h3>
-  <table class="table table-striped">
-    <thead>
-    <tr>
-      <th>Language</th><th>Galleries</th><th>Total size</th><th>Average size</th><th>Maximum size</th><th>Minimum size</th><th>Average pages</th><th>Total pages</th>
-    </tr>
-    </thead>
-    <tbody>
-    {% for language, language_stats in gallery_languages.items %}
-    <tr>
-      <td>
-        {{ language }}
-      </td>
-      <td>
-        {{ language_stats.n_galleries }}
-      </td>
-      <td>
-        {{ language_stats.gallery.filesize__sum|default:"0" }} bytes ({{ language_stats.gallery.filesize__sum|filesizeformat }})
-      </td>
-      <td>
-        {{ language_stats.gallery.filesize__avg|floatformat:"0"|default:"0" }} bytes ({{ language_stats.gallery.filesize__avg|filesizeformat }})
-      </td>
-      <td>{{ language_stats.gallery.filesize__max|default:"0" }} bytes ({{ language_stats.gallery.filesize__max|filesizeformat }})</td>
-      <td>{{ language_stats.gallery.filesize__min|default:"0" }} bytes ({{ language_stats.gallery.filesize__min|filesizeformat }})</td>
-      <td>{{ language_stats.gallery.filecount__avg|floatformat:"0"|default:"0" }}</td>
-      <td>{{ language_stats.gallery.filecount__sum|default:"0" }}</td>
-    </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-
-  <h3>Breakdown by Reasons (for Archives)</h3>
-  <table class="table table-striped">
-    <thead>
-    <tr>
-      <th>Reason</th><th>Archives</th><th>Total size</th><th>Average size</th><th>Maximum size</th><th>Minimum size</th><th>Average pages</th><th>Total pages</th>
-    </tr>
-    </thead>
-    <tbody>
-    {% for reason, reason_stats in archive_reasons.items %}
-    <tr>
-      <td>
-        {{ reason }}
-      </td>
-      <td>
-        {{ reason_stats.n_archives }}
-      </td>
-      <td>
-        {{ reason_stats.archive.filesize__sum|default:"0" }} bytes ({{ reason_stats.archive.filesize__sum|filesizeformat }})
-      </td>
-      <td>
-        {{ reason_stats.archive.filesize__avg|floatformat:"0"|default:"0" }} bytes ({{ reason_stats.archive.filesize__avg|filesizeformat }})
-      </td>
-      <td>{{ reason_stats.archive.filesize__max|default:"0" }} bytes ({{ reason_stats.archive.filesize__max|filesizeformat }})</td>
-      <td>{{ reason_stats.archive.filesize__min|default:"0" }} bytes ({{ reason_stats.archive.filesize__min|filesizeformat }})</td>
-      <td>{{ reason_stats.archive.filecount__avg|floatformat:"0"|default:"0" }}</td>
-      <td>{{ reason_stats.archive.filecount__sum|default:"0" }}</td>
-    </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-
-  <div class="row">
-    <div class="card panel col-sm-6 col-md-4">
-      <div class="card-header">10 most used tags</div>
-      <ul class="list-group">
-        {% for tag in stats.top_10_tags %}
-          <li class="list-group-item">
-            <a href="{% url 'viewer:archive-tag-search' 'tag' tag %}">{{ tag }}</a>, used {{ tag.num_archive }} times<br>
-          </li>
-        {% endfor %}
-      </ul>
+  <!-- Header -->
+  <div class="dm-page-header">
+    <div>
+      <h2 class="h3 mb-1"><i class="fas fa-chart-pie text-info me-2"></i>Collection Stats</h2>
+      <p class="mb-0 small">Aggregated information about every gallery, archive, wanted gallery and tag, public or not. Tiles open the matching list.</p>
     </div>
-    <div class="card panel col-sm-6 col-md-4">
-      <div class="card-header">10 most used parody tags</div>
-      <ul class="list-group">
-        {% for tag in stats.top_10_parody_tags %}
-          <li class="list-group-item">
-            <a href="{% url 'viewer:archive-tag-search' 'tag' tag %}">{{ tag }}</a>, used {{ tag.num_archive }} times<br>
-          </li>
-        {% endfor %}
-      </ul>
-    </div>
-    <div class="card panel col-sm-6 col-md-4">
-      <div class="card-header">10 most used artist tags</div>
-      <ul class="list-group">
-        {% for tag in stats.top_10_artist_tags %}
-          <li class="list-group-item">
-            <a href="{% url 'viewer:archive-tag-search' 'tag' tag %}">{{ tag }}</a>, used {{ tag.num_archive }} times<br>
-          </li>
-        {% endfor %}
-      </ul>
+    <div class="d-flex flex-wrap gap-2">
+      {% if user.is_staff %}
+        <a href="{% url 'viewer:stats-visualizations' %}" class="btn btn-outline-info btn-sm"><i class="fas fa-chart-line me-1"></i>Visualizations</a>
+        <a href="{% url 'viewer:stats-workers' %}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-tasks me-1"></i>Workers Dashboard</a>
+      {% endif %}
+      <a href="{% url 'viewer:public-stats' %}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-globe me-1"></i>Public stats</a>
     </div>
   </div>
+
+  <!-- Summary tiles -->
+  <div class="row g-2 mb-2">
+    <div class="col-6 col-md-4 col-xl-2">
+      <{% if perms.viewer.manage_gallery %}a href="{% url 'viewer:manage-galleries' %}"{% else %}div{% endif %} class="dm-stat">
+        <div class="dm-lbl">Galleries</div>
+        <div class="dm-val text-info">{{ stats.n_galleries }}</div>
+        <div class="dm-stat-sub" title="{{ stats.gallery.filesize__sum|default:0 }} bytes">{{ stats.gallery.filesize__sum|default:0|filesizeformat }}</div>
+      </{% if perms.viewer.manage_gallery %}a{% else %}div{% endif %}>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+      <{% if perms.viewer.manage_archive %}a href="{% url 'viewer:manage-archives' %}"{% else %}div{% endif %} class="dm-stat">
+        <div class="dm-lbl">Archives</div>
+        <div class="dm-val text-success">{{ stats.n_archives }}</div>
+        <div class="dm-stat-sub" title="{{ stats.archive.filesize__sum|default:0 }} bytes">{{ stats.archive.filesize__sum|default:0|filesizeformat }}</div>
+      </{% if perms.viewer.manage_archive %}a{% else %}div{% endif %}>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+      <{% if perms.viewer.manage_archive %}a href="{% url 'viewer:manage-archives' %}?extracted=1"{% else %}div{% endif %} class="dm-stat">
+        <div class="dm-lbl">Expanded</div>
+        <div class="dm-val text-primary">{{ stats.n_expanded_archives }}</div>
+        <div class="dm-stat-sub">archives with extracted images</div>
+      </{% if perms.viewer.manage_archive %}a{% else %}div{% endif %}>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+      <{% if perms.viewer.download_history %}a href="{% url 'viewer:downloads' %}"{% else %}div{% endif %} class="dm-stat">
+        <div class="dm-lbl">Downloading</div>
+        <div class="dm-val text-warning">{{ stats.n_to_download_archives }}</div>
+        <div class="dm-stat-sub">torrent and H@H in progress</div>
+      </{% if perms.viewer.download_history %}a{% else %}div{% endif %}>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+      <a class="dm-stat" href="{% url 'viewer:wanted-galleries' %}">
+        <div class="dm-lbl">Wanted</div>
+        <div class="dm-val text-info">{{ stats.wanted_galleries.total }}</div>
+        <div class="dm-stat-sub">{{ stats.wanted_galleries.found }} found, {{ stats.wanted_galleries.user_created }} user created</div>
+      </a>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+      <div class="dm-stat">
+        <div class="dm-lbl">Tags</div>
+        <div class="dm-val text-primary">{{ stats.n_tags }}</div>
+        <div class="dm-stat-sub">{{ stats.n_custom_tags }} custom, {{ stats.n_tag_scopes }} scopes</div>
+      </div>
+    </div>
+  </div>
+  <div class="row g-2 mb-3">
+    <div class="col-6 col-md-3">
+      <{% if perms.viewer.manage_gallery %}a href="{% url 'viewer:manage-galleries' %}?hidden=1"{% else %}div{% endif %} class="dm-stat">
+        <div class="dm-lbl">Hidden galleries</div>
+        <div class="dm-val text-secondary">{{ stats.hidden_galleries }}</div>
+        <div class="dm-stat-sub" title="{{ stats.hidden_galleries_size.filesize__sum|default:0 }} bytes">{{ stats.hidden_galleries_size.filesize__sum|default:0|filesizeformat }} unpacked</div>
+      </{% if perms.viewer.manage_gallery %}a{% else %}div{% endif %}>
+    </div>
+    <div class="col-6 col-md-3">
+      <{% if perms.viewer.manage_gallery %}a href="{% url 'viewer:manage-galleries' %}?expunged=1"{% else %}div{% endif %} class="dm-stat">
+        <div class="dm-lbl">Expunged galleries</div>
+        <div class="dm-val text-danger">{{ stats.expunged_galleries }}</div>
+        <div class="dm-stat-sub">removed from the provider</div>
+      </{% if perms.viewer.manage_gallery %}a{% else %}div{% endif %}>
+    </div>
+    <div class="col-6 col-md-3">
+      <{% if perms.viewer.manage_gallery %}a href="{% url 'viewer:manage-galleries' %}?disowned=1"{% else %}div{% endif %} class="dm-stat">
+        <div class="dm-lbl">Disowned galleries</div>
+        <div class="dm-val text-warning">{{ stats.disowned_galleries }}</div>
+        <div class="dm-stat-sub">uploader account gone</div>
+      </{% if perms.viewer.manage_gallery %}a{% else %}div{% endif %}>
+    </div>
+    <div class="col-6 col-md-3">
+      <a class="dm-stat" href="{% url 'viewer:found-galleries' %}">
+        <div class="dm-lbl">Found by wanted</div>
+        <div class="dm-val text-success">{{ stats.wanted_galleries.total_galleries_found }}</div>
+        <div class="dm-stat-sub">{{ stats.fjord_galleries }} fjord galleries in total</div>
+      </a>
+    </div>
+  </div>
+
+  <!-- Totals -->
+  <div class="row g-3 mb-3">
+    <div class="col-lg-6">
+      <div class="dm-card h-100 mb-0">
+        <div class="dm-card-header"><i class="fas fa-images text-info me-1"></i>Galleries (metadata)</div>
+        {% include "viewer/include/stats_size_summary.html" with agg=stats.gallery count=stats.n_galleries noun="galleries" %}
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="dm-card h-100 mb-0">
+        <div class="dm-card-header"><i class="fas fa-file-archive text-info me-1"></i>Archives (downloaded files)</div>
+        {% include "viewer/include/stats_size_summary.html" with agg=stats.archive count=stats.n_archives noun="archives" %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Breakdowns -->
+  <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+    <span class="dm-lbl me-1">Breakdowns</span>
+    <input type="search" class="form-control form-control-sm bg-transparent text-light" style="max-width: 18rem;" placeholder="Filter rows (press /)"
+           aria-label="Filter breakdown rows" data-dm-filter="tr[data-dm-filter-row]" data-dm-hotkey="/">
+    <span class="small dm-muted">Click a column header to sort.</span>
+  </div>
+
+  <div class="dm-card" data-dm-filter-section>
+    <div class="dm-card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <a class="dm-collapse-toggle text-decoration-none" data-bs-toggle="collapse" href="#stats-providers-body" role="button" aria-expanded="true" aria-controls="stats-providers-body">
+        <i class="fas fa-chevron-down me-1"></i><i class="fas fa-server text-info me-1"></i>By provider
+      </a>
+      <span class="badge dm-badge-outline text-info">{{ providers|length }} provider{{ providers|length|pluralize }}</span>
+    </div>
+    <div class="collapse show" id="stats-providers-body">
+      <div class="table-responsive">
+        <table class="table table-dm table-hover table-sm dm-sortable mb-0" id="stats-providers">
+          <thead>
+            <tr>
+              <th data-dm-sort="text">Provider</th>
+              <th data-dm-sort="num" class="text-end">Galleries</th>
+              <th data-dm-sort="num" style="min-width: 10rem;">Share</th>
+              <th data-dm-sort="num" class="text-end">Archives</th>
+              <th data-dm-sort="num" style="min-width: 10rem;">Share</th>
+              <th data-dm-sort="num" class="text-end">Wanted galleries</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for name, info in providers.items %}
+              <tr data-dm-filter-row>
+                <td>
+                  {% if name and perms.viewer.manage_gallery %}
+                    <a href="{% url 'viewer:manage-galleries' %}?provider={{ name|urlencode }}" title="Manage the galleries of this provider">{{ name }}</a>
+                  {% elif name %}
+                    {{ name }}
+                  {% else %}
+                    <span class="dm-dim fst-italic">(none)</span>
+                  {% endif %}
+                </td>
+                <td class="text-end font-monospace" data-dm-value="{{ info.galleries }}">{{ info.galleries }}</td>
+                <td data-dm-value="{{ info.galleries }}"><div class="dm-bar-wrap"><div class="dm-bar-track"><span class="dm-bar" data-dm-bar="{{ info.galleries }}" data-dm-bar-group="providers-galleries"></span></div></div></td>
+                <td class="text-end font-monospace" data-dm-value="{{ info.archives }}">{{ info.archives }}</td>
+                <td data-dm-value="{{ info.archives }}"><div class="dm-bar-wrap"><div class="dm-bar-track"><span class="dm-bar dm-bar-green" data-dm-bar="{{ info.archives }}" data-dm-bar-group="providers-archives"></span></div></div></td>
+                <td class="text-end font-monospace" data-dm-value="{{ info.wanted_galleries }}">{{ info.wanted_galleries }}</td>
+              </tr>
+            {% empty %}
+              <tr class="dm-sort-fixed"><td colspan="6" class="dm-empty"><i class="fas fa-server"></i>No galleries yet.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  {% include "viewer/include/stats_breakdown_table.html" with rows=gallery_categories count_key="n_galleries" agg_key="gallery" label="Category" noun="Galleries" table_id="stats-categories" title="Galleries by category" icon="fa-folder-open" %}
+  {% include "viewer/include/stats_breakdown_table.html" with rows=gallery_languages count_key="n_galleries" agg_key="gallery" label="Language" noun="Galleries" table_id="stats-languages" title="Galleries by language" icon="fa-language" %}
+  {% include "viewer/include/stats_breakdown_table.html" with rows=archive_reasons count_key="n_archives" agg_key="archive" label="Reason" noun="Archives" table_id="stats-reasons" title="Archives by reason" icon="fa-tag" %}
+
+  <!-- Top tags -->
+  <div class="row g-3 mb-3">
+    <div class="col-lg-4">
+      {% include "viewer/include/stats_top_tags.html" with tags=stats.top_10_tags title="10 most used tags" group="top-tags" %}
+    </div>
+    <div class="col-lg-4">
+      {% include "viewer/include/stats_top_tags.html" with tags=stats.top_10_parody_tags title="10 most used parody tags" group="top-parody-tags" %}
+    </div>
+    <div class="col-lg-4">
+      {% include "viewer/include/stats_top_tags.html" with tags=stats.top_10_artist_tags title="10 most used artist tags" group="top-artist-tags" %}
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block afterJQ %}
+  {% load compress %}
+  {% compress js %}
+    <script src="{% static 'js/dm-pages.js' %}"></script>
+  {% endcompress %}
 {% endblock %}

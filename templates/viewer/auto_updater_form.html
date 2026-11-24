@@ -1,0 +1,203 @@
+{% extends "viewer/base.html" %}
+{% load static compress %}
+{% block title %}{{ provider }} | Auto Updater | {{ block.super }}{% endblock %}
+{% block sidebar %}{% endblock %}
+
+{% block extra_head %}
+  {% compress css %}
+    <link href="{% static 'css/dm-pages.css' %}" type="text/css" rel="stylesheet" />
+  {% endcompress %}
+  <style>
+    .au-chart-wrap { position: relative; }
+    .au-chart { width: 100%; display: block; user-select: none; touch-action: none; }
+    .au-tooltip {
+      position: absolute; z-index: 5; pointer-events: none; max-width: 250px; font-size: 0.75rem;
+      background: var(--pg-bg-darkest); border: 1px solid var(--pg-border); border-radius: 6px; padding: 0.35rem 0.5rem;
+      color: var(--pg-text-primary);
+    }
+    .au-legend { display: flex; flex-wrap: wrap; gap: 1rem; font-size: 0.75rem; color: var(--pg-text-secondary); }
+    .au-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 0.3rem; vertical-align: -1px; }
+    .au-rules input.au-age { max-width: 7rem; }
+    .au-json { font-size: 0.75rem; max-height: 22rem; overflow: auto; white-space: pre; }
+    .au-message { white-space: pre-line; font-size: 0.8rem; }
+  </style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+  {% include "viewer/include/dm_messages.html" %}
+
+  <div class="dm-page-header">
+    <div>
+      <h2 class="h3 mb-1"><i class="fas fa-sync-alt text-info me-2"></i>{{ provider }} auto updater{% if not schedule %} <span class="badge bg-secondary fs-6 align-middle">not saved</span>{% endif %}</h2>
+      <p class="mb-0 small">At which gallery ages (time since posted) the metadata of {{ provider }} galleries is refreshed.</p>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      <a href="{% url 'viewer:auto-updater' %}" class="btn btn-outline-light btn-sm"><i class="fas fa-arrow-left me-1"></i>All providers</a>
+    </div>
+  </div>
+
+  {% if not scheduler.enable %}
+    <div class="alert alert-warning small py-2">The scheduler is off (<code>autoupdater.enable</code>): schedules only run with "Run now".</div>
+  {% endif %}
+  {% if schedule and not known %}
+    <div class="alert alert-danger small py-2">{{ provider }} isn't a provider of this instance: the scheduler skips this schedule.</div>
+  {% endif %}
+
+  {% if schedule %}
+    <div class="dm-card">
+      <div class="p-3 small d-flex flex-wrap gap-4 align-items-start">
+        <div>
+          <div class="dm-lbl">Last run</div>
+          {% if schedule.last_run_at %}{{ schedule.last_run_at|date:"Y-m-d H:i" }} ({{ schedule.last_run_at|timesince }} ago){% else %}never{% endif %}
+          {% if schedule.last_run_status == "ok" %}<span class="badge bg-success">ok</span>
+          {% elif schedule.last_run_status == "failed" %}<span class="badge bg-danger">failed</span>{% endif %}
+        </div>
+        <div><div class="dm-lbl">Queued</div>{{ schedule.last_run_queued }}{% if schedule.last_run_task_id %} (task #{{ schedule.last_run_task_id }}){% endif %}</div>
+        <div>
+          <div class="dm-lbl">Next run</div>
+          {% if not schedule.active %}inactive{% elif next_run %}~{{ next_run|date:"Y-m-d H:i" }}{% else %}at the next check{% endif %}
+        </div>
+        {% if schedule.last_run_message %}<div class="w-100 au-message text-warning">{{ schedule.last_run_message }}</div>{% endif %}
+      </div>
+    </div>
+  {% endif %}
+
+  <form method="post" id="au-form">
+    {% csrf_token %}
+    {{ form.rules }}
+    {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+    {% if form.rules.errors %}<div class="alert alert-danger small py-2">Rules: {{ form.rules.errors|join:" " }}</div>{% endif %}
+
+    <div class="dm-card" id="au-editor">
+      <div class="dm-card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <span><i class="fas fa-chart-bar me-2"></i>Updates by gallery age</span>
+        <span class="d-flex flex-wrap align-items-center gap-2 fw-normal">
+          <span class="small dm-muted">Presets:</span>
+          {% for preset in editor.presets %}
+            <button type="button" class="btn btn-sm btn-outline-info py-0" data-au-preset="{{ preset.key }}" title="{{ preset.description }}">{{ preset.name }}</button>
+          {% endfor %}
+          <label class="small dm-muted ms-2" for="au-domain">Show up to</label>
+          <select id="au-domain" class="form-select form-select-sm w-auto py-0" data-au-domain>
+            <option value="auto">auto</option>
+            <option value="604800">7 days</option>
+            <option value="2592000">30 days</option>
+            <option value="7776000">90 days</option>
+            <option value="31536000">1 year</option>
+            <option value="315360000">10 years</option>
+          </select>
+        </span>
+      </div>
+      <div class="p-3">
+        <div class="au-legend mb-2">
+          <span><span class="au-swatch" style="background: #c4822b;"></span>Tag changes found</span>
+          <span><span class="au-swatch" style="background: #9a86d6;"></span>Other changes found (title, rating…)</span>
+          <span><span class="au-swatch" style="background: #2a95d8;"></span>Updates: a lane per rule, all of them in the last one</span>
+        </div>
+        <div class="au-chart-wrap">
+          <svg class="au-chart" data-au-chart role="img" aria-label="Update ages of the schedule over the changes found by gallery age"></svg>
+          <div class="au-tooltip" data-au-tooltip hidden></div>
+        </div>
+        <p class="small dm-muted mt-2 mb-0">
+          The bars are the changes the gallery change log recorded for {{ provider }} galleries in the last {{ editor.changes.days }} days, by how old the
+          gallery was when an update found them ({{ editor.changes.total }} in total): where tags still change. Updates find them, so ages the
+          previous schedule didn't update show nothing. Drag a rule's ends or body to change it; double-click the timeline to add a single update.
+          The axis is logarithmic.
+        </p>
+        <details class="small mt-1">
+          <summary class="dm-muted">Changes as a table</summary>
+          <table class="table table-sm table-dm mb-0 mt-1 w-auto">
+            <thead><tr><th>Gallery age</th><th>Tag changes</th><th>Other changes</th></tr></thead>
+            <tbody>
+              {% for b in editor.changes.buckets %}
+                <tr><td>{{ b.from }}h – {% if b.to %}{{ b.to }}h{% else %}…{% endif %}</td><td>{{ b.tags }}</td><td>{{ b.other }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </details>
+      </div>
+
+      <div class="row g-2 px-3 pb-3" data-au-summary>
+        <div class="col-6 col-lg-2"><div class="dm-stat"><div class="dm-lbl">Updates per gallery</div><div class="dm-val text-info" data-k="updates">0</div><div class="dm-stat-sub" data-k="range">—</div></div></div>
+        <div class="col-6 col-lg-4"><div class="dm-stat"><div class="dm-lbl">Galleries covered now</div><div class="dm-val" data-k="in-range">…</div><div class="dm-stat-sub">posted <span data-k="posted">—</span></div></div></div>
+        <div class="col-6 col-lg-3"><div class="dm-stat"><div class="dm-lbl">Updates per day</div><div class="dm-val" data-k="per-day">0</div><div class="dm-stat-sub" data-k="per-day-sub"></div></div></div>
+        <div class="col-6 col-lg-3"><div class="dm-stat"><div class="dm-lbl">A run now would queue</div><div class="dm-val" data-k="next">{% if schedule %}…{% else %}—{% endif %}</div><div class="dm-stat-sub">{% if schedule %}the galleries reaching an update age since the last run{% else %}save the schedule first{% endif %}</div></div></div>
+        <div class="col-12"><div class="alert alert-danger small py-1 mb-0" data-k="warning" hidden></div></div>
+      </div>
+
+      <div class="table-responsive">
+        <table class="table table-sm table-dm mb-0 align-middle au-rules" data-au-rules>
+          <thead>
+            <tr><th style="width: 2rem;">#</th><th>From age</th><th>To age</th><th>Every</th><th>Updates</th><th></th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <datalist id="au-every-choices">
+        <option value="15m"></option><option value="30m"></option><option value="1h"></option><option value="2h"></option>
+        <option value="3h"></option><option value="4h"></option><option value="6h"></option><option value="8h"></option>
+        <option value="12h"></option><option value="1d"></option><option value="2d"></option><option value="3d"></option>
+        <option value="7d"></option><option value="14d"></option><option value="30d"></option>
+      </datalist>
+      <div class="d-flex flex-wrap gap-2 align-items-center p-2 border-top" style="border-color: var(--pg-border) !important;">
+        <button type="button" class="btn btn-sm btn-outline-light" data-au-add-range><i class="fas fa-plus me-1"></i>Repeated updates</button>
+        <button type="button" class="btn btn-sm btn-outline-light" data-au-add-single><i class="fas fa-plus me-1"></i>Single update</button>
+        <span class="small dm-muted">Ages: <code>30m</code>, <code>6h</code>, <code>2d</code>, <code>1d12h</code>, <code>1w</code>. A rule updates at its "from" age, then every "every" up to its "to" age; with the same from and to, once. Each gallery is updated once per age, even when rules overlap.</span>
+      </div>
+    </div>
+
+    <div class="dm-card">
+      <div class="p-3 row g-3">
+        <div class="col-md-4">
+          <div class="form-check mb-2">
+            {{ form.active }}
+            <label class="form-check-label small" for="{{ form.active.id_for_label }}">Active</label>
+            <div class="form-text mt-0">{{ form.active.help_text }}</div>
+          </div>
+        </div>
+        <div class="col-md-4">{% include "viewer/include/release_series_field.html" with field=form.queue_every %}</div>
+        <div class="col-md-4">{% include "viewer/include/release_series_field.html" with field=form.notes %}</div>
+      </div>
+      <div class="dm-actionbar d-flex flex-wrap gap-2 p-2 border-top" style="border-color: var(--pg-border) !important;">
+        <button type="submit" class="btn btn-sm btn-info"><i class="fas fa-save me-1"></i>{% if schedule %}Save{% else %}Create schedule{% endif %}</button>
+        {% if schedule %}
+          <button type="submit" name="action" value="run" class="btn btn-sm btn-outline-info" formnovalidate title="Queue the galleries that reached an update age since the last run (saved rules)"><i class="fas fa-play me-1"></i>Run now</button>
+          <button type="submit" name="action" value="run_range" class="btn btn-sm btn-outline-light" formnovalidate
+                  onclick="return confirm('Queue every gallery between the first and last update age (saved rules) for update now?');"
+                  title="Queue every gallery between the first and last update age once, without moving the schedule"><i class="fas fa-layer-group me-1"></i>Update whole range now</button>
+          <button type="submit" name="action" value="delete" class="btn btn-sm btn-outline-danger ms-auto" formnovalidate
+                  onclick="return confirm('Delete the {{ provider|escapejs }} auto updater schedule? Its galleries stop being updated automatically.');"><i class="fas fa-trash-alt me-1"></i>Delete</button>
+        {% endif %}
+      </div>
+    </div>
+  </form>
+
+  {% if schedule %}
+    <div class="dm-card">
+      <div class="dm-card-header d-flex justify-content-between align-items-center">
+        <span><i class="fas fa-code me-2"></i>As JSON</span>
+        <button type="button" class="btn btn-sm btn-outline-light" id="au-copy-json"><i class="fas fa-copy me-1"></i>Copy</button>
+      </div>
+      <pre class="au-json p-3 mb-0" id="au-json">{{ schedule_json }}</pre>
+    </div>
+  {% endif %}
+</div>
+{{ editor|json_script:"au-editor-data" }}
+{% endblock %}
+
+{% block afterJQ %}
+  <script src="{% static 'js/auto-updater.js' %}"></script>
+  <script>
+    (function () {
+      const data = JSON.parse(document.getElementById('au-editor-data').textContent);
+      data.inputId = '{{ form.rules.id_for_label }}';
+      new window.AutoUpdater.Editor(document.getElementById('au-editor'), data);
+      const copy = document.getElementById('au-copy-json');
+      if (copy) copy.addEventListener('click', () => {
+        navigator.clipboard.writeText(document.getElementById('au-json').textContent).then(() => {
+          copy.innerHTML = '<i class="fas fa-check me-1"></i>Copied';
+        });
+      });
+    })();
+  </script>
+{% endblock %}

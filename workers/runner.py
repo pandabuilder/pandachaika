@@ -874,13 +874,13 @@ class WorkerRunner:
                             "REFETCH_THUMBNAIL",
                             content_object=gallery,
                             reason=job.reason or None,
-                            result="sucess" if success else "failed",
-                            data=gallery.thumbnail_url,
+                            result="success" if success else "failed",
+                            data=gallery.get_thumbnail_url(),
                         )
                     logger.info(
                         "Refetching gallery: %s thumbnail from url: %s (success=%s)",
                         gallery.get_absolute_url(),
-                        gallery.thumbnail_url,
+                        gallery.get_thumbnail_url(),
                         success,
                     )
             elif job.task_type in ("extract_worker", "extract_archives"):
@@ -960,6 +960,16 @@ class WorkerRunner:
                     user_reason=opts.get("user_reason", "") or job.reason or "",
                     user=job.user,
                     force_local=True,
+                )
+            elif job.task_type in ("cold_storage_offload_worker", "cold_storage_restore_worker"):
+                from viewer.services.cold_storage import RESTORE_TASK, run_transfer_task
+
+                run_transfer_task(
+                    self.required_archive_id(job),
+                    restore=job.task_type == RESTORE_TASK,
+                    user=job.user,
+                    reason=job.reason or "",
+                    activity_cb=current_settings.activity_callback,
                 )
             elif job.task_type in ("publish_worker", "publish_archives", "set_all_hidden_as_public"):
                 from core.workers.archive_work import ArchiveWorker
@@ -1052,6 +1062,18 @@ class WorkerRunner:
                 )
                 logger.info("Task #%d pruned database: %s", job.pk, res)
                 job_result = res
+            elif job.task_type in ("auto_wanted_worker",):
+                from viewer.models import AutoWantedSource
+                from viewer.services.auto_wanted import run_sources
+
+                pks = [int(pk) for pk in job.args] if job.args else []
+                by_pk = AutoWantedSource.objects.in_bulk(pks)
+                job_result = run_sources(
+                    current_settings,
+                    [by_pk[pk] for pk in pks if pk in by_pk],
+                    is_cancelled=current_settings.is_cancelled,
+                    activity_cb=current_settings.activity_callback,
+                )
             elif job.task_type in ("archive_file_check",):
                 from viewer.services.archive_file_check import run_file_check
                 options = job.options if isinstance(job.options, dict) else {}

@@ -15,7 +15,7 @@ if typing.TYPE_CHECKING:
     from core.workers.archive_download_queue import ArchiveDownloadQueue
     from core.workers.retention import TimedDatabasePruner
     from core.workers.admin_report import TimedAdminReporter
-    from core.workers.autoupdate import ProviderTimedAutoUpdater
+    from core.workers.autoupdate import TimedAutoUpdater
     from core.workers.auto_wanted import TimedAutoWanted
     from core.workers.webqueue import WebQueue
     from core.workers.link_monitor import LinkMonitor
@@ -34,7 +34,7 @@ class WorkerContext:
     archive_download_queue: "ArchiveDownloadQueue | None" = None
     timed_database_pruner: "TimedDatabasePruner | None" = None
     timed_admin_reporter: "TimedAdminReporter | None" = None
-    timed_auto_updaters: list["ProviderTimedAutoUpdater"] = []
+    timed_auto_updater: "TimedAutoUpdater | None" = None
     timed_link_monitors: list["LinkMonitor"] = []
 
     def get_active_initialized_workers(self):
@@ -49,7 +49,8 @@ class WorkerContext:
             workers.append(self.timed_database_pruner)
         if self.timed_admin_reporter:
             workers.append(self.timed_admin_reporter)
-        workers.extend(self.timed_auto_updaters)
+        if self.timed_auto_updater:
+            workers.append(self.timed_auto_updater)
         workers.extend(self.timed_link_monitors)
         return workers
 
@@ -137,7 +138,7 @@ class WorkerContext:
 
         self.crawler_settings = crawler_settings
 
-        from core.workers.autoupdate import ProviderTimedAutoUpdater
+        from core.workers.autoupdate import TimedAutoUpdater
         from core.workers.download_progress import DownloadProgressChecker
         from core.workers.auto_wanted import TimedAutoWanted
         from core.workers.link_monitor import LinkMonitor
@@ -152,23 +153,7 @@ class WorkerContext:
         self.folder_crawler = FolderCrawlerThread(crawler_settings, [])
         self.timed_auto_wanted = TimedAutoWanted(crawler_settings, timer=crawler_settings.auto_wanted.cycle_timer)
 
-        for provider_name in crawler_settings.autoupdater.providers:
-            if provider_name not in crawler_settings.providers:
-                continue
-            setup.GlobalInfo.worker_threads.append(
-                (
-                    "auto_updater_" + provider_name,
-                    "Auto updates metadata for galleries (provider: {})".format(provider_name),
-                    "scheduler",
-                ),
-            )
-            provider_auto_updater = ProviderTimedAutoUpdater(
-                crawler_settings,
-                provider_name,
-                web_queue=self.web_queue,
-                timer=crawler_settings.providers[provider_name].autoupdater_timer,
-            )
-            self.timed_auto_updaters.append(provider_auto_updater)
+        self.timed_auto_updater = TimedAutoUpdater(crawler_settings, web_queue=self.web_queue)
 
         if crawler_settings.monitored_links.enable:
             monitored_links = MonitoredLink.objects.all()
@@ -200,15 +185,19 @@ class WorkerContext:
         if start_threads and crawler_settings.auto_wanted.startup:
             self.timed_auto_wanted.start_running(timer=crawler_settings.auto_wanted.cycle_timer)
 
-        for provider_auto_updater in self.timed_auto_updaters:
-            obj, _ = SchedulerState.objects.get_or_create(
-                name=provider_auto_updater.thread_name,
-                defaults={"schedule_type": "scheduler"},
-            )
-            provider_auto_updater.last_run = obj.last_run
-            provider_auto_updater.pk = obj.name
-            if start_threads and crawler_settings.autoupdater.startup:
-                provider_auto_updater.start_running(timer=provider_auto_updater.original_timer)
+        # The auto updater used to run a scheduler per provider (auto_updater_<provider>).
+        try:
+            SchedulerState.objects.filter(name__startswith="auto_updater_").delete()
+        except Exception:
+            logger.debug("Could not remove the old auto_updater_<provider> scheduler states", exc_info=True)
+        obj, _ = SchedulerState.objects.get_or_create(
+            name=self.timed_auto_updater.thread_name,
+            defaults={"schedule_type": "scheduler"},
+        )
+        self.timed_auto_updater.last_run = obj.last_run
+        self.timed_auto_updater.pk = obj.name
+        if start_threads and crawler_settings.autoupdater.startup:
+            self.timed_auto_updater.start_running(timer=self.timed_auto_updater.original_timer)
 
         for link_monitor in self.timed_link_monitors:
             obj, _ = SchedulerState.objects.get_or_create(
@@ -360,8 +349,8 @@ class WorkerContext:
             self.timed_admin_reporter.stop_running(force_local=True)
         if self.timed_auto_wanted:
             self.timed_auto_wanted.stop_running(force_local=True)
-        for provider_auto_updater in self.timed_auto_updaters:
-            provider_auto_updater.stop_running(force_local=True)
+        if self.timed_auto_updater:
+            self.timed_auto_updater.stop_running(force_local=True)
         for link_monitor in self.timed_link_monitors:
             link_monitor.stop_running(force_local=True)
 

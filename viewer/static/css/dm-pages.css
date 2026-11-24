@@ -113,6 +113,26 @@ a.dm-stat:hover { border-color: var(--pg-accent-blue); background: #002d60; colo
 .dm-card input[type="datetime-local"],
 .dm-modal input[type="date"] { color-scheme: dark; }
 
+/* Autocomplete select widgets (dal_alight) inside cards and the action bar */
+.dm-card autocomplete-select input.vTextField,
+.dm-actionbar autocomplete-select input.vTextField {
+  width: 100%;
+  background-color: var(--pg-bg-darkest);
+  color: var(--pg-text-primary);
+  border: 1px solid var(--pg-border);
+  border-radius: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.875rem;
+}
+.dm-card autocomplete-select input.vTextField:focus,
+.dm-actionbar autocomplete-select input.vTextField:focus {
+  outline: none;
+  border-color: var(--pg-accent-blue);
+  box-shadow: 0 0 0 0.2rem rgba(54, 176, 249, 0.2);
+}
+.dm-card autocomplete-select input.vTextField::placeholder,
+.dm-actionbar autocomplete-select input.vTextField::placeholder { color: var(--pg-text-dim); }
+
 /* Toggle pills: checkboxes rendered as compact buttons */
 .dm-toggles { display: flex; flex-wrap: wrap; gap: 0.35rem; }
 .dm-toggles .btn {
@@ -312,6 +332,89 @@ a.dm-filter-link:hover { color: var(--pg-accent-blue); }
   border: 1px solid currentColor;
   font-weight: 600;
 }
+
+/* --- Sortable tables --- */
+.table-dm th.dm-sort-th { cursor: pointer; user-select: none; }
+.table-dm th.dm-sort-th:hover,
+.table-dm th.dm-sort-th:focus { color: var(--pg-text-primary); outline: none; }
+.table-dm th.dm-sort-th::after {
+  content: "\f0dc";
+  font-family: "Font Awesome 5 Free", "Font Awesome 6 Free";
+  font-weight: 900;
+  margin-left: 0.35rem;
+  opacity: 0.35;
+  font-size: 0.7rem;
+}
+.table-dm th.dm-sort-th[data-dm-sort-dir="asc"]::after { content: "\f0de"; opacity: 1; color: var(--pg-accent-blue); }
+.table-dm th.dm-sort-th[data-dm-sort-dir="desc"]::after { content: "\f0dd"; opacity: 1; color: var(--pg-accent-blue); }
+
+/* --- Share bars (relative size of a value inside its group) --- */
+.dm-bar-wrap { display: flex; align-items: center; gap: 0.5rem; min-width: 8rem; }
+.dm-bar-track { flex: 1; height: 6px; border-radius: 3px; background: var(--pg-bg-darkest); overflow: hidden; }
+.dm-bar { display: block; height: 100%; width: 0; border-radius: 3px; background: var(--pg-accent-blue); transition: width 0.3s ease; }
+.dm-bar.dm-bar-green { background: var(--pg-accent-green); }
+.dm-bar.dm-bar-warning { background: #ffc107; }
+.dm-bar-wrap .dm-bar-val { font-family: monospace; font-size: 0.82rem; min-width: 3.5rem; text-align: right; }
+
+/* --- Key / value lists inside cards --- */
+.dm-kv { margin: 0; padding: 0; list-style: none; }
+.dm-kv li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  padding: 0.4rem 1rem;
+  border-bottom: 1px solid var(--pg-border-subtle);
+  font-size: 0.88rem;
+}
+.dm-kv li:last-child { border-bottom: 0; }
+.dm-kv .dm-kv-key { color: var(--pg-text-secondary); }
+.dm-kv .dm-kv-val { font-weight: 600; text-align: right; }
+.dm-kv .dm-kv-val small { font-weight: 400; color: var(--pg-text-dim); margin-left: 0.35rem; }
+
+/* --- Tool rows (one action per row, controls on the right) --- */
+.dm-tool {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  padding: 0.65rem 1rem;
+  border-bottom: 1px solid var(--pg-border-subtle);
+}
+.dm-tool:last-child { border-bottom: 0; }
+.dm-tool:hover { background: #001f55; }
+.dm-tool-info { flex: 1 1 18rem; min-width: 0; }
+.dm-tool-name { font-weight: 600; }
+.dm-tool-name .fas { width: 1.25rem; text-align: center; color: var(--pg-accent-blue); margin-right: 0.35rem; }
+.dm-tool-desc { font-size: 0.8rem; color: var(--pg-text-secondary); margin-left: 1.6rem; }
+.dm-tool-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 0.4rem; }
+.dm-tool-controls form { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 0.4rem; margin: 0; }
+.dm-tool-controls .form-control,
+.dm-tool-controls .form-select { width: auto; }
+.dm-tool.dm-tool-danger .dm-tool-name .fas { color: #f86c7d; }
+
+/* --- Item lists (one archive / gallery per block with a head and an expandable body) --- */
+.dm-item { border-bottom: 1px solid var(--pg-border); }
+.dm-item:last-child { border-bottom: 0; }
+.dm-item.dm-selected > .dm-item-head { background: var(--pg-bg-selected); }
+.dm-item.dm-item-done { opacity: 0.55; }
+.dm-item-head { padding: 0.6rem 0.75rem; cursor: pointer; }
+.dm-item-head:hover { background: #002450; }
+.dm-item-title { font-weight: 600; }
+.dm-item-sub { font-size: 0.78rem; color: var(--pg-text-secondary); word-break: break-all; }
+.dm-item-body { padding: 0 0.75rem 0.75rem 3.5rem; }
+.dm-item-body .table-dm td,
+.dm-item-body .table-dm th { font-size: 0.85rem; }
+.dm-acc { min-width: 9rem; }
+.dm-acc-row { display: flex; align-items: center; gap: 0.4rem; font-size: 0.78rem; }
+.dm-acc-row .progress { flex: 1; height: 6px; background: var(--pg-bg-darkest); }
+.dm-acc-type { min-width: 4.5rem; color: var(--pg-text-secondary); }
+.dm-acc-val { font-family: monospace; min-width: 2.6rem; text-align: right; }
+/* Also on table cells, where .table-dm td would set the text color otherwise. */
+.dm-same, .table-dm td.dm-same { color: #4cd964; }
+.dm-diff, .table-dm td.dm-diff { color: #ffc107; }
+.dm-covers .gallery { display: inline-block; vertical-align: top; margin: 0 0.5rem 0.5rem 0; }
 
 /* Small screens: keep the action bar short until something is selected. */
 @media (max-width: 767.98px) {

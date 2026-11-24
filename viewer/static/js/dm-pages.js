@@ -10,8 +10,14 @@
  * Declarative bits wired on load:
  *   [data-dm-confirm="msg"]   confirm before the click/submit goes through ({n} = selection count).
  *   [data-dm-reltime="iso"]   shows "5m ago" style text, full date in the title.
- *   form.dm-page-jump         jumps to a page keeping the current query string.
+ *   .dm-page-jump input       Enter jumps to that page keeping the current query string.
  *   [data-dm-hotkey="/"]      focuses the element when the key is pressed outside inputs.
+ *   table.dm-sortable         clicking a th[data-dm-sort] sorts the rows ("num" or "text"); cells can give
+ *                             the value to sort by in data-dm-value.
+ *   [data-dm-bar]             share bars: width relative to the largest data-dm-bar of the same
+ *                             data-dm-bar-group.
+ *   input[data-dm-filter="sel"]  hides the elements matching sel (rows, tool rows...) whose text doesn't
+ *                             contain what's typed; [data-dm-filter-text] gives the text to search instead.
  */
 window.DM = (function () {
   'use strict';
@@ -310,11 +316,22 @@ window.DM = (function () {
     }, true);
   }
 
+  function wireActionbarEnter() {
+    // Enter in an action bar field (reason, cutoff...) would submit the form with its first button (an action the
+    // user didn't pick). Only explicit button clicks run actions.
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter') return;
+      const input = e.target.closest('.dm-actionbar input:not([type="checkbox"]):not([type="radio"]):not(.dm-page-input)');
+      if (input) e.preventDefault();
+    });
+  }
+
   function wirePageJump() {
-    document.querySelectorAll('form.dm-page-jump').forEach(function (form) {
-      form.addEventListener('submit', function (e) {
+    // A plain element, not a <form>: it often sits inside a POST form. Enter must not submit that form.
+    document.querySelectorAll('.dm-page-jump .dm-page-input').forEach(function (input) {
+      input.addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter') return;
         e.preventDefault();
-        const input = form.querySelector('input[name="page"]');
         const params = new URLSearchParams(window.location.search);
         params.set('page', input.value || '1');
         window.location.search = params.toString();
@@ -345,10 +362,107 @@ window.DM = (function () {
     });
   }
 
+  // --- Sortable tables, share bars and quick filters -------------------------------------------
+  function cellValue(row, index, type) {
+    const cell = row.children[index];
+    if (!cell) return type === 'num' ? -Infinity : '';
+    const raw = cell.dataset.dmValue !== undefined ? cell.dataset.dmValue : cell.textContent.trim();
+    if (type === 'num') {
+      const n = parseFloat(String(raw).replace(/[^0-9.eE+-]/g, ''));
+      return isNaN(n) ? -Infinity : n;
+    }
+    return String(raw).toLowerCase();
+  }
+
+  function sortableTables(scope) {
+    (scope || document).querySelectorAll('table.dm-sortable').forEach(function (table) {
+      if (table.dataset.dmSortWired) return;
+      table.dataset.dmSortWired = '1';
+      const headers = Array.from(table.querySelectorAll('thead th'));
+      headers.forEach(function (th, index) {
+        if (!th.dataset.dmSort) return;
+        th.classList.add('dm-sort-th');
+        th.tabIndex = 0;
+        th.setAttribute('role', 'button');
+        th.title = th.title || 'Sort by this column';
+        function sort() {
+          const type = th.dataset.dmSort;
+          // Numbers start from the largest, text from A.
+          const current = th.dataset.dmSortDir || '';
+          const dir = current ? (current === 'asc' ? 'desc' : 'asc') : (type === 'num' ? 'desc' : 'asc');
+          headers.forEach(function (other) { delete other.dataset.dmSortDir; other.removeAttribute('aria-sort'); });
+          th.dataset.dmSortDir = dir;
+          th.setAttribute('aria-sort', dir === 'asc' ? 'ascending' : 'descending');
+          const body = table.tBodies[0];
+          const rows = Array.from(body.rows).filter(function (r) { return !r.classList.contains('dm-sort-fixed'); });
+          const fixed = Array.from(body.rows).filter(function (r) { return r.classList.contains('dm-sort-fixed'); });
+          rows.sort(function (a, b) {
+            const va = cellValue(a, index, type);
+            const vb = cellValue(b, index, type);
+            if (va < vb) return dir === 'asc' ? -1 : 1;
+            if (va > vb) return dir === 'asc' ? 1 : -1;
+            return 0;
+          });
+          rows.concat(fixed).forEach(function (r) { body.appendChild(r); });
+        }
+        th.addEventListener('click', sort);
+        th.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); sort(); } });
+      });
+    });
+  }
+
+  function shareBars(scope) {
+    const groups = {};
+    (scope || document).querySelectorAll('[data-dm-bar]').forEach(function (el) {
+      const group = el.dataset.dmBarGroup || 'default';
+      (groups[group] = groups[group] || []).push(el);
+    });
+    Object.keys(groups).forEach(function (group) {
+      const els = groups[group];
+      const max = Math.max.apply(null, els.map(function (el) { return parseFloat(el.dataset.dmBar) || 0; }));
+      els.forEach(function (el) {
+        const value = parseFloat(el.dataset.dmBar) || 0;
+        el.style.width = (max > 0 ? Math.max(value > 0 ? 1 : 0, (value / max) * 100) : 0) + '%';
+      });
+    });
+  }
+
+  function wireQuickFilters() {
+    document.querySelectorAll('input[data-dm-filter]').forEach(function (input) {
+      const target = input.dataset.dmFilter;
+      const empty = input.dataset.dmFilterEmpty ? document.querySelector(input.dataset.dmFilterEmpty) : null;
+      function apply() {
+        const terms = input.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+        let shown = 0;
+        document.querySelectorAll(target).forEach(function (el) {
+          const text = (el.dataset.dmFilterText || el.textContent).toLowerCase();
+          const match = terms.every(function (t) { return text.indexOf(t) !== -1; });
+          el.classList.toggle('d-none', !match);
+          if (match) shown += 1;
+        });
+        // Hide sections (cards) left without visible items.
+        document.querySelectorAll('[data-dm-filter-section]').forEach(function (section) {
+          const items = section.querySelectorAll(target);
+          if (!items.length) return;
+          const visible = Array.from(items).some(function (el) { return !el.classList.contains('d-none'); });
+          section.classList.toggle('d-none', !visible);
+        });
+        if (empty) empty.classList.toggle('d-none', shown > 0);
+      }
+      input.addEventListener('input', apply);
+      input.addEventListener('keydown', function (e) { if (e.key === 'Escape') { input.value = ''; apply(); input.blur(); } });
+      if (input.value) apply();
+    });
+  }
+
   document.addEventListener('DOMContentLoaded', function () {
     wireConfirms();
+    wireActionbarEnter();
     wirePageJump();
     wireHotkeys();
+    sortableTables(document);
+    shareBars(document);
+    wireQuickFilters();
     relativeTimes(document);
     setInterval(function () { relativeTimes(document); }, 60000);
   });
@@ -364,5 +478,7 @@ window.DM = (function () {
     autoRefresh: autoRefresh,
     filterChips: filterChips,
     relativeTimes: relativeTimes,
+    sortableTables: sortableTables,
+    shareBars: shareBars,
   };
 })();

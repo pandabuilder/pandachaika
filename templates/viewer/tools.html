@@ -1,222 +1,461 @@
 {% extends "viewer/base.html" %}
+{% load static viewer_extras %}
 {% block title %}Tools | {{ block.super }}{% endblock %}
 {% block sidebar %}{% endblock %}
-{% load static %}
-{% load viewer_extras %}
-{% block content %}
-  {% if messages %}
-    {% for message in messages %}
-      <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
-    {% endfor %}
-  {% endif %}
-  <!-- Tools  -->
-  <div class="page-header">
-    <h2>Tools</h2>
-    <small class="lead">List of tools</small>
-  </div>
-  {% if tool == "main" %}
-    <div class="row">
 
-      <div class="list-group col-lg-3 col-md-4 col-sm-6 col-xs-12">
-        <div class="list-group-item active">Archives and galleries</div>
-        {% if active_tasks.generate_missing_thumbs %}
-          {% task_status active_tasks.generate_missing_thumbs "block" %}
-        {% else %}
-          <form action="{% url 'viewer:tools-id' 'generate_missing_thumbs' %}" method="POST" class="task-action"
-                data-task-fluid="true" hx-post="{% url 'viewer:tools-id' 'generate_missing_thumbs' %}" hx-target="this" hx-swap="outerHTML">
-            {% csrf_token %}<input type="hidden" name="_task_variant" value="block">
-            <button type="submit" class="list-group-item list-group-item-action text-start w-100">Generate missing thumbnails</button>
-          </form>
-        {% endif %}
-        {% if active_tasks.calculate_missing_info %}
-          {% task_status active_tasks.calculate_missing_info "block" %}
-        {% else %}
-          <form action="{% url 'viewer:tools-id' 'calculate_missing_info' %}" method="POST" class="task-action"
-                data-task-fluid="true" hx-post="{% url 'viewer:tools-id' 'calculate_missing_info' %}" hx-target="this" hx-swap="outerHTML">
-            {% csrf_token %}<input type="hidden" name="_task_variant" value="block">
-            <button type="submit" class="list-group-item list-group-item-action text-start w-100">Calculate missing file info</button>
-          </form>
-        {% endif %}
-        {% if active_tasks.recalc_all_file_info %}
-          {% task_status active_tasks.recalc_all_file_info "block" %}
-        {% else %}
-          <form action="{% url 'viewer:tools-id' 'recalc_all_file_info' %}" method="POST" class="task-action"
-                data-task-fluid="true" hx-post="{% url 'viewer:tools-id' 'recalc_all_file_info' %}" hx-target="this" hx-swap="outerHTML">
-            {% csrf_token %}<input type="hidden" name="_task_variant" value="block">
-            <button type="submit" class="list-group-item list-group-item-action text-start w-100">Recalculate all file info</button>
-          </form>
-        {% endif %}
-        {% if active_tasks.set_all_hidden_as_public %}
-          {% task_status active_tasks.set_all_hidden_as_public "block" %}
-        {% else %}
-          <form action="{% url 'viewer:tools-id' 'set_all_hidden_as_public' %}" method="POST" class="task-action"
-                data-task-fluid="true" hx-post="{% url 'viewer:tools-id' 'set_all_hidden_as_public' %}" hx-target="this" hx-swap="outerHTML">
-            {% csrf_token %}<input type="hidden" name="_task_variant" value="block">
-            <button type="submit" class="list-group-item list-group-item-action text-start w-100">Set all hidden as public</button>
-          </form>
-        {% endif %}
-        {% if active_tasks.regenerate_all_thumbs %}
-          {% task_status active_tasks.regenerate_all_thumbs "block" %}
-        {% else %}
-          <form action="{% url 'viewer:tools-id' 'regenerate_all_thumbs' %}" method="POST" class="task-action"
-                data-task-fluid="true" hx-post="{% url 'viewer:tools-id' 'regenerate_all_thumbs' %}" hx-target="this" hx-swap="outerHTML">
-            {% csrf_token %}<input type="hidden" name="_task_variant" value="block">
-            <button type="submit" class="list-group-item list-group-item-action text-start w-100">Regenerate all thumbnails (might be slow)</button>
-          </form>
-        {% endif %}
-        {% if active_tasks.search_wanted_galleries_provider_titles %}
-          {% task_status active_tasks.search_wanted_galleries_provider_titles "block" %}
-        {% else %}
-          <form action="{% url 'viewer:tools-id' 'search_wanted_galleries_provider_titles' %}" method="POST" role="form" class="task-action"
-                data-task-fluid="true" hx-post="{% url 'viewer:tools-id' 'search_wanted_galleries_provider_titles' %}" hx-target="this" hx-swap="outerHTML">
-            {% csrf_token %}<input type="hidden" name="_task_variant" value="block">
-            <div class="list-group-item">
-                <div class="row g-1">
-                  <div class="col-md-auto">
-                      <input size="10" class="form-control" name="provider" value="" placeholder="Provider filter"/>
-                  </div>
-                  <div class="col-md-auto">
-                      <button type="submit" class="btn btn-light">Search wanted galleries by provider titles</button>
-                  </div>
-                </div>
-            </div>
-          </form>
-        {% endif %}
-        {% if active_tasks.wanted_galleries_possible_matches %}
-          {% task_status active_tasks.wanted_galleries_possible_matches "block" %}
-        {% else %}
-          <form action="{% url 'viewer:tools-id' 'wanted_galleries_possible_matches' %}" method="POST" role="form" class="task-action"
-                data-task-fluid="true" hx-post="{% url 'viewer:tools-id' 'wanted_galleries_possible_matches' %}" hx-target="this" hx-swap="outerHTML">
-            {% csrf_token %}<input type="hidden" name="_task_variant" value="block">
-            <div class="list-group-item">
-                <div class="row g-1">
-                    <div class="col-md-auto">
-              <input title="Cutoff" size="10" type="number" step="0.01" class="form-control" name="cutoff" value="" placeholder="Cutoff"/>
-                    </div>
-                    <div class="col-md-auto">
-              <input title="Max matches" size="10" type="number" step="1" class="form-control" name="max-matches" value="10" placeholder="Max Matches"/>
-                    </div>
-                    <div class="col-md-auto">
-              <input size="10" class="form-control" name="provider" value="" placeholder="Provider filter"/>
-                    </div>
-                    <div class="col-md-auto">
-              <button type="submit" class="btn btn-light">Search wanted galleries by internal galleries</button>
-                    </div>
-                </div>
-            </div>
-          </form>
-        {% endif %}
-        {% if active_tasks.retry_failed %}
-          {% task_status active_tasks.retry_failed "block" %}
-        {% else %}
-          <form action="{% url 'viewer:tools-id' 'retry_failed' %}" method="POST" class="task-action"
-                data-task-fluid="true" hx-post="{% url 'viewer:tools-id' 'retry_failed' %}" hx-target="this" hx-swap="outerHTML">
-            {% csrf_token %}<input type="hidden" name="_task_variant" value="block">
-            <button type="submit" class="list-group-item list-group-item-action text-start w-100">Retry failed downloads</button>
-          </form>
-        {% endif %}
-        <form action="{% url 'viewer:tools-id' 'reconcile_downloads' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Reconcile downloads and archives (sync missing CRC32)</button></form>
-        {% if active_tasks.update_newer_than %}
-          {% task_status active_tasks.update_newer_than "block" %}
-        {% else %}
-          <form action="{% url 'viewer:tools-id' 'update_newer_than' %}" method="POST" role="form" class="task-action"
-                data-task-fluid="true" hx-post="{% url 'viewer:tools-id' 'update_newer_than' %}" hx-target="this" hx-swap="outerHTML">
-              {% csrf_token %}<input type="hidden" name="_task_variant" value="block">
-              <div class="list-group-item">
-                  <div class="row g-1">
-                      <div class="col-md-auto">
-                          <label for="newer-than">Update gallery metadata newer than date</label>
-                      </div>
-                      <div class="col-md-auto">
-                          <input id="newer-than" size="20" type="text" class="form-control" name="newer_than" value="" placeholder="Newer than date"/>
-                      </div>
-                      <div class="col-md-auto">
-                          <button type="submit" name="apply" class="btn btn-light">Start</button>
-                      </div>
-                  </div>
-              </div>
-          </form>
-        {% endif %}
-        {% if active_tasks.update_missing_thumbnails %}
-          {% task_status active_tasks.update_missing_thumbnails "block" %}
-        {% else %}
-          <form action="{% url 'viewer:tools-id' 'update_missing_thumbnails' %}" method="POST" role="form" class="task-action"
-                data-task-fluid="true" hx-post="{% url 'viewer:tools-id' 'update_missing_thumbnails' %}" hx-target="this" hx-swap="outerHTML">
-              {% csrf_token %}<input type="hidden" name="_task_variant" value="block">
-              <div class="list-group-item">
-                  <div class="row g-1">
-                      <div class="col-md-auto">
-                          <label for="limit-number">Update gallery with missing thumbnails</label>
-                      </div>
-                      <div class="col-md-auto">
-                          <input size="10" id="limit-number" type="number" step="1" class="form-control"  name="limit_number" value="0" placeholder="Limit galleries"/>
-                      </div>
-                      <div class="col-md-auto">
-                          <input size="10" class="form-control" name="provider" value="" placeholder="Provider filter"/>
-                      </div>
-                      <div class="col-md-auto">
-                          <button type="submit" name="apply" class="btn btn-light">Start</button>
-                      </div>
-                  </div>
-              </div>
-          </form>
-        {% endif %}
-        {% if active_tasks.generate_possible_matches_internally %}
-          {% task_status active_tasks.generate_possible_matches_internally "block" %}
-        {% else %}
-          <form action="{% url 'viewer:tools-id' 'generate_possible_matches_internally' %}" method="POST" class="task-action"
-                data-task-fluid="true" hx-post="{% url 'viewer:tools-id' 'generate_possible_matches_internally' %}" hx-target="this" hx-swap="outerHTML">
-            {% csrf_token %}<input type="hidden" name="_task_variant" value="block">
-            <button type="submit" class="list-group-item list-group-item-action text-start w-100">Generate possible matches for non-matches (all providers)</button>
-          </form>
-          <form action="{% url 'viewer:tools-id' 'generate_possible_matches_internally' %}" method="POST" role="form" class="task-action"
-                data-task-fluid="true" hx-post="{% url 'viewer:tools-id' 'generate_possible_matches_internally' %}" hx-target="this" hx-swap="outerHTML">
-              {% csrf_token %}<input type="hidden" name="_task_variant" value="block">
-              <div class="list-group-item">
-                  <div class="row g-1">
-                      <div class="col-md-auto">
-                          <input size="10" type="text" class="form-control" name="provider" value="" placeholder="Provider filter"/>
-                      </div>
-                      <div class="col-md-auto">
-                          <input title="Cutoff" size="10" type="number" step="0.01" class="form-control" name="cutoff" value="" placeholder="Cutoff"/>
-                      </div>
-                      <div class="col-md-auto">
-                          <input title="Max matches" size="10" type="number" step="1" class="form-control" name="max-matches" value="10" placeholder="Max Matches"/>
-                      </div>
-                      <div class="col-md-auto">
-                          <div class="form-check mt-2">
-                              <input class="form-check-input" type="checkbox" name="auto_link" id="tools_auto_link" title="Link each archive to its best local match when it's good enough, instead of only storing possible matches">
-                              <label class="form-check-label" for="tools_auto_link">Auto-link</label>
-                          </div>
-                      </div>
-                      <div class="col-md-auto">
-                          <button type="submit" class="btn btn-light">Generate possible matches for non-matches (filter providers)</button>
-                      </div>
-                  </div>
-              </div>
-          </form>
-        {% endif %}
-        <form action="{% url 'viewer:tools-id' 'clear_all_archive_possible_matches' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Clear all archive possible matches</button></form>
-      </div>
-      {% if user.is_superuser %}
-      <div class="list-group col-lg-3 col-md-4 col-sm-6 col-xs-12">
-        <div class="list-group-item active">Settings file</div>
-        <a class="list-group-item" href="{% url 'viewer:tools-id' 'modify_settings_editor' %}">Modify settings file for crawler</a>
-        <form action="{% url 'viewer:tools-id' 'reload_settings' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Reload settings file for crawler</button></form>
-      </div>
-      {% endif %}
-      <div class="list-group col-lg-3 col-md-4 col-sm-6 col-xs-12">
-        <div class="list-group-item active">Misc</div>
-        <a class="list-group-item" href="{% static 'js/panda.user.js' %}">Install JS userscript</a>
-        <a class="list-group-item" href="{% url 'viewer:stats-workers' %}">Workers dashboard (start, stop and force run schedulers)</a>
-        <form action="{% url 'viewer:tools-id' 'restart_viewer' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Restart Web Server (gunicorn, reloads views and templates)</button></form>
-        <form action="{% url 'viewer:tools-id' 'restart_workers' %}" method="POST">{% csrf_token %}<button type="submit" class="list-group-item list-group-item-action text-start w-100">Restart Workers (apply settings / code changes)</button></form>
-      </div>
-
-    </div>
-  {% endif %}
+{% block extra_head %}
+  {% load compress %}
+  {% compress css %}
+    <link href="{% static 'css/dm-pages.css' %}" type="text/css" rel="stylesheet" />
+  {% endcompress %}
+  <style>
+    .dm-tool-controls .form-control-sm { max-width: 10rem; }
+    .dm-tool-controls .task-status .btn { white-space: nowrap; }
+  </style>
 {% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+  {% include "viewer/include/dm_messages.html" %}
+
+  <!-- Header -->
+  <div class="dm-page-header">
+    <div>
+      <h2 class="h3 mb-1"><i class="fas fa-toolbox text-info me-2"></i>Tools</h2>
+      <p class="mb-0 small">
+        Maintenance jobs over the whole collection. Most run in the background workers: the button follows the task and the page reloads when it's done.
+      </p>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      <a href="{% url 'viewer:stats-workers' %}" class="btn btn-outline-info btn-sm"><i class="fas fa-tasks me-1"></i>Workers Dashboard</a>
+      <a href="{% url 'viewer:database-maintenance' %}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-database me-1"></i>Database Maintenance</a>
+      <a href="{% url 'viewer:logs' %}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-file-alt me-1"></i>Server Logs</a>
+    </div>
+  </div>
+
+  {% if tool == "main" %}
+  <!-- Summary tiles -->
+  <div class="row g-2 mb-3">
+    <div class="col-6 col-md-3">
+      <a class="dm-stat" href="{% url 'viewer:stats-workers' %}">
+        <div class="dm-lbl">Workers</div>
+        {% if worker_running %}
+          <div class="dm-val text-success"><i class="fas fa-circle me-1" style="font-size: 0.8em;"></i>Running</div>
+          <div class="dm-stat-sub">background jobs will start</div>
+        {% else %}
+          <div class="dm-val text-danger"><i class="fas fa-exclamation-circle me-1"></i>Stopped</div>
+          <div class="dm-stat-sub">no heartbeat, queued jobs will wait</div>
+        {% endif %}
+      </a>
+    </div>
+    <div class="col-6 col-md-3">
+      <a class="dm-stat" href="{% url 'viewer:stats-workers' %}">
+        <div class="dm-lbl">Tool jobs running</div>
+        <div class="dm-val {% if active_task_count %}text-warning{% else %}text-secondary{% endif %}">{{ active_task_count }}</div>
+        <div class="dm-stat-sub">{{ pending_tasks }} task{{ pending_tasks|pluralize }} queued in total</div>
+      </a>
+    </div>
+    <div class="col-6 col-md-3">
+      <a class="dm-stat" href="{% url 'viewer:match-archives' %}">
+        <div class="dm-lbl">Unmatched archives</div>
+        <div class="dm-val text-info">{{ counts.unmatched_archives }}</div>
+        <div class="dm-stat-sub">{{ counts.possible_matches }} stored possible match{{ counts.possible_matches|pluralize:"es" }}</div>
+      </a>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="dm-stat">
+        <div class="dm-lbl">Missing info</div>
+        <div class="dm-val text-warning">{{ counts.missing_thumbs }} / {{ counts.missing_info }}</div>
+        <div class="dm-stat-sub">archives without thumbnail / file info</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+    <input type="search" class="form-control form-control-sm bg-transparent text-light" style="max-width: 20rem;" placeholder="Find a tool (press /)"
+           aria-label="Find a tool" data-dm-filter=".dm-tool" data-dm-filter-empty="#tools-empty" data-dm-hotkey="/">
+  </div>
+  <div class="dm-card d-none" id="tools-empty"><div class="dm-empty"><i class="fas fa-search"></i>No tool matches.</div></div>
+
+  <div class="row g-3">
+    <div class="col-xl-6">
+      <!-- Archives -->
+      <div class="dm-card" data-dm-filter-section>
+        <div class="dm-card-header"><i class="fas fa-file-archive text-info me-1"></i>Archives &amp; files</div>
+
+        <div class="dm-tool">
+          <div class="dm-tool-info">
+            <div class="dm-tool-name"><i class="fas fa-image"></i>Generate missing thumbnails
+              <span class="badge {% if counts.missing_thumbs %}bg-warning text-dark{% else %}dm-badge-outline text-secondary{% endif %} ms-1" title="Archives without a thumbnail">{{ counts.missing_thumbs }}</span>
+            </div>
+            <div class="dm-tool-desc">Creates the cover thumbnail of the archives that have none.</div>
+          </div>
+          <div class="dm-tool-controls">
+            {% if active_tasks.generate_missing_thumbs %}
+              {% task_status active_tasks.generate_missing_thumbs %}
+            {% else %}
+              <form action="{% url 'viewer:tools-id' 'generate_missing_thumbs' %}" method="POST" class="task-action" data-task-fluid="true"
+                    hx-post="{% url 'viewer:tools-id' 'generate_missing_thumbs' %}" hx-target="this" hx-swap="outerHTML">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-outline-info"><i class="fas fa-play me-1"></i>Run</button>
+              </form>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="dm-tool">
+          <div class="dm-tool-info">
+            <div class="dm-tool-name"><i class="fas fa-calculator"></i>Calculate missing file info
+              <span class="badge {% if counts.missing_info %}bg-warning text-dark{% else %}dm-badge-outline text-secondary{% endif %} ms-1" title="Archives without CRC32">{{ counts.missing_info }}</span>
+            </div>
+            <div class="dm-tool-desc">Size, image count and CRC32 of the archives without a CRC32.</div>
+          </div>
+          <div class="dm-tool-controls">
+            {% if active_tasks.calculate_missing_info %}
+              {% task_status active_tasks.calculate_missing_info %}
+            {% else %}
+              <form action="{% url 'viewer:tools-id' 'calculate_missing_info' %}" method="POST" class="task-action" data-task-fluid="true"
+                    hx-post="{% url 'viewer:tools-id' 'calculate_missing_info' %}" hx-target="this" hx-swap="outerHTML">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-outline-info"><i class="fas fa-play me-1"></i>Run</button>
+              </form>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="dm-tool">
+          <div class="dm-tool-info">
+            <div class="dm-tool-name"><i class="fas fa-redo"></i>Recalculate all file info</div>
+            <div class="dm-tool-desc">Reads every archive again. Slow on big collections.</div>
+          </div>
+          <div class="dm-tool-controls">
+            {% if active_tasks.recalc_all_file_info %}
+              {% task_status active_tasks.recalc_all_file_info %}
+            {% else %}
+              <form action="{% url 'viewer:tools-id' 'recalc_all_file_info' %}" method="POST" class="task-action" data-task-fluid="true"
+                    hx-post="{% url 'viewer:tools-id' 'recalc_all_file_info' %}" hx-target="this" hx-swap="outerHTML">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-outline-warning" data-dm-confirm="Recalculate the file info of every archive?"><i class="fas fa-play me-1"></i>Run</button>
+              </form>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="dm-tool">
+          <div class="dm-tool-info">
+            <div class="dm-tool-name"><i class="fas fa-images"></i>Regenerate all thumbnails</div>
+            <div class="dm-tool-desc">Replaces the thumbnail of every archive. Might be slow.</div>
+          </div>
+          <div class="dm-tool-controls">
+            {% if active_tasks.regenerate_all_thumbs %}
+              {% task_status active_tasks.regenerate_all_thumbs %}
+            {% else %}
+              <form action="{% url 'viewer:tools-id' 'regenerate_all_thumbs' %}" method="POST" class="task-action" data-task-fluid="true"
+                    hx-post="{% url 'viewer:tools-id' 'regenerate_all_thumbs' %}" hx-target="this" hx-swap="outerHTML">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-outline-warning" data-dm-confirm="Regenerate the thumbnail of every archive?"><i class="fas fa-play me-1"></i>Run</button>
+              </form>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="dm-tool">
+          <div class="dm-tool-info">
+            <div class="dm-tool-name"><i class="fas fa-globe"></i>Set all hidden as public
+              <span class="badge {% if counts.hidden_gallery_archives %}bg-info text-dark{% else %}dm-badge-outline text-secondary{% endif %} ms-1" title="Archives whose gallery is hidden">{{ counts.hidden_gallery_archives }}</span>
+            </div>
+            <div class="dm-tool-desc">Publishes the archives whose gallery is hidden.</div>
+          </div>
+          <div class="dm-tool-controls">
+            {% if active_tasks.set_all_hidden_as_public %}
+              {% task_status active_tasks.set_all_hidden_as_public %}
+            {% else %}
+              <form action="{% url 'viewer:tools-id' 'set_all_hidden_as_public' %}" method="POST" class="task-action" data-task-fluid="true"
+                    hx-post="{% url 'viewer:tools-id' 'set_all_hidden_as_public' %}" hx-target="this" hx-swap="outerHTML">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-outline-warning" data-dm-confirm="Publish every archive whose gallery is hidden?"><i class="fas fa-play me-1"></i>Run</button>
+              </form>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      <!-- Matching -->
+      <div class="dm-card" data-dm-filter-section>
+        <div class="dm-card-header d-flex justify-content-between align-items-center">
+          <span><i class="fas fa-link text-info me-1"></i>Archive matching</span>
+          <a class="small" href="{% url 'viewer:match-archives' %}">Review candidates <i class="fas fa-arrow-right ms-1"></i></a>
+        </div>
+
+        <div class="dm-tool" data-dm-filter-text="generate possible matches non-matches unmatched archives internally provider cutoff auto-link">
+          <div class="dm-tool-info">
+            <div class="dm-tool-name"><i class="fas fa-search"></i>Find possible matches for unmatched archives
+              <span class="badge {% if counts.unmatched_archives %}bg-info text-dark{% else %}dm-badge-outline text-secondary{% endif %} ms-1" title="Archives without a gallery">{{ counts.unmatched_archives }}</span>
+            </div>
+            <div class="dm-tool-desc">Looks for each unmatched archive in the gallery database. Leave the provider empty for all providers.</div>
+          </div>
+          <div class="dm-tool-controls">
+            {% if active_tasks.generate_possible_matches_internally %}
+              {% task_status active_tasks.generate_possible_matches_internally %}
+            {% else %}
+              <form action="{% url 'viewer:tools-id' 'generate_possible_matches_internally' %}" method="POST" class="task-action" data-task-fluid="true"
+                    hx-post="{% url 'viewer:tools-id' 'generate_possible_matches_internally' %}" hx-target="this" hx-swap="outerHTML">
+                {% csrf_token %}
+                <input class="form-control form-control-sm" name="provider" value="" placeholder="Provider (all)" aria-label="Provider filter" style="width: 8rem;">
+                <input class="form-control form-control-sm" type="number" step="0.01" min="0" max="1" name="cutoff" value="" placeholder="Cutoff 0.4" title="Minimum accuracy (0 to 1)" style="width: 6.5rem;">
+                <input class="form-control form-control-sm" type="number" step="1" min="1" name="max-matches" value="10" title="Maximum candidates per archive" aria-label="Max matches" style="width: 5rem;">
+                <div class="form-check form-switch mb-0" title="Link each archive to its best local match when it's good enough, instead of only storing possible matches">
+                  <input class="form-check-input" type="checkbox" name="auto_link" id="tools_auto_link">
+                  <label class="form-check-label small" for="tools_auto_link">Auto-link</label>
+                </div>
+                <button type="submit" class="btn btn-sm btn-outline-info"><i class="fas fa-play me-1"></i>Run</button>
+              </form>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="dm-tool dm-tool-danger">
+          <div class="dm-tool-info">
+            <div class="dm-tool-name"><i class="fas fa-eraser"></i>Clear all archive possible matches
+              <span class="badge dm-badge-outline text-secondary ms-1" title="Stored possible matches">{{ counts.possible_matches }}</span>
+            </div>
+            <div class="dm-tool-desc">Removes every stored candidate, for every archive.</div>
+          </div>
+          <div class="dm-tool-controls">
+            <form action="{% url 'viewer:tools-id' 'clear_all_archive_possible_matches' %}" method="POST">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-sm btn-outline-danger" data-dm-confirm="Clear the possible matches of every archive?"{% if not counts.possible_matches %} disabled{% endif %}><i class="fas fa-eraser me-1"></i>Clear</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-xl-6">
+      <!-- Downloads & metadata -->
+      <div class="dm-card" data-dm-filter-section>
+        <div class="dm-card-header d-flex justify-content-between align-items-center">
+          <span><i class="fas fa-download text-info me-1"></i>Downloads &amp; metadata</span>
+          {% if perms.viewer.download_history %}<a class="small" href="{% url 'viewer:downloads' %}">Downloads <i class="fas fa-arrow-right ms-1"></i></a>{% endif %}
+        </div>
+
+        <div class="dm-tool">
+          <div class="dm-tool-info">
+            <div class="dm-tool-name"><i class="fas fa-redo-alt"></i>Retry failed downloads</div>
+            <div class="dm-tool-desc">Queues the failed downloads again in the web crawler.</div>
+          </div>
+          <div class="dm-tool-controls">
+            {% if active_tasks.retry_failed %}
+              {% task_status active_tasks.retry_failed %}
+            {% else %}
+              <form action="{% url 'viewer:tools-id' 'retry_failed' %}" method="POST" class="task-action" data-task-fluid="true"
+                    hx-post="{% url 'viewer:tools-id' 'retry_failed' %}" hx-target="this" hx-swap="outerHTML">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-outline-info"><i class="fas fa-play me-1"></i>Run</button>
+              </form>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="dm-tool">
+          <div class="dm-tool-info">
+            <div class="dm-tool-name"><i class="fas fa-sync"></i>Reconcile downloads and archives</div>
+            <div class="dm-tool-desc">Rescues finished files, recycles stale downloads and syncs missing CRC32. Runs right away and reports when done.</div>
+          </div>
+          <div class="dm-tool-controls">
+            <form action="{% url 'viewer:tools-id' 'reconcile_downloads' %}" method="POST">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-sm btn-outline-info dm-busy-on-submit"><i class="fas fa-play me-1"></i>Run</button>
+            </form>
+          </div>
+        </div>
+
+        <div class="dm-tool">
+          <div class="dm-tool-info">
+            <div class="dm-tool-name"><i class="fas fa-calendar-alt"></i>Update gallery metadata newer than</div>
+            <div class="dm-tool-desc">Fetches the metadata of the galleries posted after the date again.</div>
+          </div>
+          <div class="dm-tool-controls">
+            {% if active_tasks.update_newer_than %}
+              {% task_status active_tasks.update_newer_than %}
+            {% else %}
+              <form action="{% url 'viewer:tools-id' 'update_newer_than' %}" method="POST" class="task-action" data-task-fluid="true"
+                    hx-post="{% url 'viewer:tools-id' 'update_newer_than' %}" hx-target="this" hx-swap="outerHTML">
+                {% csrf_token %}
+                <input id="newer-than" type="date" class="form-control form-control-sm" name="newer_than" value="" required aria-label="Newer than date">
+                <button type="submit" name="apply" class="btn btn-sm btn-outline-info"><i class="fas fa-play me-1"></i>Run</button>
+              </form>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="dm-tool">
+          <div class="dm-tool-info">
+            <div class="dm-tool-name"><i class="fas fa-portrait"></i>Update galleries missing thumbnails</div>
+            <div class="dm-tool-desc">Fetches the thumbnail again for galleries without one, oldest first. Limit 0 means all.</div>
+          </div>
+          <div class="dm-tool-controls">
+            {% if active_tasks.update_missing_thumbnails %}
+              {% task_status active_tasks.update_missing_thumbnails %}
+            {% else %}
+              <form action="{% url 'viewer:tools-id' 'update_missing_thumbnails' %}" method="POST" class="task-action" data-task-fluid="true"
+                    hx-post="{% url 'viewer:tools-id' 'update_missing_thumbnails' %}" hx-target="this" hx-swap="outerHTML">
+                {% csrf_token %}
+                <input id="limit-number" type="number" step="1" min="0" class="form-control form-control-sm" name="limit_number" value="0" title="Limit galleries (0: all)" aria-label="Limit galleries" style="width: 5.5rem;">
+                <input class="form-control form-control-sm" name="provider" value="" placeholder="Provider (all)" aria-label="Provider filter" style="width: 8rem;">
+                <button type="submit" name="apply" class="btn btn-sm btn-outline-info"><i class="fas fa-play me-1"></i>Run</button>
+              </form>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      <!-- Wanted galleries -->
+      <div class="dm-card" data-dm-filter-section>
+        <div class="dm-card-header d-flex justify-content-between align-items-center">
+          <span><i class="fas fa-binoculars text-info me-1"></i>Wanted galleries
+            <span class="badge dm-badge-outline text-info ms-1" title="Wanted galleries eligible to search">{{ counts.wanted_eligible }} eligible</span>
+          </span>
+          <a class="small" href="{% url 'viewer:wanted-galleries' %}">Wanted galleries <i class="fas fa-arrow-right ms-1"></i></a>
+        </div>
+
+        <div class="dm-tool">
+          <div class="dm-tool-info">
+            <div class="dm-tool-name"><i class="fas fa-globe-americas"></i>Search provider titles</div>
+            <div class="dm-tool-desc">Searches the providers' sites for the eligible wanted galleries.</div>
+          </div>
+          <div class="dm-tool-controls">
+            {% if active_tasks.search_wanted_galleries_provider_titles %}
+              {% task_status active_tasks.search_wanted_galleries_provider_titles %}
+            {% else %}
+              <form action="{% url 'viewer:tools-id' 'search_wanted_galleries_provider_titles' %}" method="POST" class="task-action" data-task-fluid="true"
+                    hx-post="{% url 'viewer:tools-id' 'search_wanted_galleries_provider_titles' %}" hx-target="this" hx-swap="outerHTML">
+                {% csrf_token %}
+                <input class="form-control form-control-sm" name="provider" value="" placeholder="Provider (all)" aria-label="Provider filter" style="width: 8rem;">
+                <button type="submit" class="btn btn-sm btn-outline-info"{% if not counts.wanted_eligible %} disabled title="No wanted galleries eligible to search"{% endif %}><i class="fas fa-play me-1"></i>Run</button>
+              </form>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="dm-tool">
+          <div class="dm-tool-info">
+            <div class="dm-tool-name"><i class="fas fa-database"></i>Search internal galleries</div>
+            <div class="dm-tool-desc">Looks for the eligible wanted galleries in the gallery database.</div>
+          </div>
+          <div class="dm-tool-controls">
+            {% if active_tasks.wanted_galleries_possible_matches %}
+              {% task_status active_tasks.wanted_galleries_possible_matches %}
+            {% else %}
+              <form action="{% url 'viewer:tools-id' 'wanted_galleries_possible_matches' %}" method="POST" class="task-action" data-task-fluid="true"
+                    hx-post="{% url 'viewer:tools-id' 'wanted_galleries_possible_matches' %}" hx-target="this" hx-swap="outerHTML">
+                {% csrf_token %}
+                <input class="form-control form-control-sm" name="provider" value="" placeholder="Provider (all)" aria-label="Provider filter" style="width: 8rem;">
+                <input class="form-control form-control-sm" type="number" step="0.01" min="0" max="1" name="cutoff" value="" placeholder="Cutoff 0.4" title="Minimum accuracy (0 to 1)" style="width: 6.5rem;">
+                <input class="form-control form-control-sm" type="number" step="1" min="1" name="max-matches" value="10" title="Maximum matches per wanted gallery" aria-label="Max matches" style="width: 5rem;">
+                <button type="submit" class="btn btn-sm btn-outline-info"{% if not counts.wanted_eligible %} disabled title="No wanted galleries eligible to search"{% endif %}><i class="fas fa-play me-1"></i>Run</button>
+              </form>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      {% if user.is_superuser %}
+        <!-- Settings -->
+        <div class="dm-card" data-dm-filter-section>
+          <div class="dm-card-header"><i class="fas fa-cogs text-info me-1"></i>Settings file</div>
+          <div class="dm-tool">
+            <div class="dm-tool-info">
+              <div class="dm-tool-name"><i class="fas fa-edit"></i>Modify settings file</div>
+              <div class="dm-tool-desc">Edit the crawler settings file in the browser.</div>
+            </div>
+            <div class="dm-tool-controls">
+              <a class="btn btn-sm btn-outline-info" href="{% url 'viewer:tools-id' 'modify_settings_editor' %}"><i class="fas fa-external-link-alt me-1"></i>Open</a>
+            </div>
+          </div>
+          <div class="dm-tool">
+            <div class="dm-tool-info">
+              <div class="dm-tool-name"><i class="fas fa-sync-alt"></i>Reload settings file</div>
+              <div class="dm-tool-desc">Applies the settings file to this web process. Use <em>Restart Workers</em> for the workers.</div>
+            </div>
+            <div class="dm-tool-controls">
+              <form action="{% url 'viewer:tools-id' 'reload_settings' %}" method="POST">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-outline-info"><i class="fas fa-sync-alt me-1"></i>Reload</button>
+              </form>
+            </div>
+          </div>
+        </div>
+      {% endif %}
+
+      <!-- System -->
+      <div class="dm-card" data-dm-filter-section>
+        <div class="dm-card-header"><i class="fas fa-server text-info me-1"></i>System</div>
+        <div class="dm-tool">
+          <div class="dm-tool-info">
+            <div class="dm-tool-name"><i class="fas fa-code"></i>JS userscript</div>
+            <div class="dm-tool-desc">Browser userscript to send links to this instance.</div>
+          </div>
+          <div class="dm-tool-controls">
+            <a class="btn btn-sm btn-outline-info" href="{% static 'js/panda.user.js' %}"><i class="fas fa-download me-1"></i>Install</a>
+          </div>
+        </div>
+        <div class="dm-tool">
+          <div class="dm-tool-info">
+            <div class="dm-tool-name"><i class="fas fa-tasks"></i>Workers dashboard</div>
+            <div class="dm-tool-desc">Start, stop and force run the schedulers, follow the task queue.</div>
+          </div>
+          <div class="dm-tool-controls">
+            <a class="btn btn-sm btn-outline-info" href="{% url 'viewer:stats-workers' %}"><i class="fas fa-external-link-alt me-1"></i>Open</a>
+          </div>
+        </div>
+        <div class="dm-tool dm-tool-danger">
+          <div class="dm-tool-info">
+            <div class="dm-tool-name"><i class="fas fa-power-off"></i>Restart web server</div>
+            <div class="dm-tool-desc">Restarts gunicorn, reloading views and templates.</div>
+          </div>
+          <div class="dm-tool-controls">
+            <form action="{% url 'viewer:tools-id' 'restart_viewer' %}" method="POST">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-sm btn-outline-danger" data-dm-confirm="Restart the web server?"><i class="fas fa-power-off me-1"></i>Restart</button>
+            </form>
+          </div>
+        </div>
+        <div class="dm-tool dm-tool-danger">
+          <div class="dm-tool-info">
+            <div class="dm-tool-name"><i class="fas fa-redo"></i>Restart workers</div>
+            <div class="dm-tool-desc">Applies settings and code changes to the background workers.</div>
+          </div>
+          <div class="dm-tool-controls">
+            <form action="{% url 'viewer:tools-id' 'restart_workers' %}" method="POST">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-sm btn-outline-danger" data-dm-confirm="Restart the background workers? Running tasks are interrupted."><i class="fas fa-redo me-1"></i>Restart</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
 {% block afterJQ %}
   <script type="text/javascript" src="{% static 'js/vendor/htmx.min.js' %}"></script>
   <script type="text/javascript" src="{% static 'js/task_actions.js' %}"></script>
+  {% load compress %}
+  {% compress js %}
+    <script src="{% static 'js/dm-pages.js' %}"></script>
+  {% endcompress %}
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      // Synchronous tools: show that the request is running.
+      document.querySelectorAll('.dm-busy-on-submit').forEach(function (btn) {
+        btn.closest('form').addEventListener('submit', function () {
+          btn.disabled = true;
+          btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Running...';
+        });
+      });
+    });
+  </script>
 {% endblock %}

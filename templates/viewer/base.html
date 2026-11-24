@@ -140,6 +140,8 @@
                 <li><a class="dropdown-item" href="{% url 'viewer:match-archives' %}">Match archives</a></li>
                 <li><a class="dropdown-item" href="{% url 'viewer:col-missing-archives' %}?provider=panda">Manage missing archives</a></li>
                 <li><a class="dropdown-item" href="{% url 'viewer:wanted-galleries' %}">Wanted galleries</a></li>
+                <li><a class="dropdown-item" href="{% url 'viewer:auto-wanted' %}">Auto wanted sources</a></li>
+                <li><a class="dropdown-item" href="{% url 'viewer:auto-updater' %}">Auto updater schedules</a></li>
                 <li><hr class="dropdown-divider"></li>
                 <li><h6 class="dropdown-header">Ingestion &amp; Crawlers</h6></li>
                 <li><a class="dropdown-item" href="{% url 'viewer:user-crawler' %}">Add URLs</a></li>
@@ -165,6 +167,7 @@
                 <li><a class="dropdown-item" href="{% url 'viewer:archive-filesize-different' %}">Archives not matching gallery filesize</a></li>
                 <li><a class="dropdown-item" href="{% url 'viewer:archive-file-check' %}">Archive file check (missing / corrupted)</a></li>
                 <li><a class="dropdown-item" href="{% url 'viewer:archives-not-matched' %}">Archives without gallery matches</a></li>
+                <li><a class="dropdown-item" href="{% url 'viewer:release-series' %}">Release completeness (magazines)</a></li>
                 <li><hr class="dropdown-divider"></li>
                 <li><h6 class="dropdown-header">Search &amp; Exploration</h6></li>
                 <li><a class="dropdown-item" href="/explorer/">Explorer</a></li>
@@ -207,7 +210,7 @@
                 {% if user.is_superuser %}
                 <li><hr class="dropdown-divider"></li>
                 <li><h6 class="dropdown-header">System</h6></li>
-                <li><a class="dropdown-item" href="{% url 'viewer:stats-settings' %}">Configuration</a></li>
+                <li><a class="dropdown-item" href="{% url 'viewer:tools-id' 'modify_settings_editor' %}">Settings file</a></li>
                 {% endif %}
               </ul>
             </li>
@@ -220,7 +223,6 @@
                 <a class="dropdown-item" href="{% url 'viewer:es-gallery-index-view' %}">Advanced search (Gallery)</a>
                 <a class="dropdown-item" href="{% url 'viewer:image-search' %}">Image Search</a>
                 <a class="dropdown-item" href="{% url 'viewer:public-stats' %}">Backup stats</a>
-                <a class="dropdown-item" href="/public/stats.html">Full Metadata stats</a>
                 <a class="dropdown-item" href="{% url 'viewer:found-galleries' %}">Found galleries log</a>
               </ul>
             </li>

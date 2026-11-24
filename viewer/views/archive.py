@@ -15,7 +15,7 @@ from django.core.paginator import Paginator, InvalidPage, EmptyPage, Page
 from django.urls import reverse
 from django.db import transaction
 from django.db.models import Sum
-from django.http import Http404, HttpRequest
+from django.http import Http404, HttpRequest, JsonResponse
 from django.http import HttpResponseRedirect, HttpResponse, FileResponse, StreamingHttpResponse, HttpResponseBase
 from django.utils.http import content_disposition_header
 from django.templatetags.static import static
@@ -46,6 +46,7 @@ from viewer.utils.task_actions import task_action_response
 from viewer.utils.requests import double_check_auth, authenticate_by_token
 from viewer.views.head import render_error
 from viewer.services.archive_extraction import ArchiveExtractionService
+from viewer.services import cold_storage
 
 logger = logging.getLogger(__name__)
 crawler_settings = settings.CRAWLER_SETTINGS
@@ -337,14 +338,31 @@ def archive_update(
     """Staff matching tools: select a possible match, or clear the possible matches.
 
     Editing the archive's fields is done by the inline edit form of the archive page (``archive_details``).
+    Called with fetch (X-Requested-With: XMLHttpRequest), answers JSON instead of redirecting.
     """
+    is_ajax = request.headers.get("x-requested-with") == "XMLHttpRequest"
     if not request.user.is_staff:
+        if is_ajax:
+            return JsonResponse({"success": False, "error": "You need to be an admin to update an archive."}, status=403)
         messages.error(request, "You need to be an admin to update an archive.")
         return safe_redirect_back(request, reverse("viewer:archive", args=[pk]))
     try:
         archive = Archive.objects.get(pk=pk)
     except Archive.DoesNotExist:
         raise Http404("Archive does not exist")
+
+    def done() -> HttpResponse:
+        if is_ajax:
+            return JsonResponse(
+                {
+                    "success": True,
+                    "archive": archive.pk,
+                    "gallery": archive.gallery_id,
+                    "gallery_url": archive.gallery.get_absolute_url() if archive.gallery else None,
+                    "gallery_title": archive.gallery.title if archive.gallery else None,
+                }
+            )
+        return safe_redirect_back(request, reverse("viewer:archive", args=[pk]))
 
     if tool == "select-as-match" and tool_use_id:
         try:
@@ -360,12 +378,16 @@ def archive_update(
                     )
                 )
         except ValueError:
+            if is_ajax:
+                return JsonResponse({"success": False, "error": "Invalid gallery."}, status=400)
             return safe_redirect_back(request, reverse("viewer:archive", args=[pk]))
-        return safe_redirect_back(request, reverse("viewer:archive", args=[pk]))
+        return done()
     elif tool == "clear-possible-matches":
         archive.possible_matches.clear()
-        return safe_redirect_back(request, reverse("viewer:archive", args=[pk]))
+        return done()
 
+    if is_ajax:
+        return JsonResponse({"success": False, "error": "Unrecognized command."}, status=400)
     return safe_redirect_back(request, reverse("viewer:archive", args=[pk]))
 
 
@@ -522,6 +544,19 @@ def archive_enter_reason(request: HttpRequest, pk: int, tool: str | None = None)
         return render(request, "viewer/archive_display_tool.html", d)
 
 
+def cold_storage_redirect(archive: Archive, original: bool) -> HttpResponse:
+    """Redirect to a presigned bucket URL for an offloaded archive, so the bucket serves it (Range requests too)."""
+    try:
+        url = cold_storage.presigned_download_url(archive, original=original)
+    except (cold_storage.ColdStorageError, ValueError) as e:
+        logger.error("Could not create a cold storage download URL for archive %s: %s", archive.pk, e)
+        raise Http404("Archive file is not available")
+    response = HttpResponseRedirect(url)
+    # The URL is signed and expires: clients and proxies must ask again instead of caching it.
+    response["Cache-Control"] = "private, no-store"
+    return response
+
+
 def archive_download(request: HttpRequest, pk: int) -> HttpResponse:
     try:
         archive = Archive.objects.get(pk=pk)
@@ -536,6 +571,8 @@ def archive_download(request: HttpRequest, pk: int) -> HttpResponse:
         raise Http404("Archive does not exist")
     if not archive.zipped.name:
         raise Http404("Archive does not exist")
+    if cold_storage.should_redirect_download(archive):
+        return cold_storage_redirect(archive, "original" in request.GET)
     if "HTTP_X_FORWARDED_HOST" in request.META:
         response = HttpResponse()
         response["Content-Type"] = "application/vnd.comicbook+zip"
@@ -560,6 +597,9 @@ def archive_ext_download(request: HttpRequest, pk: int) -> HttpResponse:
         raise Http404("Archive does not exist")
     if not archive.zipped.name:
         raise Http404("Archive does not exist")
+    # The external media server only has the local archives.
+    if cold_storage.should_redirect_download(archive):
+        return cold_storage_redirect(archive, "original" in request.GET)
 
     if "original" in request.GET:
         filename = quote(basename(archive.zipped.name))

@@ -318,7 +318,8 @@ class MangaExtractorIntegrationTests(TestCase):
                     "reason": "batch_context_test",
                 },
             )
-            self.assertEqual(resp.status_code, 200)
+            # Bulk actions redirect back to the listing (post/redirect/get).
+            self.assertRedirects(resp, reverse("viewer:manage-archives"), fetch_redirect_response=False)
 
             tasks = list(TaskQueue.objects.filter(task_type="contextual_extractor_worker").order_by("id"))
             self.assertEqual(len(tasks), 2)

@@ -11,8 +11,10 @@ from django.urls import reverse
 from django.conf import settings
 
 from core.base.setup import Settings
+from core.base.utilities import clamp
 from viewer.forms import WantedGalleryCreateOrEditForm
 from viewer.models import Gallery, WantedGallery, FoundGallery, GalleryMatch, Archive
+from viewer.services.gallery_selection import galleries_by_ids, parse_gallery_ids
 from viewer.utils.general import get_safe_referer
 from viewer.utils.actions import event_log
 from workers import client
@@ -37,6 +39,33 @@ def _paginate_queryset(queryset, page_number: int | str | None, per_page: int = 
         return paginator.page(1)
     except InvalidPage:
         return paginator.page(1)
+
+
+def _mark_galleries_found(wanted_gallery: WantedGallery, galleries: list[Gallery]) -> list[Gallery]:
+    """Add the galleries as found galleries of the wanted gallery, and drop them from its possible matches.
+
+    :return: The galleries that were not found galleries already.
+    """
+    if not galleries:
+        return []
+    added: list[Gallery] = []
+    for gallery in galleries:
+        _, created = FoundGallery.objects.get_or_create(wanted_gallery=wanted_gallery, gallery=gallery)
+        if created:
+            added.append(gallery)
+        logger.info(
+            "WantedGallery {} ({}) was matched with gallery {} ({}).".format(
+                wanted_gallery,
+                reverse("viewer:wanted-gallery", args=(wanted_gallery.pk,)),
+                gallery,
+                reverse("viewer:gallery", args=(gallery.pk,)),
+            )
+        )
+    GalleryMatch.objects.filter(wanted_gallery=wanted_gallery, gallery__in=galleries).delete()
+    wanted_gallery.found = True
+    wanted_gallery.date_found = django_tz.now()
+    wanted_gallery.save()
+    return added
 
 
 @login_required
@@ -96,22 +125,41 @@ def wanted_gallery(request: HttpRequest, pk: int) -> HttpResponse:
                     matched_gallery = Gallery.objects.get(pk=tool_use_id)
                 except Gallery.DoesNotExist:
                     raise Http404("Gallery does not exist")
-                FoundGallery.objects.get_or_create(wanted_gallery=wanted_gallery_instance, gallery=matched_gallery)
-                wanted_gallery_instance.found = True
-                wanted_gallery_instance.date_found = django_tz.now()
-                gm = GalleryMatch.objects.filter(wanted_gallery=wanted_gallery_instance, gallery=matched_gallery)
-                if gm:
-                    gm.delete()
-                wanted_gallery_instance.save()
-
-                logger.info(
-                    "WantedGallery {} ({}) was matched with gallery {} ({}).".format(
-                        wanted_gallery_instance,
-                        reverse("viewer:wanted-gallery", args=(wanted_gallery_instance.pk,)),
-                        matched_gallery,
-                        reverse("viewer:gallery", args=(matched_gallery.pk,)),
+                _mark_galleries_found(wanted_gallery_instance, [matched_gallery])
+                return HttpResponseRedirect(referer)
+            elif tool == "add-found-galleries":
+                try:
+                    gallery_ids = parse_gallery_ids(request.POST.get("gallery_ids", ""))
+                except ValueError as e:
+                    messages.error(request, str(e), extra_tags="danger")
+                    return HttpResponseRedirect(referer)
+                if not gallery_ids:
+                    messages.error(request, "Select at least one gallery.", extra_tags="danger")
+                    return HttpResponseRedirect(referer)
+                galleries = list(galleries_by_ids(gallery_ids, request.user))
+                missing_count = len(gallery_ids) - len(galleries)
+                added_galleries = _mark_galleries_found(wanted_gallery_instance, galleries)
+                added = len(added_galleries)
+                if added:
+                    messages.success(request, f"Marked {added} galler{'y' if added == 1 else 'ies'} as found.")
+                already_found = len(galleries) - added
+                if already_found:
+                    messages.info(
+                        request, f"{already_found} galler{'y was' if already_found == 1 else 'ies were'} already found."
                     )
-                )
+                if missing_count:
+                    messages.warning(
+                        request,
+                        f"{missing_count} galler{'y' if missing_count == 1 else 'ies'} could not be found or selected.",
+                    )
+                if added:
+                    event_log(
+                        request.user,
+                        "ADD_FOUND_GALLERIES",
+                        content_object=wanted_gallery_instance,
+                        data=", ".join(str(gallery.pk) for gallery in added_galleries),
+                        result="added",
+                    )
                 return HttpResponseRedirect(referer)
             elif tool == "remove-match":
                 try:
@@ -145,7 +193,38 @@ def wanted_gallery(request: HttpRequest, pk: int) -> HttpResponse:
 
         if is_staff:
             if tool == "create-possible-matches-internally":
-                provider = request.POST.get("provider", request.GET.get("provider", ""))
+                # Same local title similarity search as "Search internal" on the wanted galleries list.
+                if client.get_active_task_by_type("wanted_local_search_worker") is not None:
+                    messages.error(request, "Wanted local matching worker is already running.", extra_tags="danger")
+                    return HttpResponseRedirect(referer)
+                provider = request.POST.get("provider", "")
+                try:
+                    cutoff = clamp(float(request.POST.get("cutoff") or "0.4"), 0.0, 1.0)
+                except ValueError:
+                    cutoff = 0.4
+                try:
+                    max_matches = max(int(request.POST.get("max-matches") or "10"), 1)
+                except ValueError:
+                    max_matches = 10
+                must_be_used = bool(request.POST.get("must-be-used", False))
+                client.enqueue_matching_task(
+                    task_type="wanted_local_search_worker",
+                    args=[wanted_gallery_instance.pk],
+                    matching_kwargs={
+                        "provider_filter": provider,
+                        "cutoff": cutoff,
+                        "max_matches": max_matches,
+                        "must_be_used": must_be_used,
+                    },
+                    user=request.user,
+                )
+                messages.success(
+                    request,
+                    "Queued local possible matches search (cutoff {}, max {} matches).".format(cutoff, max_matches),
+                )
+                return HttpResponseRedirect(referer)
+            elif tool == "create-rule-matches-internally":
+                provider = request.POST.get("provider", "")
                 wanted_gallery_instance.create_gallery_matches_internally(provider_filter=provider)
                 logger.info(
                     "Wanted gallery {} ({}) internal gallery match resulted in {} possible matches.".format(
@@ -163,7 +242,7 @@ def wanted_gallery(request: HttpRequest, pk: int) -> HttpResponse:
                 return HttpResponseRedirect(referer)
             elif tool == "backlog-search":
                 urls_to_match = request.POST.getlist("urls-to-match") or request.GET.getlist("urls-to-match", [])
-                url_query = wanted_gallery_instance.backlog_url_query
+                url_query = wanted_gallery_instance.get_backlog_url_query()
 
                 current_settings = Settings(load_from_config=crawler_settings.config)
 
@@ -241,5 +320,8 @@ def wanted_gallery(request: HttpRequest, pk: int) -> HttpResponse:
         "found_galleries": found_galleries,
         "possible_matches": possible_matches,
         "mentions": mentions,
+        "found_gallery_ids": (
+            list(wanted_gallery_instance.foundgallery_set.values_list("gallery_id", flat=True)) if can_change else []
+        ),
     }
     return render(request, "viewer/wanted_gallery.html", d)

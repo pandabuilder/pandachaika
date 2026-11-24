@@ -84,6 +84,11 @@ class MatcherRateLimitTests(TestCase):
                 patch("requests.get", side_effect=AssertionError("direct request")),
                 patch("requests.post", side_effect=AssertionError("direct request")),
                 patch.object(matcher.own_settings, "api_key", "test-key", create=True),
+                # Providers with a configurable server and no default one.
+                patch.object(
+                    matcher.own_settings, "url", getattr(matcher.own_settings, "url", "") or "https://mirror.test/",
+                    create=True,
+                ),
             ):
                 query = matcher.search_input(target)
                 self.assertTrue(query, str(matcher))

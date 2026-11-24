@@ -38,10 +38,13 @@ TASK_LABELS: dict[str, tuple[str, str]] = {
     "match_unmatched_worker": ("Matching", "Matched"),
     "web_search_worker": ("Searching wanted", "Wanted search done"),
     "wanted_local_search_worker": ("Matching wanted", "Wanted matched"),
+    "auto_wanted_worker": ("Running auto wanted", "Auto wanted done"),
     "gallery_updater": ("Updating metadata", "Metadata updated"),
     "folder_crawler": ("Rematching", "Rematched"),
     "delete_archive_worker": ("Deleting", "Deleted"),
     "web_crawler": ("Downloading", "Downloaded"),
+    "cold_storage_offload_worker": ("Offloading", "Offloaded"),
+    "cold_storage_restore_worker": ("Restoring", "Restored"),
 }
 
 

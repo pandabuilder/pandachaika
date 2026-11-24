@@ -481,6 +481,7 @@ PROVIDERS = [
     "core.providers.generic",
     "core.providers.fakku",
     "core.providers.mugimugi",
+    "core.providers.doujinshi_mirror",
     "core.providers.nhentai",
     "core.providers.panda",
     "core.providers.chaika",

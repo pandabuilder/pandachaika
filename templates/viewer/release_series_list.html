@@ -1,0 +1,254 @@
+{% extends "viewer/base.html" %}
+{% block title %}Release Completeness | {{ block.super }}{% endblock %}
+{% block sidebar %}{% endblock %}
+
+{% block extra_head %}
+  {% include "viewer/include/release_series_head.html" %}
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+  {% include "viewer/include/dm_messages.html" %}
+  {% csrf_token %}
+
+  <div class="dm-page-header">
+    <div>
+      <h2 class="h3 mb-1"><i class="fas fa-layer-group text-info me-2"></i>Release Completeness</h2>
+      <p class="mb-0 small">
+        Issues of magazines and other periodicals missing from the collection: each series' galleries and archives are
+        compared with the issues its schedule expects. A gallery or an archive is enough for an issue to count as found,
+        but only an archive makes it complete: issues found only as galleries are counted apart (purple).
+      </p>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      <a href="{% url 'viewer:release-series-create' %}" class="btn btn-info btn-sm"><i class="fas fa-plus me-1"></i>New series</a>
+      <button type="button" class="btn btn-outline-light btn-sm" data-bs-toggle="modal" data-bs-target="#rs-import-modal"><i class="fas fa-file-import me-1"></i>Import</button>
+      <a href="?export=1" class="btn btn-outline-light btn-sm"><i class="fas fa-file-export me-1"></i>Export</a>
+      <a href="?format=json" class="btn btn-outline-secondary btn-sm"><i class="fas fa-code me-1"></i>JSON</a>
+    </div>
+  </div>
+
+  {% if not results and not inactive %}
+    <div class="dm-card">
+      <div class="dm-empty">
+        <i class="fas fa-book-open"></i>
+        No series yet. Create one for each magazine to check (for example "COMIC Kairakuten BEAST", year and month issues),
+        or import an export from another instance.
+      </div>
+    </div>
+  {% else %}
+    <!-- Tiles -->
+    <div class="row g-2 mb-3">
+      <div class="col-6 col-md-3">
+        <div class="dm-stat">
+          <div class="dm-lbl">Series checked</div>
+          <div class="dm-val text-info">{{ results|length }}</div>
+          <div class="dm-stat-sub">{{ present_total }} issues found, {{ archived_total }} archived{% if inactive %}, {{ inactive|length }} inactive series{% endif %}</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <a class="dm-stat" href="#gaps">
+          <div class="dm-lbl">Missing issues</div>
+          <div class="dm-val {% if missing_total %}text-danger{% else %}text-success{% endif %}">{{ missing_total }}</div>
+          <div class="dm-stat-sub">in {{ windows|length }} gap window{{ windows|length|pluralize }}</div>
+        </a>
+      </div>
+      <div class="col-6 col-md-3">
+        <a class="dm-stat" href="#gaps">
+          <div class="dm-lbl">Shared gap windows</div>
+          <div class="dm-val text-warning">{{ multi_series_windows }}</div>
+          <div class="dm-stat-sub">missing in several series at once: crawlers down?</div>
+        </a>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="dm-stat">
+          <div class="dm-lbl">Due now</div>
+          <div class="dm-val">{{ due|length }}</div>
+          <div class="dm-stat-sub">released recently, not found yet</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Series -->
+    <div class="dm-card">
+      <div class="dm-card-header"><i class="fas fa-book me-2"></i>Series</div>
+      <div class="table-responsive">
+        <table class="table table-sm table-dm table-hover mb-0">
+          <thead>
+            <tr>
+              <th>Series</th>
+              <th>Kind</th>
+              <th>Tracked</th>
+              <th style="min-width: 10rem;">Complete</th>
+              <th>Missing</th>
+              <th>Next</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in results %}
+              <tr>
+                <td><a href="{% url 'viewer:release-series-detail' r.series.pk %}" class="fw-semibold">{{ r.series.name }}</a></td>
+                <td class="small dm-muted text-nowrap">{{ r.series.get_key_type_display }}</td>
+                {% if r.error %}
+                  <td colspan="4" class="text-danger small"><i class="fas fa-exclamation-triangle me-1"></i>{{ r.error }}</td>
+                {% else %}
+                  <td class="small text-nowrap">{% if r.first %}{{ r.first.label }} → {{ r.last.label }}{% else %}<span class="dm-dim">nothing found</span>{% endif %}</td>
+                  <td>
+                    <div class="d-flex align-items-center gap-2"
+                         title="{% widthratio r.archive_completeness 1 100 %}% archived: {{ r.archived|length }} of {{ r.expected_count }} expected issues have an archive{% if r.gallery_only %}, {{ r.gallery_only|length }} more only as galleries ({% widthratio r.completeness 1 100 %}% counting galleries){% endif %}">
+                      <div class="dm-bar-track d-flex"><span class="dm-bar rs-bar-archived{% if r.missing or r.gallery_only %} rs-bar-partial{% endif %}" style="width: {% widthratio r.archive_completeness 1 100 %}%;"></span><span class="dm-bar rs-bar-gallery-only" style="width: {% widthratio r.gallery_only_share 1 100 %}%;"></span></div>
+                      <span class="small font-monospace text-nowrap">{{ r.archived|length }}/{{ r.expected_count }}</span>
+                      {% if r.gallery_only %}<span class="small text-nowrap rs-text-gallery-only">+{{ r.gallery_only|length }} gallery</span>{% endif %}
+                    </div>
+                  </td>
+                  <td class="small">
+                    {% if r.missing %}
+                      <span class="badge bg-danger">{{ r.missing|length }}</span>
+                      {% for issue in r.missing|slice:":6" %}{{ issue.label }}{% if not forloop.last %}, {% endif %}{% endfor %}{% if r.missing|length > 6 %}, …{% endif %}
+                    {% else %}
+                      <span class="text-success"><i class="fas fa-check"></i></span>
+                    {% endif %}
+                    {% if r.using_suggested_schedule %}<span class="badge bg-dark border border-secondary ms-1" title="No schedule saved: using the one suggested from the issues found">suggested schedule</span>{% endif %}
+                  </td>
+                  <td class="small text-nowrap">
+                    {% with r.upcoming|last as next %}
+                      {% if next %}{{ next.label }} <span class="dm-dim">{% if next.status == 'due' %}due{% else %}~{{ next.release|date:"Y-m-d" }}{% endif %}</span>{% endif %}
+                    {% endwith %}
+                  </td>
+                {% endif %}
+              </tr>
+            {% endfor %}
+            {% for series in inactive %}
+              <tr class="opacity-50">
+                <td><a href="{% url 'viewer:release-series-detail' series.pk %}">{{ series.name }}</a></td>
+                <td class="small dm-muted">{{ series.get_key_type_display }}</td>
+                <td colspan="4" class="small dm-muted">inactive, not checked here</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Gap windows -->
+    <div class="dm-card" id="gaps">
+      <div class="dm-card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <span><i class="fas fa-stream me-2"></i>Missing issues by release date</span>
+        <span class="small dm-muted fw-normal">Issues released within {{ window_gap_days|default:"three weeks" }} of each other are grouped; newest first</span>
+      </div>
+      {% if windows %}
+        <div>
+          {% for window in windows %}
+            {% if window.gaps|length == 1 %}
+              {% with gap=window.gaps.0 %}
+              <div class="rs-window rs-window-single px-3 d-flex flex-wrap align-items-center gap-2">
+                <input type="checkbox" class="form-check-input rs-window-all" id="rs-window-{{ forloop.counter }}" data-window="{{ forloop.counter }}" aria-label="Select this window">
+                <label for="rs-window-{{ forloop.counter }}" class="fw-semibold rs-window-date">{% if window.start %}{{ window.start|date:"Y-m-d" }}{% else %}unknown date{% endif %}</label>
+                <span class="rs-gap">
+                  <input type="checkbox" class="form-check-input rs-gap-check d-none" data-window="{{ forloop.counter }}" data-series="{{ gap.result.series.pk }}" data-series-name="{{ gap.result.series.name }}" data-key="{{ gap.issue.label }}">
+                  <a href="{% url 'viewer:release-series-detail' gap.result.series.pk %}#missing">{{ gap.result.series.name }}</a>
+                  <span class="fw-semibold">{{ gap.issue.label }}</span>
+                  <button type="button" class="btn btn-sm btn-link p-0" data-rs-backlog data-series="{{ gap.result.series.pk }}" data-series-name="{{ gap.result.series.name }}" data-key="{{ gap.issue.label }}" title="Backlog search"><i class="fas fa-history"></i></button>
+                </span>
+              </div>
+              {% endwith %}
+            {% else %}
+            <div class="rs-window p-3">
+              <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                <input type="checkbox" class="form-check-input rs-window-all" id="rs-window-{{ forloop.counter }}" data-window="{{ forloop.counter }}" aria-label="Select this window">
+                <label for="rs-window-{{ forloop.counter }}" class="fw-semibold">
+                  {% if window.start %}
+                    {{ window.start|date:"Y-m-d" }}{% if window.end != window.start %} → {{ window.end|date:"Y-m-d" }}{% endif %}
+                  {% else %}
+                    Release date unknown
+                  {% endif %}
+                </label>
+                <span class="badge bg-danger">{{ window.gaps|length }} missing</span>
+                {% if window.series_count > 1 %}<span class="badge bg-warning text-dark">{{ window.series_count }} series</span>{% endif %}
+              </div>
+              <div class="rs-gap-list">
+                {% for gap in window.gaps %}
+                  <span class="rs-gap">
+                    <input type="checkbox" class="form-check-input rs-gap-check" data-window="{{ forloop.parentloop.counter }}" data-series="{{ gap.result.series.pk }}" data-series-name="{{ gap.result.series.name }}" data-key="{{ gap.issue.label }}" aria-label="Select {{ gap.result.series.name }} {{ gap.issue.label }}">
+                    <a href="{% url 'viewer:release-series-detail' gap.result.series.pk %}#missing">{{ gap.result.series.name }}</a>
+                    <span class="fw-semibold">{{ gap.issue.label }}</span>
+                    {% if gap.issue.release %}<span class="rs-gap-date">{% if gap.issue.estimated %}~{% endif %}{{ gap.issue.release|date:"Y-m-d" }}</span>{% endif %}
+                    <button type="button" class="btn btn-sm btn-link p-0" data-rs-backlog data-series="{{ gap.result.series.pk }}" data-series-name="{{ gap.result.series.name }}" data-key="{{ gap.issue.label }}" title="Backlog search"><i class="fas fa-history"></i></button>
+                  </span>
+                {% endfor %}
+              </div>
+            </div>
+            {% endif %}
+          {% endfor %}
+        </div>
+        <div class="dm-actionbar d-flex flex-wrap align-items-center gap-2 p-2 border-top" style="border-color: var(--pg-border) !important;">
+          <button type="button" class="btn btn-sm btn-outline-light" id="rs-select-all">Select all</button>
+          <button type="button" class="btn btn-sm btn-info" data-rs-backlog-bulk=".rs-gap-check"><i class="fas fa-history me-1"></i>Backlog search selected</button>
+          <span class="small dm-muted">Searches each selected issue in turn; review the results before adding them.</span>
+        </div>
+      {% else %}
+        <div class="dm-empty"><i class="fas fa-check-circle text-success"></i>No missing issues.</div>
+      {% endif %}
+    </div>
+
+    {% if due %}
+      <div class="dm-card">
+        <div class="dm-card-header"><i class="fas fa-hourglass-half text-warning me-2"></i>Due, not found yet</div>
+        <div class="p-3 rs-gap-list">
+          {% for r, issue in due %}
+            <span class="rs-gap">
+              <a href="{% url 'viewer:release-series-detail' r.series.pk %}">{{ r.series.name }}</a>
+              <span class="fw-semibold">{{ issue.label }}</span>
+              <span class="rs-gap-date">since ~{{ issue.release|date:"Y-m-d" }}</span>
+              <button type="button" class="btn btn-sm btn-link p-0" data-rs-backlog data-series="{{ r.series.pk }}" data-series-name="{{ r.series.name }}" data-key="{{ issue.label }}" title="Backlog search"><i class="fas fa-history"></i></button>
+            </span>
+          {% endfor %}
+        </div>
+      </div>
+    {% endif %}
+  {% endif %}
+
+  <!-- Import -->
+  <div class="modal fade dm-modal" id="rs-import-modal" tabindex="-1" aria-labelledby="rs-import-title" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+      <form class="modal-content" method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="import">
+        <div class="modal-header">
+          <h5 class="modal-title" id="rs-import-title"><i class="fas fa-file-import text-info me-2"></i>Import series</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <p class="small dm-muted">A file from Export (here or on another instance). Series are matched by name: existing ones are updated, the rest created. Dismissed issues are added, never removed.</p>
+          <input type="file" name="file" accept="application/json,.json" class="form-control form-control-sm mb-2" aria-label="JSON file">
+          <textarea name="data" class="form-control form-control-sm font-monospace" rows="8" placeholder='or paste it: {"series": [{"name": "COMIC LO", "key_type": "year_month", ...}]}' aria-label="JSON"></textarea>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-sm btn-outline-light" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-sm btn-info"><i class="fas fa-file-import me-1"></i>Import</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block afterJQ %}
+  {% include "viewer/include/release_series_backlog.html" %}
+  <script>
+    (function () {
+      document.querySelectorAll('.rs-window-all').forEach(all => {
+        all.addEventListener('change', () => {
+          document.querySelectorAll('.rs-gap-check[data-window="' + all.dataset.window + '"]').forEach(cb => { cb.checked = all.checked; });
+        });
+      });
+      const selectAll = document.getElementById('rs-select-all');
+      if (selectAll) selectAll.addEventListener('click', () => {
+        const boxes = document.querySelectorAll('.rs-gap-check, .rs-window-all');
+        const check = Array.from(boxes).some(cb => !cb.checked);
+        boxes.forEach(cb => { cb.checked = check; });
+        selectAll.textContent = check ? 'Select none' : 'Select all';
+      });
+    })();
+  </script>
+{% endblock %}

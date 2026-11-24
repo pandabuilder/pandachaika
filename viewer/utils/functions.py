@@ -112,6 +112,8 @@ def archive_manage_results_to_json(
             ],
             "binned": archive.binned,
             "file_deleted": archive.file_deleted,
+            # Whether the file is in the cold storage bucket (always False while the cold storage is disabled).
+            "cold_stored": archive.is_cold_stored,
             "recycle_entry": (
                 _recycle_entry_to_json(archive) if can_view_recycle_info and archive.binned else None
             ),
@@ -162,7 +164,7 @@ def gallery_search_results_to_json(request: HttpRequest, galleries: Iterable[Gal
                 if gallery.thumbnail
                 else ""
             ),
-            "thumbnail_url": gallery.thumbnail_url,
+            "thumbnail_url": gallery.get_thumbnail_url(),
             "archives": [
                 {
                     "link": request.build_absolute_uri(reverse("viewer:archive-download", args=(archive.pk,))),
@@ -202,7 +204,7 @@ def gallery_search_dict_to_json(request: HttpRequest, galleries: dict[Gallery, l
                 if gallery.thumbnail
                 else ""
             ),
-            "thumbnail_url": gallery.thumbnail_url,
+            "thumbnail_url": gallery.get_thumbnail_url(),
             "archives": [
                 {
                     "link": request.build_absolute_uri(reverse("viewer:archive-download", args=(archive.pk,))),

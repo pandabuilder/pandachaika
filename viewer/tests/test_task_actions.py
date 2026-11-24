@@ -405,6 +405,12 @@ class TaskBatchStatusAndArchiveManagerTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         data = json.loads(resp.content)
         self.assertEqual(len(data["task_ids"]), 1)
+        # One queued task still gets the batch URL: Archive Manager reads the batch summary (total, tasks, ...).
+        self.assertEqual(data["status_url"], f"{reverse('viewer:api-v1')}?tasks={data['task_ids'][0]}")
+        batch = self.client.get(data["status_url"]).json()
+        self.assertEqual(batch["total"], 1)
+        self.assertEqual([t["id"] for t in batch["tasks"]], data["task_ids"])
+        self.assertEqual(batch["status_url"], data["status_url"])
 
         # 3. extract_contextual_info
         with patch.object(settings.CRAWLER_SETTINGS.manga_extractor, "enable", True):

@@ -161,7 +161,7 @@ class Command(BaseCommand):
 
         if not bulk_size:
             data = [self.convert_for_bulk(s, "create") for s in query]
-            bulk(client=self.es_client, actions=data, stats_only=True, raise_on_error=False, request_timeout=30)
+            bulk(client=self.es_client, actions=data, stats_only=True, raise_on_error=False)
         else:
             paginator = Paginator(query, bulk_size)
 
@@ -170,7 +170,7 @@ class Command(BaseCommand):
                 page = paginator.page(page_number)
                 data = [self.convert_for_bulk(s, "create") for s in page]
 
-                bulk(client=self.es_client, actions=data, stats_only=True, raise_on_error=False, request_timeout=30)
+                bulk(client=self.es_client, actions=data, stats_only=True, raise_on_error=False)
 
     def convert_for_bulk(self, django_object, action=None):
         data = django_object.es_repr()

@@ -115,16 +115,20 @@ def add_gallery_data_to_match_index(gallery: 'Gallery | GalleryData') -> str | N
 def remove_gallery_from_match_index(index_uuid: str) -> bool:
     if not settings.ES_MATCH_ENABLED or not es_client:
         return False
-    if not es_client.indices.exists(index=es_match_index_name):
-        return False
 
     try:
-        es_client.options(request_timeout=30).delete(
-            index=es_match_index_name, id=index_uuid, refresh=True
-        )
+        if not es_client.indices.exists(index=es_match_index_name):
+            return False
+        es_client.delete(index=es_match_index_name, id=index_uuid)
         return True
     except elasticsearch.exceptions.NotFoundError:
         pass
+    except elasticsearch.exceptions.ConnectionTimeout:
+        logger.warning(
+            "Timed out removing temporary document %s from match index %s",
+            index_uuid,
+            es_match_index_name,
+        )
 
     return False
 

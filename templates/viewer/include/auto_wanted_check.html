@@ -1,0 +1,6 @@
+<div class="form-check mb-2">
+  {{ field }}
+  <label class="form-check-label small" for="{{ field.id_for_label }}">{{ field.label }}</label>
+  {% if field.errors %}<div class="text-danger small mt-1">{{ field.errors|join:" " }}</div>{% endif %}
+  {% if field.help_text %}<div class="form-text mt-0">{{ field.help_text }}</div>{% endif %}
+</div>

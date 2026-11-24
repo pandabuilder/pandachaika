@@ -14,9 +14,16 @@
         <div class="card shadow-sm">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <h4 class="mb-0">{{ title }}</h4>
-                <a href="{% url 'viewer:monitored-links' %}" class="btn btn-outline-light btn-sm">
-                    <i class="fas fa-arrow-left"></i> Back to Monitored Links
-                </a>
+                <div class="d-flex gap-2">
+                    {% if not is_create %}
+                    <a href="{% url 'viewer:col-monitored-link' link.pk %}" class="btn btn-outline-info btn-sm">
+                        <i class="fas fa-chart-bar"></i> Details and runs
+                    </a>
+                    {% endif %}
+                    <a href="{% url 'viewer:monitored-links' %}" class="btn btn-outline-light btn-sm">
+                        <i class="fas fa-arrow-left"></i> Back to Monitored Links
+                    </a>
+                </div>
             </div>
             <div class="card-body">
                 <form action="" method="POST">

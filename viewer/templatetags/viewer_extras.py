@@ -63,6 +63,36 @@ def subtract[T: (float, int)](value: T, arg: T) -> T:
 
 
 @register.filter
+def short_duration(value: Any) -> str:
+    """A timedelta as "2d 3h", "1h 5m", "4m 10s" or "12s"."""
+    if value is None or value == "":
+        return ""
+    seconds = int(value.total_seconds()) if hasattr(value, "total_seconds") else int(value)
+    sign = "-" if seconds < 0 else ""
+    seconds = abs(seconds)
+    days, rest = divmod(seconds, 86400)
+    hours, rest = divmod(rest, 3600)
+    minutes, secs = divmod(rest, 60)
+    if days:
+        parts = [f"{days}d", f"{hours}h" if hours else ""]
+    elif hours:
+        parts = [f"{hours}h", f"{minutes}m" if minutes else ""]
+    elif minutes:
+        parts = [f"{minutes}m", f"{secs}s" if secs else ""]
+    else:
+        parts = [f"{secs}s"]
+    return sign + " ".join(p for p in parts if p)
+
+
+@register.filter
+def as_percent(value: Any, digits: int = 0) -> str:
+    """A 0..1 ratio as a percentage, empty when there's no ratio."""
+    if value is None or value == "":
+        return ""
+    return f"{float(value) * 100:.{int(digits)}f}%"
+
+
+@register.filter
 def revert_order(order: str) -> str:
     if order == "desc":
         order = "asc"

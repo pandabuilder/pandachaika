@@ -413,15 +413,16 @@ class AutoWantedSettings(BaseConfigModel):
     )
     cycle_timer: float = Field(
         default=4.0,
-        description="Cycle interval (in seconds) between wanted gallery generator runs.",
+        description="How often (in hours) the auto wanted sources without their own frequency run.",
     )
     providers: list[str] = Field(
         default_factory=list,
-        description="Providers queried by the auto-wanted generator.",
+        description="Deprecated: the active auto wanted sources (/auto-wanted/) run. Only used when importing the old "
+        "provider attribute queries, which are active when their provider is listed here.",
     )
     unwanted_title: str = Field(
         default="[Chinese]",
-        description="Text filter automatically assigned to the unwanted_title field on generated wanted galleries.",
+        description="Default unwanted title of new auto wanted sources, added to the wanted galleries they create.",
     )
     regexp_unwanted_title: bool = Field(
         default=False,
@@ -438,7 +439,7 @@ class AutoUpdaterSettings(BaseConfigModel):
 
     enable: bool = Field(
         default=False,
-        description="Enable automatic gallery metadata updates from upstream providers.",
+        description="Enable the auto updater scheduler, which runs the active schedules set up on /auto-updater/.",
     )
     startup: bool = Field(
         default=False,
@@ -446,19 +447,22 @@ class AutoUpdaterSettings(BaseConfigModel):
     )
     cycle_timer: float = Field(
         default=2.0,
-        description="Cycle timer (in seconds) between update checks.",
+        description="Deprecated, only used to import the old configuration as schedules: days between the old "
+        "updater's runs.",
     )
     buffer_back: int = Field(
         default=8,
-        description="Number of days in the past from current date to filter galleries for updating.",
+        description="Deprecated, only used to import the old configuration as schedules: the old updater updated the "
+        "galleries posted up to cycle_timer + buffer_back days ago.",
     )
     buffer_after: int = Field(
         default=0,
-        description="Number of days after/offset to filter galleries for updating.",
+        description="Deprecated, only used to import the old configuration as schedules: and at least buffer_after "
+        "days ago.",
     )
     providers: list[str] = Field(
         default_factory=lambda: ["panda"],
-        description="List of providers enabled for automatic metadata updating.",
+        description="Deprecated, only used to import the old configuration: the providers that were updated.",
     )
 
 
@@ -1123,6 +1127,90 @@ class AdminReportSettings(BaseConfigModel):
     )
 
 
+class ColdStorageSettings(BaseConfigModel):
+    """Cold tier for archives in S3-compatible object storage (OVH Object Storage, Backblaze B2, MinIO...).
+
+    Offloaded archives keep their file name under ``local_prefix`` (relative to MEDIA_ROOT), e.g.
+    ``galleries/hath_dls/a.zip`` becomes ``galleries/cold/galleries/hath_dls/a.zip``, stored in the bucket as
+    ``<key_prefix>galleries/hath_dls/a.zip``. Mounting the bucket read-only at ``MEDIA_ROOT/<local_prefix>`` (rclone,
+    mountpoint-s3) keeps the tools that read the file directly working.
+    """
+
+    enable: bool = Field(
+        default=False,
+        description=(
+            "Enable the archive cold storage: offloading/restoring archives and serving downloads of offloaded "
+            "archives with presigned URLs."
+        ),
+    )
+    endpoint_url: str = Field(
+        default="",
+        description="S3 endpoint URL, e.g. https://s3.gra.io.cloud.ovh.net or https://s3.us-west-004.backblazeb2.com.",
+    )
+    region: str = Field(default="us-east-1", description="S3 region used to sign requests, e.g. 'gra' for OVH GRA.")
+    bucket: str = Field(default="", description="Bucket that holds the offloaded archives. Keep it private.")
+    access_key_id: str = Field(default="", description="S3 access key id (or env COLD_STORAGE_ACCESS_KEY_ID).")
+    secret_access_key: str = Field(
+        default="", description="S3 secret access key (or env COLD_STORAGE_SECRET_ACCESS_KEY)."
+    )
+    addressing_style: str = Field(
+        default="path",
+        description="'path' (https://endpoint/bucket/key) or 'virtual' (https://bucket.endpoint/key).",
+    )
+    key_prefix: str = Field(
+        default="",
+        description="Prefix for the object keys inside the bucket, e.g. 'archives/'. Empty uses the bucket root.",
+    )
+    local_prefix: str = Field(
+        default="galleries/cold",
+        description=(
+            "Path, relative to MEDIA_ROOT, that offloaded archive file names are moved under. It identifies "
+            "offloaded archives, so don't change it once archives were offloaded. Optional mount point of the bucket."
+        ),
+    )
+    redirect_downloads: bool = Field(
+        default=True,
+        description=(
+            "Redirect downloads of offloaded archives to presigned bucket URLs. When false, they are served like "
+            "local files (X-Accel-Redirect), which needs the bucket mounted at MEDIA_ROOT/<local_prefix>."
+        ),
+    )
+    presigned_url_expiry: int = Field(
+        default=21600,
+        gt=0,
+        le=604800,
+        description=(
+            "Seconds a presigned download URL stays valid (max 7 days). Download managers resume with the URL they "
+            "were redirected to, so keep it long enough for a slow download."
+        ),
+    )
+    part_size_mb: int = Field(
+        default=64,
+        ge=5,
+        description="Multipart upload part size in MiB; files up to this size are uploaded in a single request.",
+    )
+    timeout: float = Field(default=120.0, gt=0, description="Timeout in seconds for each request to the bucket.")
+
+    @field_validator("addressing_style", mode="before")
+    @classmethod
+    def _validate_addressing_style(cls, value: Any) -> str:
+        style = str(value or "path").strip().lower()
+        if style not in ("path", "virtual"):
+            raise ValueError("addressing_style must be 'path' or 'virtual'")
+        return style
+
+    @field_validator("local_prefix", mode="before")
+    @classmethod
+    def _validate_local_prefix(cls, value: Any) -> str:
+        prefix = str(value or "").strip().strip("/")
+        if not prefix or ".." in prefix.split("/"):
+            raise ValueError("local_prefix must be a relative path inside MEDIA_ROOT")
+        return prefix
+
+    def is_configured(self) -> bool:
+        return bool(self.enable and self.endpoint_url and self.bucket and self.access_key_id and self.secret_access_key)
+
+
 class MangaExtractorRequestConfig(BaseConfigModel):
     """Parameters sent to the external manga-extractor REST API when submitting jobs."""
 
@@ -1381,6 +1469,11 @@ class MangaExtractorSettings(BaseConfigModel):
 
 class BaseProviderGeneralSettings(BaseConfigModel):
     proxy: str = Field(default="", description="HTTP/HTTPS proxy server URL for this provider.")
+    ssl_verify: bool | str = Field(
+        default=True,
+        description="HTTPS certificate verification: true (Python's bundled CAs), false (don't verify), or the path "
+        "to a CA bundle file, e.g. the system's /etc/ssl/certs/ca-certificates.crt.",
+    )
     timeout_timer: int = Field(default=25, description="HTTP request timeout (in seconds).")
     wait_timer: int = Field(default=6, description="Rate-limit wait timer (in seconds) between requests.")
     stop_page_number: int | None = Field(default=None, description="Maximum page number to scrape when crawling.")
@@ -1523,23 +1616,20 @@ class FakkuProviderConfig(BaseConfigModel):
     )
 
 
-class MugimugiProviderGeneralSettings(BaseProviderGeneralSettings):
-    api_key: str = Field(default="", description="Mugimugi API key for metadata lookups.")
-
-
-class MugimugiProviderWantedSettings(BaseConfigModel):
-    unwanted_title: str = Field(default="", description="Title text filter for auto-wanted galleries.")
-    regexp_unwanted_title: str | bool = Field(default="", description="Regex pattern for unwanted titles.")
-    regexp_unwanted_title_icase: str | bool = Field(
-        default="", description="Case-insensitive regex for unwanted titles."
+class DoujinshiMirrorProviderGeneralSettings(BaseProviderGeneralSettings):
+    url: str = Field(
+        default="",
+        description="Base URL of the doujinshi-browser server mirroring doujinshi.org. Empty disables the provider.",
+    )
+    wait_timer: int = Field(
+        default=1, description="Rate-limit wait timer (in seconds) between requests. The mirror has no limits."
     )
 
 
-class MugimugiProviderConfig(BaseConfigModel):
-    """Provider configuration for Mugimugi."""
+class DoujinshiMirrorProviderConfig(BaseConfigModel):
+    """Provider configuration for the doujinshi.org mirror (doujinshi-browser)."""
 
-    general: MugimugiProviderGeneralSettings = Field(default_factory=MugimugiProviderGeneralSettings)
-    wanted: MugimugiProviderWantedSettings = Field(default_factory=MugimugiProviderWantedSettings)
+    general: DoujinshiMirrorProviderGeneralSettings = Field(default_factory=DoujinshiMirrorProviderGeneralSettings)
 
 
 class NhentaiProviderCookiesSettings(BaseConfigModel):
@@ -1600,7 +1690,7 @@ class ProvidersConfig(BaseConfigModel):
     """Per-provider specific configuration mappings."""
 
     fakku: FakkuProviderConfig = Field(default_factory=FakkuProviderConfig)
-    mugimugi: MugimugiProviderConfig = Field(default_factory=MugimugiProviderConfig)
+    doujinshi_mirror: DoujinshiMirrorProviderConfig = Field(default_factory=DoujinshiMirrorProviderConfig)
     nhentai: NhentaiProviderConfig = Field(default_factory=NhentaiProviderConfig)
     panda: PandaProviderConfig = Field(default_factory=PandaProviderConfig)
     chaika: ChaikaProviderConfig = Field(default_factory=ChaikaProviderConfig)
@@ -1745,6 +1835,10 @@ class PandaGalleryConfig(BaseConfigModel):
     admin_report: AdminReportSettings = Field(
         default_factory=AdminReportSettings,
         description="Admin report email scheduler.",
+    )
+    cold_storage: ColdStorageSettings = Field(
+        default_factory=ColdStorageSettings,
+        description="Archive cold tier in S3-compatible object storage.",
     )
     manga_extractor: MangaExtractorSettings = Field(
         default_factory=MangaExtractorSettings,
@@ -2123,6 +2217,7 @@ downloaders:
 # ------------------------------------------------------------------------------
 # Auto Wanted Generator
 # Automatically queries providers to create WantedGallery entries for missing works.
+# The queries are the auto wanted sources, set up on /auto-wanted/ (Manage menu).
 # ------------------------------------------------------------------------------
 auto_wanted:
   # Enable the auto-wanted generator background scheduler.
@@ -2133,15 +2228,17 @@ auto_wanted:
   # Default: false
   startup: false
 
-  # Cycle interval (in seconds) between auto-wanted runs.
+  # How often (in hours) the auto wanted sources without their own frequency run.
+  # The scheduler checks which sources are due at least every 15 minutes.
   # Default: 4.0
   cycle_timer: 4.0
 
-  # Providers queried by the auto-wanted generator.
+  # Deprecated: the active auto wanted sources run. Only used when importing the old provider attribute
+  # queries (wanted_params_<query>_<name>), which are active when their provider is listed here.
   # Default: []
   providers: []
 
-  # Text filter automatically added to the unwanted_title field on generated wanted galleries.
+  # Default unwanted title of new auto wanted sources, added to the wanted galleries they create.
   # Default: '[Chinese]'
   unwanted_title: '[Chinese]'
 
@@ -2291,9 +2388,11 @@ gallery_dl:
 # ------------------------------------------------------------------------------
 # Metadata Auto-Updater
 # Periodically queries upstream providers to update tags, ratings, and titles.
+# When each provider's galleries are updated (by gallery age) is set up on
+# /auto-updater/ (Manage menu): a schedule per provider.
 # ------------------------------------------------------------------------------
 autoupdater:
-  # Enable automatic metadata updating.
+  # Enable the auto updater scheduler (runs the active schedules).
   # Default: false
   enable: false
 
@@ -2301,20 +2400,22 @@ autoupdater:
   # Default: false
   startup: false
 
-  # List of providers enabled for metadata updating.
+  # Deprecated: only used to import the old configuration as schedules on /auto-updater/.
+  # Providers that were updated.
   # Default: ['panda']
   providers:
     - panda
 
-  # Cycle interval (in seconds) between update checks.
+  # Deprecated (import only): days between the old updater's runs.
   # Default: 2.0
   cycle_timer: 2.0
 
-  # Number of days in the past from current date to filter galleries for updating.
+  # Deprecated (import only): the old updater updated the galleries posted up to
+  # cycle_timer + buffer_back days ago.
   # Default: 8
   buffer_back: 8
 
-  # Number of days after/offset to filter galleries for updating.
+  # Deprecated (import only): and at least buffer_after days ago.
   # Default: 0
   buffer_after: 0
 
@@ -2711,6 +2812,66 @@ admin_report:
   check_interval_minutes: 15.0
 
 # ------------------------------------------------------------------------------
+# Archive Cold Storage (S3-compatible Object Storage)
+# Offload rarely downloaded archives to a private bucket (OVH Object Storage,
+# Backblaze B2, MinIO...) with `manage.py archive_cold_storage offload`.
+# Downloads of offloaded archives are redirected to short-lived presigned URLs.
+# Mount the bucket read-only at MEDIA_ROOT/<local_prefix> (rclone mount,
+# mountpoint-s3) to keep extraction, hashing and the other file tools working.
+# ------------------------------------------------------------------------------
+cold_storage:
+  # Enable offloading/restoring and presigned downloads of offloaded archives.
+  # Default: false
+  enable: false
+
+  # S3 endpoint URL, e.g. https://s3.gra.io.cloud.ovh.net
+  # Default: ''
+  endpoint_url: ''
+
+  # Region used to sign requests (e.g. 'gra' for OVH GRA).
+  # Default: us-east-1
+  region: us-east-1
+
+  # Private bucket that holds the offloaded archives.
+  # Default: ''
+  bucket: ''
+
+  # Credentials (or env COLD_STORAGE_ACCESS_KEY_ID / COLD_STORAGE_SECRET_ACCESS_KEY).
+  # Default: ''
+  access_key_id: ''
+  secret_access_key: ''
+
+  # 'path' (https://endpoint/bucket/key) or 'virtual' (https://bucket.endpoint/key).
+  # Default: path
+  addressing_style: path
+
+  # Prefix of the object keys inside the bucket, e.g. 'archives/'.
+  # Default: ''
+  key_prefix: ''
+
+  # Path under MEDIA_ROOT that offloaded archive names are moved under. It
+  # identifies offloaded archives: don't change it once archives were offloaded.
+  # Default: galleries/cold
+  local_prefix: galleries/cold
+
+  # Redirect downloads of offloaded archives to presigned bucket URLs. When
+  # false they go through X-Accel-Redirect, which needs the bucket mounted.
+  # Default: true
+  redirect_downloads: true
+
+  # Seconds a presigned download URL stays valid (max 604800, 7 days).
+  # Default: 21600
+  presigned_url_expiry: 21600
+
+  # Multipart upload part size in MiB.
+  # Default: 64
+  part_size_mb: 64
+
+  # Timeout in seconds for each request to the bucket.
+  # Default: 120.0
+  timeout: 120.0
+
+# ------------------------------------------------------------------------------
 # Contextual Extractor (manga-extractor Integration)
 # External REST API integration for extracting page and archive metrics
 # (panels, speech bubbles, dialogue density, OCR transcripts, spreads, color).
@@ -2956,25 +3117,25 @@ providers:
     cookies:
       fakku_sid: ''
 
-  # Mugimugi ('mugimugi')
-  mugimugi:
+  # doujinshi.org mirror ('doujinshi_mirror')
+  # Metadata of the closed doujinshi.org (MugiMugi), from a doujinshi-browser server: book links, search
+  # pages, title matching and auto wanted sources. Add galleries with the 'doujinshi_mirror_info' downloader.
+  doujinshi_mirror:
     general:
-      # Mugimugi API key for metadata lookups.
+      # Base URL of the doujinshi-browser server, e.g. https://doujinshi.example.com/.
+      # Gallery links are built from it when shown, so it can change at any time. Empty disables the provider.
       # Default: ''
-      api_key: ''
+      url: ''
 
-    wanted:
-      # Text filter automatically assigned to unwanted_title on generated wanted galleries.
-      # Default: ''
-      unwanted_title: ''
+      # Wait time (in seconds) between requests. The mirror has no rate limits.
+      # Default: 1
+      wait_timer: 1
 
-      # Regular expression pattern to identify unwanted titles.
-      # Default: ''
-      regexp_unwanted_title: ''
-
-      # Case-insensitive regular expression pattern to identify unwanted titles.
-      # Default: ''
-      regexp_unwanted_title_icase: ''
+      # HTTPS certificate verification, available on every provider: true (Python's bundled CAs, which don't
+      # include a private CA), false (don't verify), or the path to a CA bundle file with the server's CA, like
+      # the system's /etc/ssl/certs/ca-certificates.crt (inside the container, if pandagallery runs in one).
+      # Default: true
+      ssl_verify: true
 
   # NHentai ('nhentai')
   nhentai:

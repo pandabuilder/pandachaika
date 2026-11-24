@@ -1,0 +1,410 @@
+{% comment %}
+Backlog search dialog for the release completeness pages. Any element with data-rs-backlog (data-series, data-series-name,
+data-key) opens it for that issue; a button with data-rs-backlog-bulk="<selector>" opens it for every checked checkbox
+matching the selector (same data attributes). Opening the dialog never auto-queries: the user picks sources (and can edit
+each issue's title to search) before triggering the search. Each issue is searched in turn; the hit suggested for each
+issue (see viewer.services.release_series._suggest) is pre-checked. "Add checked" queues their links in the web crawler.
+{% endcomment %}
+{{ backlog_sources|json_script:"rs-backlog-sources" }}
+<div class="modal fade dm-modal" id="rs-backlog-modal" tabindex="-1" aria-labelledby="rs-backlog-title" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="rs-backlog-title"><i class="fas fa-history text-info me-2"></i>Backlog search</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        {% if backlog_sources %}
+          <div class="d-flex flex-wrap align-items-center gap-3 mb-2">
+            <span class="dm-lbl">Sources</span>
+            {% for source in backlog_sources %}
+              <div class="form-check form-check-inline m-0">
+                <input class="form-check-input rs-source" type="checkbox" id="rs-source-{{ forloop.counter }}" value="{{ source.name }}" checked>
+                <label class="form-check-label small" for="rs-source-{{ forloop.counter }}" title="{{ source.url }}">{{ source.name }}</label>
+              </div>
+            {% endfor %}
+            <button type="button" class="btn btn-sm btn-info" id="rs-backlog-run"><i class="fas fa-search me-1"></i>Search</button>
+            <span class="small dm-muted ms-auto" id="rs-backlog-progress"></span>
+          </div>
+          <p class="small dm-muted mb-3">
+            Select the sources and click "Search" to read the first page of results of each source; nothing is added until you click "Add checked".
+            One result per issue is checked: its title is the issue (read with the series' title regex), in an allowed language,
+            not already here, not expunged and not replaced by a newer version; without "already uploaded" or "replaced" tags,
+            with the most pages, if there's a choice. None is checked when the issue is already here.
+            Change an issue's title to search for uploads titled in an unusual way; the results are still read as that issue.
+          </p>
+          <div id="rs-backlog-results"></div>
+        {% else %}
+          <div class="dm-empty"><i class="fas fa-plug"></i>No backlog sources configured (<code>backlog_search.urls</code> in the settings).</div>
+        {% endif %}
+      </div>
+      <div class="modal-footer d-flex flex-wrap gap-2">
+        <div id="rs-backlog-status" class="small me-auto"></div>
+        {% if can_add %}
+          <input type="text" class="form-control form-control-sm" style="max-width: 18rem;" id="rs-backlog-reason" placeholder="Reason" aria-label="Reason">
+          <button type="button" class="btn btn-sm btn-success" id="rs-backlog-add" disabled><i class="fas fa-plus me-1"></i>Add checked (<span id="rs-backlog-count">0</span>)</button>
+        {% else %}
+          <span class="small dm-muted">Adding links needs the "crawler adder" permission.</span>
+        {% endif %}
+        <button type="button" class="btn btn-sm btn-outline-light" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  const modalEl = document.getElementById('rs-backlog-modal');
+  if (!modalEl) return;
+  const searchUrlTemplate = "{% url 'viewer:release-series-backlog-search' 0 %}";
+  const addUrl = "{% url 'viewer:release-series-backlog-add' %}";
+  const results = document.getElementById('rs-backlog-results');
+  const progress = document.getElementById('rs-backlog-progress');
+  const statusEl = document.getElementById('rs-backlog-status');
+  const runBtn = document.getElementById('rs-backlog-run');
+  const addBtn = document.getElementById('rs-backlog-add');
+  const countEl = document.getElementById('rs-backlog-count');
+  const reasonEl = document.getElementById('rs-backlog-reason');
+  let items = [];
+  let runId = 0;
+
+  function csrf() {
+    const input = document.querySelector('input[name="csrfmiddlewaretoken"]');
+    if (input) return input.value;
+    const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+    return m ? decodeURIComponent(m[1]) : '';
+  }
+  function el(tag, attrs, text) {
+    const node = document.createElement(tag);
+    Object.entries(attrs || {}).forEach(([k, v]) => {
+      if (k === 'className') node.className = v; else node.setAttribute(k, v);
+    });
+    if (text !== undefined && text !== null) node.textContent = text;
+    return node;
+  }
+  function badge(text, cls, title) {
+    const node = el('span', {className: 'badge me-1 ' + cls}, text);
+    if (title) node.title = title;
+    return node;
+  }
+  function linkBadge(text, href, cls, title) {
+    // Links come from the backlog sources: only http(s).
+    if (!/^https?:\/\//i.test(href)) return badge(text, cls, title);
+    const node = el('a', {className: 'badge me-1 text-decoration-none ' + cls, href: href, target: '_blank', rel: 'noopener noreferrer'}, text);
+    node.title = title;
+    node.appendChild(el('i', {className: 'fas fa-external-link-alt ms-1', 'aria-hidden': 'true'}));
+    return node;
+  }
+  function updateCount() {
+    if (!addBtn || !results) return;
+    const n = results.querySelectorAll('input.rs-hit:checked').length;
+    countEl.textContent = n;
+    addBtn.disabled = n === 0;
+  }
+  function selectedSources() {
+    return Array.from(modalEl.querySelectorAll('.rs-source:checked')).map(x => x.value);
+  }
+  function setRunButton(searched) {
+    if (!runBtn) return;
+    runBtn.className = searched ? 'btn btn-sm btn-outline-info' : 'btn btn-sm btn-info';
+    runBtn.innerHTML = '';
+    runBtn.appendChild(el('i', {className: (searched ? 'fas fa-redo' : 'fas fa-search') + ' me-1', 'aria-hidden': 'true'}));
+    const label = searched
+      ? (items.length > 1 ? 'Search all again' : 'Search again')
+      : (items.length > 1 ? 'Search all' : 'Search');
+    runBtn.appendChild(document.createTextNode(label));
+  }
+  function updateProgress() {
+    if (!progress) return;
+    const searchedCount = items.filter(x => x.searched).length;
+    if (!searchedCount) {
+      progress.textContent = items.length === 1 ? 'Not searched yet' : items.length + ' issues ready';
+    } else if (searchedCount === items.length) {
+      progress.textContent = items.length + ' issue' + (items.length === 1 ? '' : 's') + ' searched';
+    } else {
+      progress.textContent = searchedCount + ' of ' + items.length + ' issues searched';
+    }
+  }
+  function syncTitles() {
+    items.forEach(item => {
+      if (!item.titleInput) return;
+      const defaultTitle = item.name + ' ' + item.key;
+      const title = item.titleInput.value.trim();
+      item.title = title === defaultTitle ? '' : title;
+    });
+  }
+
+  function titleForm(item, data) {
+    // The title searched for this issue: the series' name and the issue unless changed here.
+    const defaultTitle = (data && data.default_title) || (item.name + ' ' + item.key);
+    const form = el('form', {className: 'd-flex flex-wrap align-items-center gap-2 mb-2'});
+    const input = el('input', {type: 'text', className: 'form-control form-control-sm font-monospace', style: 'max-width: 32rem;',
+      maxlength: '200', placeholder: defaultTitle, 'aria-label': 'Title to search for ' + item.name + ' ' + item.key});
+    input.value = (data && data.title) || item.title || defaultTitle;
+    item.titleInput = input;
+    form.appendChild(el('span', {className: 'small dm-muted'}, 'Title to search'));
+    form.appendChild(input);
+    const submit = el('button', {type: 'submit', className: 'btn btn-sm btn-outline-info'});
+    submit.appendChild(el('i', {className: 'fas fa-search me-1', 'aria-hidden': 'true'}));
+    submit.appendChild(document.createTextNode('Search'));
+    form.appendChild(submit);
+    if (item.title) {
+      const reset = el('button', {type: 'button', className: 'btn btn-sm btn-link p-0', title: defaultTitle}, 'Default title');
+      reset.addEventListener('click', () => {
+        item.title = '';
+        input.value = defaultTitle;
+        if (item.searched) searchOne(item);
+      });
+      form.appendChild(reset);
+    }
+    form.addEventListener('submit', function (event) {
+      event.preventDefault();
+      const title = input.value.trim();
+      item.title = title === defaultTitle ? '' : title;
+      searchOne(item);
+    });
+    return form;
+  }
+
+  function renderPendingSection(item) {
+    const section = el('div', {className: 'mb-4'});
+    item.section = section;
+    const head = el('div', {className: 'd-flex flex-wrap align-items-baseline gap-2 mb-1'});
+    head.appendChild(el('span', {className: 'fw-semibold'}, item.name + ' ' + item.key));
+    head.appendChild(badge('not searched', 'bg-dark border border-secondary'));
+    section.appendChild(head);
+    section.appendChild(titleForm(item, null));
+    return section;
+  }
+
+  function renderSection(item, data) {
+    const section = el('div', {className: 'mb-4'});
+    item.section = section;
+    const head = el('div', {className: 'd-flex flex-wrap align-items-baseline gap-2 mb-1'});
+    head.appendChild(el('span', {className: 'fw-semibold'}, item.name + ' ' + item.key));
+    if (item.title) head.appendChild(badge('changed title', 'bg-info text-dark'));
+    if (data.error) {
+      head.appendChild(badge(data.error, 'bg-danger'));
+      section.appendChild(head);
+      section.appendChild(titleForm(item, data));
+      return section;
+    }
+    const matching = data.hits.filter(h => h.matches).length;
+    head.appendChild(badge(data.hits.length + ' result' + (data.hits.length === 1 ? '' : 's'), 'bg-secondary'));
+    head.appendChild(badge(matching + ' matching', matching ? 'bg-success' : 'bg-dark border border-secondary'));
+    section.appendChild(head);
+    section.appendChild(titleForm(item, data));
+    Object.entries(data.queries || {}).forEach(([source, query]) => {
+      const line = el('div', {className: 'rs-query mb-1'});
+      line.appendChild(el('span', {className: 'dm-muted me-2'}, source));
+      line.appendChild(el('code', {}, query));
+      section.appendChild(line);
+    });
+    (data.errors || []).forEach(e => section.appendChild(el('div', {className: 'text-danger small mb-1'}, e)));
+    if (!data.hits.length) {
+      section.appendChild(el('div', {className: 'small dm-muted'}, 'Nothing found.'));
+      return section;
+    }
+    const table = el('table', {className: 'table table-sm table-dm table-hover mb-0'});
+    const tbody = el('tbody');
+    data.hits.forEach((hit, i) => {
+      const tr = el('tr');
+      const tdCheck = el('td', {style: 'width: 2rem;'});
+      const id = 'rs-hit-' + item.series + '-' + item.key.replace(/\W/g, '_') + '-' + i;
+      if (hit.url) {
+        const cb = el('input', {type: 'checkbox', className: 'form-check-input rs-hit', value: hit.url, id: id});
+        cb.checked = !!hit.suggested;
+        cb.dataset.key = item.key;
+        cb.dataset.name = item.name;
+        tdCheck.appendChild(cb);
+      }
+      tr.appendChild(tdCheck);
+      const tdTitle = el('td', {className: 'rs-hit-title'});
+      const label = el('label', {for: id, className: 'd-block'});
+      label.appendChild(el('span', {}, hit.title));
+      tdTitle.appendChild(label);
+      const sub = el('div', {className: 'small'});
+      if (hit.matches) sub.appendChild(badge('this issue', 'bg-success'));
+      else if (hit.keys.includes(item.key)) sub.appendChild(badge('this issue, not an allowed language', 'bg-warning text-dark'));
+      else if (hit.keys.length) sub.appendChild(badge('issue ' + hit.keys.join(', '), 'bg-warning text-dark'));
+      else sub.appendChild(badge('not this series\' title format', 'bg-dark border border-secondary'));
+      if (hit.suggested) sub.appendChild(badge('suggested', 'bg-success-subtle text-success-emphasis border border-success'));
+      if (hit.known) {
+        sub.appendChild(badge('already here', 'bg-info text-dark',
+          'A gallery with this link is already here. Adding it again doesn\'t download it again when it has an archive '
+          + '(unless the crawler\'s redownload setting is on).'));
+      }
+      if (hit.not_counted) {
+        sub.appendChild(badge('not counted', 'bg-warning text-dark',
+          'It\'s here, but the series doesn\'t count it as this issue, so the issue can show as missing. '
+          + 'Fix the series\' settings or the gallery instead of adding it again.\n\n' + hit.not_counted));
+      }
+      if (hit.expunged) sub.appendChild(badge('expunged', 'bg-danger', 'Removed from the provider\'s listings; it may not be downloadable.'));
+      if (hit.replaced_by) {
+        sub.appendChild(linkBadge(hit.replaced_by_known ? 'replaced, newer version here' : 'replaced by a newer version',
+          hit.replaced_by, hit.replaced_by_known ? 'bg-info text-dark' : 'bg-warning text-dark',
+          'A newer version of this gallery replaced it: open the newer version.'));
+      }
+      if (hit.replaces) {
+        sub.appendChild(linkBadge('update of an older version', hit.replaces, 'bg-secondary',
+          'This gallery is a newer version of another one: open the older version.'));
+      }
+      hit.flags.forEach(f => sub.appendChild(badge(f.replace(/_/g, ' '), 'bg-warning text-dark', 'Tag other:' + f)));
+      hit.languages.forEach(l => sub.appendChild(badge(l, 'bg-secondary')));
+      tdTitle.appendChild(sub);
+      tr.appendChild(tdTitle);
+      const tdLink = el('td', {className: 'small text-nowrap'});
+      if (/^https?:\/\//i.test(hit.url || '')) {
+        const a = el('a', {href: hit.url, target: '_blank', rel: 'noopener noreferrer'},
+          (hit.provider || 'link') + (hit.gid ? ' ' + hit.gid : ''));
+        tdLink.appendChild(a);
+      } else tdLink.textContent = hit.provider;
+      tr.appendChild(tdLink);
+      tr.appendChild(el('td', {className: 'small text-nowrap dm-muted'}, hit.posted));
+      tr.appendChild(el('td', {className: 'small text-nowrap dm-muted text-end'}, hit.image_count ? hit.image_count + ' p' : ''));
+      tr.appendChild(el('td', {className: 'small text-nowrap dm-muted'}, hit.source));
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    section.appendChild(table);
+    return section;
+  }
+
+  async function search(item, sources) {
+    const body = new FormData();
+    body.append('key', item.key);
+    if (item.title) body.append('title', item.title);
+    sources.forEach(s => body.append('source', s));
+    try {
+      const response = await fetch(searchUrlTemplate.replace('/0/', '/' + item.series + '/'), {
+        method: 'POST', body: body, headers: {'X-CSRFToken': csrf()}, credentials: 'same-origin',
+      });
+      const data = await response.json();
+      if (!response.ok) return {error: data.error || ('HTTP ' + response.status)};
+      return data;
+    } catch (e) {
+      return {error: String(e)};
+    }
+  }
+
+  async function run() {
+    if (!results) return;
+    const sources = selectedSources();
+    if (!sources.length) {
+      statusEl.className = 'small me-auto text-warning';
+      statusEl.textContent = 'Select at least one source to search.';
+      return;
+    }
+    syncTitles();
+    const myRun = ++runId;
+    results.innerHTML = '';
+    statusEl.textContent = '';
+    statusEl.className = 'small me-auto';
+    items.forEach(item => { item.searched = false; });
+    updateCount();
+    for (let i = 0; i < items.length; i++) {
+      if (myRun !== runId) return;
+      progress.textContent = 'Searching ' + (i + 1) + ' of ' + items.length + '…';
+      const data = await search(items[i], sources);
+      if (myRun !== runId) return;
+      items[i].searched = true;
+      results.appendChild(renderSection(items[i], data));
+      updateCount();
+    }
+    setRunButton(true);
+    updateProgress();
+  }
+
+  async function searchOne(item) {
+    // Search one issue in place of its current section.
+    const sources = selectedSources();
+    if (!sources.length) {
+      statusEl.className = 'small me-auto text-warning';
+      statusEl.textContent = 'Select at least one source to search.';
+      return;
+    }
+    statusEl.textContent = '';
+    statusEl.className = 'small me-auto';
+    const old = item.section;
+    if (!old || !old.isConnected) return;
+    old.querySelectorAll('input, button').forEach(x => { x.disabled = true; });
+    const searching = el('div', {className: 'small dm-muted mb-2'}, 'Searching…');
+    old.insertBefore(searching, old.children[1] || null);
+    const myRun = runId;
+    const data = await search(item, sources);
+    if (myRun !== runId || !old.isConnected) return;
+    item.searched = true;
+    old.replaceWith(renderSection(item, data));
+    setRunButton(items.length > 0 && items.every(x => x.searched));
+    updateProgress();
+    updateCount();
+  }
+
+  function open(newItems) {
+    runId++;
+    items = newItems.map(item => ({...item, searched: false}));
+    if (reasonEl && !reasonEl.dataset.touched) {
+      const names = Array.from(new Set(items.map(x => x.name)));
+      reasonEl.value = 'Release completeness: ' + (names.length === 1 ? names[0] : names.length + ' series');
+    }
+    statusEl.textContent = '';
+    statusEl.className = 'small me-auto';
+    if (results) {
+      results.innerHTML = '';
+      items.forEach(item => { results.appendChild(renderPendingSection(item)); });
+      setRunButton(false);
+      updateProgress();
+      updateCount();
+    }
+    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+  }
+
+  function itemFrom(node) {
+    return {series: node.dataset.series, name: node.dataset.seriesName, key: node.dataset.key};
+  }
+
+  document.addEventListener('click', function (event) {
+    const single = event.target.closest('[data-rs-backlog]');
+    if (single) {
+      event.preventDefault();
+      open([itemFrom(single)]);
+      return;
+    }
+    const bulk = event.target.closest('[data-rs-backlog-bulk]');
+    if (bulk) {
+      event.preventDefault();
+      const selected = Array.from(document.querySelectorAll(bulk.dataset.rsBacklogBulk)).filter(x => x.checked).map(itemFrom);
+      if (!selected.length) {
+        alert('Select at least one missing issue.');
+        return;
+      }
+      open(selected);
+    }
+  });
+  if (results) results.addEventListener('change', updateCount);
+  if (reasonEl) reasonEl.addEventListener('input', () => { reasonEl.dataset.touched = '1'; });
+  if (runBtn) runBtn.addEventListener('click', run);
+  modalEl.addEventListener('hidden.bs.modal', () => { runId++; });
+
+  if (addBtn) addBtn.addEventListener('click', async function () {
+    const checked = Array.from(results.querySelectorAll('input.rs-hit:checked'));
+    if (!checked.length) return;
+    if (!confirm('Queue ' + checked.length + ' link' + (checked.length === 1 ? '' : 's') + ' in the web crawler?')) return;
+    const body = new FormData();
+    checked.forEach(cb => body.append('url', cb.value));
+    body.append('reason', reasonEl ? reasonEl.value : '');
+    addBtn.disabled = true;
+    try {
+      const response = await fetch(addUrl, {method: 'POST', body: body, headers: {'X-CSRFToken': csrf()}, credentials: 'same-origin'});
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || ('HTTP ' + response.status));
+      statusEl.className = 'small me-auto text-success';
+      statusEl.textContent = 'Queued ' + data.queued + ' link' + (data.queued === 1 ? '' : 's') + (data.task_id ? ' (task #' + data.task_id + ')' : '') + '. Reload the page once the crawler is done.';
+      checked.forEach(cb => { cb.checked = false; cb.disabled = true; });
+    } catch (e) {
+      statusEl.className = 'small me-auto text-danger';
+      statusEl.textContent = 'Could not queue the links: ' + e.message;
+    }
+    updateCount();
+  });
+})();
+</script>

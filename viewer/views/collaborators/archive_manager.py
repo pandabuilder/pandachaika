@@ -41,6 +41,7 @@ from viewer.models import (
     ArchiveManageEntry
 )
 from viewer.utils.requests import double_check_auth
+from viewer.services import cold_storage
 from viewer.services.archive_selection import filter_archives
 from viewer.views.api.handlers.tasks import tasks_reference
 from viewer.views.head import (
@@ -51,6 +52,37 @@ from viewer.views.head import (
 crawler_settings = settings.CRAWLER_SETTINGS
 logger = logging.getLogger(__name__)
 
+MANAGE_ARCHIVES_PAGE_SIZES = (10, 20, 50, 100)
+
+
+def drop_staff_only_filters(params: dict[str, str], user: Any) -> None:
+    """The cold storage ("storage" filter, offload/restore actions) is for staff only."""
+    if not user.is_staff:
+        params.pop("storage", None)
+
+
+def queue_cold_storage_transfers(
+    archives: QuerySet[Archive], restore: bool, user: Any, reason: str
+) -> tuple[list[int], int]:
+    """Queue one offload (or restore) task per archive that needs it. Returns (task ids, skipped)."""
+    if restore:
+        eligible = archives.filter(cold_storage.cold_name_q())
+    else:
+        eligible = cold_storage.offloadable(archives)
+    eligible_ids = list(eligible.values_list("pk", flat=True))
+    total = archives.count()
+    task_ids = []
+    for archive_id in eligible_ids:
+        task = client.enqueue(
+            args=[archive_id],
+            task_type=cold_storage.RESTORE_TASK if restore else cold_storage.OFFLOAD_TASK,
+            user=user,
+            reason=reason,
+            event_action=cold_storage.RESTORE_EVENT if restore else cold_storage.OFFLOAD_EVENT,
+        )
+        # An already pending task for the archive is returned as is, and is tracked too.
+        task_ids.append(task.pk)
+    return task_ids, total - len(eligible_ids)
 
 
 def manage_archives(request: HttpRequest) -> HttpResponse:
@@ -75,7 +107,7 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
 
     try:
         size = int(get.get("size", "100"))
-        if size not in (10, 20, 50, 100):
+        if size not in MANAGE_ARCHIVES_PAGE_SIZES:
             size = 100
     except ValueError:
         size = 100
@@ -105,6 +137,7 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
 
             if "sort_by" in get:
                 params["sort_by"] = get.get("sort_by", "")
+            drop_staff_only_filters(params, actual_user)
 
             # Same filters as the listing, so "Run for all" acts on exactly the archives shown.
             archives: QuerySet[Archive] = filter_archives(
@@ -469,6 +502,29 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
                 logger.info("User {}: {}".format(actual_user.username, message))
                 if not json_request:
                     messages.success(request, message)
+        elif ("cold_storage_offload" in p or "cold_storage_restore" in p) and actual_user.is_staff:
+            restore = "cold_storage_restore" in p
+            if not cold_storage.is_available():
+                if json_request:
+                    return HttpResponse("Cold storage is not enabled or configured.", status=400)
+                messages.error(request, "Cold storage is not enabled or configured.", extra_tags="danger")
+            else:
+                task_ids, skipped = queue_cold_storage_transfers(archives, restore, actual_user, user_reason)
+                queued_task_ids.extend(task_ids)
+                message = "Queued {} archive(s) to {} the cold storage{}".format(
+                    len(task_ids),
+                    "restore from" if restore else "offload to",
+                    " ({} skipped: {})".format(
+                        skipped, "not offloaded" if restore else "already offloaded, no file or not processed yet"
+                    )
+                    if skipped
+                    else "",
+                )
+                if "reason" in p and p["reason"] != "":
+                    message += ", reason: {}".format(p["reason"])
+                logger.info("User {}: {}".format(actual_user.username, message))
+                if not json_request:
+                    messages.success(request, message)
 
         if json_request:
             payload: dict[str, Any] = {}
@@ -477,6 +533,9 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
                 payload.update(tasks_reference(request, list(dict.fromkeys(queued_task_ids))))
                 payload["batch_status_url"] = reverse("viewer:task-batch-status")
             return HttpResponse(json.dumps(payload), content_type="application/json; charset=utf-8")
+
+        # Post/redirect/get: reloading the page must not repeat the action.
+        return HttpResponseRedirect(request.get_full_path())
 
     params = {
         "sort": "create_date",
@@ -493,6 +552,7 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
 
     if "sort_by" in get:
         params["sort_by"] = get.get("sort_by", "")
+    drop_staff_only_filters(params, actual_user)
 
     can_view_recycled = actual_user is not None and actual_user.has_perm("viewer.recycle_archive")
     filter_flags: dict[str, bool] = {}
@@ -563,9 +623,21 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
     extra_file_form_simple = ArchiveExtraFileSimpleForm(request.GET)
     search_form = ArchiveManageSearchSimpleForm(request.GET)
 
+    raw_counts = Archive.objects.aggregate(
+        n_total=Count("id", filter=Q(binned=False, file_deleted=False)),
+        n_public=Count("id", filter=Q(public=True, binned=False, file_deleted=False)),
+        n_private=Count("id", filter=Q(public=False, binned=False, file_deleted=False)),
+        n_recycled=Count("id", filter=Q(binned=True)),
+    )
+    archive_counts = {key.removeprefix("n_"): value for key, value in raw_counts.items()}
+
     d: dict[str, Any] = {
         "results": results_page,
         "form": form,
+        "stats": archive_counts,
+        "can_view_recycled": can_view_recycled,
+        "size": size,
+        "per_page_options": MANAGE_ARCHIVES_PAGE_SIZES,
         "mark_filters": mark_filters,
         "extra_file_filters": extra_file_filters,
         "mark_form_simple": mark_form_simple,
@@ -594,6 +666,12 @@ def manga_extractor_info(can_extract: bool) -> dict[str, Any]:
         "profiles": [{"key": key, "label": label} for key, label in manga_extractor.get_profile_choices().items()],
         "default_profile": manga_extractor.default_profile,
     }
+
+
+def cold_storage_info(user: Any) -> dict[str, Any]:
+    """Whether the cold storage tools (offload/restore actions, storage filter and badge) are available: the cold
+    storage is enabled and configured, and the user is staff."""
+    return {"enabled": bool(user.is_staff and cold_storage.is_available())}
 
 
 @permission_required("viewer.manage_archive")
@@ -638,6 +716,7 @@ def archive_manager(request: HttpRequest) -> HttpResponse:
                     data["groups"] = groups_list
                     data["permissions"] = permissions
                     data["manga_extractor"] = manga_extractor_info(permissions["extract_contextual_info"])
+                    data["cold_storage"] = cold_storage_info(actual_user)
 
                 new_content = json.dumps(data, ensure_ascii=False)
                 return HttpResponse(new_content, content_type="application/json; charset=utf-8")

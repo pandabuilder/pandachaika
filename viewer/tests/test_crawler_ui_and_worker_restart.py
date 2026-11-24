@@ -1021,7 +1021,7 @@ class ToolsPageCleanupTests(TestCase):
         resp = self.client.get(reverse("viewer:tools"))
         self.assertContains(resp, reverse("viewer:stats-workers"))
         self.assertContains(resp, reverse("viewer:tools-id", args=["restart_viewer"]))
-        self.assertContains(resp, "Restart Web Server")
+        self.assertContains(resp, "Restart web server")
 
     def test_removed_scheduler_tools_are_not_actions_anymore(self):
         resp = self.client.post(reverse("viewer:tools-api", args=["start_timed_dl"]))

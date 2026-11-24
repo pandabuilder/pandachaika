@@ -1,0 +1,10 @@
+{% comment %}Size / page aggregates of the stats pages: agg (filesize__sum, __avg, __max, __min, filecount__avg, __sum), count, noun.{% endcomment %}
+<ul class="dm-kv">
+  <li><span class="dm-kv-key">Number of {{ noun }}</span><span class="dm-kv-val">{{ count|default:0 }}</span></li>
+  <li><span class="dm-kv-key">Total unpacked size</span><span class="dm-kv-val">{{ agg.filesize__sum|default:0|filesizeformat }}<small>{{ agg.filesize__sum|default:0 }} bytes</small></span></li>
+  <li><span class="dm-kv-key">Average unpacked size</span><span class="dm-kv-val">{{ agg.filesize__avg|default:0|filesizeformat }}<small>{{ agg.filesize__avg|default:0|floatformat:"0" }} bytes</small></span></li>
+  <li><span class="dm-kv-key">Largest</span><span class="dm-kv-val">{{ agg.filesize__max|default:0|filesizeformat }}<small>{{ agg.filesize__max|default:0 }} bytes</small></span></li>
+  <li><span class="dm-kv-key">Smallest</span><span class="dm-kv-val">{{ agg.filesize__min|default:0|filesizeformat }}<small>{{ agg.filesize__min|default:0 }} bytes</small></span></li>
+  <li><span class="dm-kv-key">Average pages</span><span class="dm-kv-val">{{ agg.filecount__avg|default:0|floatformat:"0" }}</span></li>
+  <li><span class="dm-kv-key">Total pages</span><span class="dm-kv-val">{{ agg.filecount__sum|default:0 }}</span></li>
+</ul>

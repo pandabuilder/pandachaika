@@ -1,0 +1,529 @@
+{% extends "viewer/base.html" %}
+{% load static viewer_extras %}
+{% block title %}{{ title }} | Monitored Links | {{ block.super }}{% endblock %}
+{% block sidebar %}{% endblock %}
+
+{% block extra_head %}
+  {% load compress %}
+  {% compress css %}
+    <link href="{% static 'css/dm-pages.css' %}" type="text/css" rel="stylesheet" />
+  {% endcompress %}
+  <style>
+    .ml-url { font-size: 0.85rem; }
+    .ml-split { display: flex; height: 8px; min-width: 6rem; border-radius: 4px; overflow: hidden; background: var(--pg-bg-darkest); }
+    .ml-split .ml-split-new { background: var(--pg-accent-green); }
+    .ml-split .ml-split-known { background: var(--pg-accent-blue); }
+    .ml-legend-new { color: var(--pg-accent-green); }
+    .ml-legend-known { color: var(--pg-accent-blue); }
+    .ml-hint { border-left-width: 4px; }
+    .ml-tabs .nav-link { padding: 0.25rem 0.75rem; font-size: 0.85rem; }
+    .table-dm td.num, .table-dm th.num { text-align: right; font-family: monospace; }
+  </style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+  {% include "viewer/include/dm_messages.html" %}
+
+  <!-- Header -->
+  <div class="dm-page-header">
+    <div class="dm-wrap" style="min-width: 0;">
+      <h2 class="h3 mb-1">
+        <i class="fas fa-satellite-dish text-info me-2"></i>{{ link.name }}
+        {% if scheduler and scheduler.is_running %}
+          <span class="badge bg-success align-middle fs-6"><i class="fas fa-play me-1"></i>Running</span>
+        {% else %}
+          <span class="badge bg-secondary align-middle fs-6"><i class="fas fa-stop me-1"></i>Stopped</span>
+        {% endif %}
+        {% if link.enabled %}
+          <span class="badge bg-primary align-middle fs-6">Enabled</span>
+        {% else %}
+          <span class="badge bg-dark border border-secondary align-middle fs-6">Disabled</span>
+        {% endif %}
+        {% if link.auto_start %}<span class="badge bg-info text-dark align-middle fs-6" title="Auto-starts when workers boot">Auto</span>{% endif %}
+      </h2>
+      <div class="ml-url dm-break-all">{{ link.url|urlize_all_rel }}</div>
+      {% if link.description %}<p class="mb-0 small mt-1">{{ link.description }}</p>{% endif %}
+    </div>
+    <div class="d-flex flex-wrap gap-2 align-items-start">
+      <a href="{% url 'viewer:monitored-links' %}" class="btn btn-outline-light btn-sm"><i class="fas fa-arrow-left me-1"></i>All links</a>
+      {% if perms.viewer.change_monitoredlink %}
+        <form method="POST" class="d-inline">{% csrf_token %}
+          {% if scheduler and scheduler.is_running %}
+            <button type="submit" formaction="{% url 'viewer:col-monitored-link-action' link.pk 'stop' %}" class="btn btn-outline-warning btn-sm"><i class="fas fa-stop me-1"></i>Stop</button>
+          {% else %}
+            <button type="submit" formaction="{% url 'viewer:col-monitored-link-action' link.pk 'start' %}" class="btn btn-outline-success btn-sm"><i class="fas fa-play me-1"></i>Start</button>
+          {% endif %}
+          <button type="submit" formaction="{% url 'viewer:col-monitored-link-action' link.pk 'force_run' %}" class="btn btn-outline-info btn-sm" title="Run capture and process now"><i class="fas fa-bolt me-1"></i>Force run</button>
+        </form>
+        <a href="{% url 'viewer:col-edit-monitored-link' link.pk %}" class="btn btn-primary btn-sm"><i class="fas fa-edit me-1"></i>Edit</a>
+      {% endif %}
+      {% if perms.viewer.delete_monitoredlink %}
+        <a href="{% url 'viewer:col-delete-monitored-link' link.pk %}" class="btn btn-outline-danger btn-sm"><i class="fas fa-trash"></i></a>
+      {% endif %}
+    </div>
+  </div>
+
+  {% with capture=report.capture process=report.process links_stats=report.links schedule=report.schedule %}
+
+  <!-- Hints -->
+  {% if report.hints %}
+    <div class="mb-3">
+      {% for hint in report.hints %}
+        <div class="alert alert-{{ hint.level }} ml-hint py-2 mb-2" role="alert">
+          <strong>{{ hint.title }}.</strong> {{ hint.text }}
+        </div>
+      {% endfor %}
+    </div>
+  {% elif not report.analysis_runs %}
+    <div class="alert alert-secondary py-2" role="alert">
+      No runs recorded in the last {{ report.analysis_days }} days. Stats show up once the link runs.
+    </div>
+  {% endif %}
+
+  <!-- Summary tiles -->
+  <div class="row g-2 mb-3">
+    <div class="col-6 col-lg-3">
+      <div class="dm-stat h-100" title="New links found by the capture runs of the last {{ report.analysis_days }} days">
+        <div class="dm-lbl">New links</div>
+        <div class="dm-val text-success">{{ capture.new }}</div>
+        <div class="dm-stat-sub">
+          {% if capture.new_per_hour is not None %}≈ {{ report.new_per_day|floatformat:1 }} per day · {% endif %}{{ capture.runs }} capture run{{ capture.runs|pluralize }}, last {{ report.analysis_days }}d
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="dm-stat h-100" title="Share of the links found by the capture runs that an earlier run had already seen">
+        <div class="dm-lbl">Overlap between runs</div>
+        <div class="dm-val text-info">{{ capture.overlap_ratio|as_percent|default:"-" }}</div>
+        <div class="dm-stat-sub">{{ capture.known }} seen of {{ capture.found }} found · {{ capture.zero_new_runs }} run{{ capture.zero_new_runs|pluralize }} with nothing new</div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <a class="dm-stat h-100 d-block" href="?{% url_multi_replace run_kind='issues' runs_page=1 %}#runs" title="Capture runs that only found new links and stopped before reaching the ones seen before">
+        <div class="dm-lbl">Possible gaps</div>
+        <div class="dm-val {% if capture.gap_runs %}text-danger{% else %}text-secondary{% endif %}">{{ capture.gap_runs }}</div>
+        <div class="dm-stat-sub">runs that likely missed links</div>
+      </a>
+    </div>
+    <div class="col-6 col-lg-3">
+      <a class="dm-stat h-100 d-block" href="?{% url_multi_replace link_status='pending' links_page=1 %}#links" title="Captured links waiting for the process run">
+        <div class="dm-lbl">Pending links</div>
+        <div class="dm-val {% if links_stats.pending %}text-warning{% else %}text-secondary{% endif %}">{{ links_stats.pending }}</div>
+        <div class="dm-stat-sub">
+          {% if links_stats.oldest_pending %}oldest waiting {{ links_stats.oldest_pending|timesince }}{% else %}nothing waiting{% endif %}
+          {% if links_stats.failed %} · {{ links_stats.failed }} failed{% endif %}
+        </div>
+      </a>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-3">
+    <!-- Configuration -->
+    <div class="col-lg-4">
+      <div class="dm-card h-100 mb-0">
+        <div class="dm-card-header"><i class="fas fa-sliders-h text-info me-1"></i>Configuration</div>
+        <ul class="dm-kv">
+          <li>
+            <span class="dm-kv-key">Mode</span>
+            <span class="dm-kv-val">
+              {% if schedule.separate %}
+                Separate frequencies
+              {% else %}
+                Single frequency
+                {% if link.separate_frequencies %}<small title="Separate frequencies is on, but there's no capture frequency">(no capture frequency)</small>{% endif %}
+              {% endif %}
+            </span>
+          </li>
+          {% if schedule.separate %}
+            <li title="Interval to capture new links from the pages/feeds"><span class="dm-kv-key">Capture every</span><span class="dm-kv-val">{{ schedule.capture_every|short_duration }}</span></li>
+            <li title="Interval to process the captured links (API, comparison, downloads)"><span class="dm-kv-key">Process every</span><span class="dm-kv-val">{{ schedule.process_every|short_duration }}</span></li>
+          {% else %}
+            <li title="Each run captures and processes in one go"><span class="dm-kv-key">Run every</span><span class="dm-kv-val">{{ schedule.process_every|short_duration }}</span></li>
+          {% endif %}
+          <li><span class="dm-kv-key">Provider</span><span class="dm-kv-val">{% if link.provider %}{{ link.provider.slug }}{% else %}<span class="dm-dim">any</span>{% endif %}</span></li>
+          <li><span class="dm-kv-key">Stop page</span><span class="dm-kv-val">{{ link.stop_page|default_if_none:"none" }}</span></li>
+          <li>
+            <span class="dm-kv-key">Stop on seen links</span>
+            <span class="dm-kv-val">
+              {{ report.stop_on_seen|yesno:"On,Off" }}
+              {% if link.stop_on_seen_link == "follow_global" %}<small>following global</small>{% endif %}
+            </span>
+          </li>
+          <li>
+            <span class="dm-kv-key">Already seen links</span>
+            <span class="dm-kv-val">
+              {% if link.already_seen_links_mode == "use_before_now" %}
+                Re-check last {{ link.how_long_after_already_seen|short_duration|default:"(no window)" }}
+              {% else %}
+                Not re-checked
+              {% endif %}
+            </span>
+          </li>
+          <li><span class="dm-kv-key">Priority</span><span class="dm-kv-val">{{ link.priority }}</span></li>
+          <li>
+            <span class="dm-kv-key">Wanted galleries</span>
+            <span class="dm-kv-val">
+              {% if link.use_limited_wanted_galleries %}
+                {% for wg in limited_wanted_galleries %}
+                  <a href="{% url 'viewer:wanted-gallery' wg.pk %}" class="badge dm-badge-outline text-info text-decoration-none" title="{{ wg.title }}">#{{ wg.pk }}</a>
+                {% empty %}
+                  <span class="text-warning">restricted to none</span>
+                {% endfor %}
+              {% else %}
+                All eligible
+              {% endif %}
+            </span>
+          </li>
+          {% if link.proxy %}<li><span class="dm-kv-key">Proxy</span><span class="dm-kv-val dm-break-all">{{ link.proxy }}</span></li>{% endif %}
+          <li>
+            <span class="dm-kv-key">Created</span>
+            <span class="dm-kv-val">{{ link.create_date|date:"Y-m-d" }}{% if link.user %} <small>by {{ link.user.username }}</small>{% endif %}</span>
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Schedule -->
+    <div class="col-lg-4">
+      <div class="dm-card h-100 mb-0">
+        <div class="dm-card-header"><i class="fas fa-clock text-info me-1"></i>Schedule</div>
+        <ul class="dm-kv">
+          {% if schedule.separate %}
+            <li>
+              <span class="dm-kv-key">Last capture</span>
+              <span class="dm-kv-val">{% if schedule.last_capture %}<span data-dm-reltime="{{ schedule.last_capture|date:'c' }}">{{ schedule.last_capture|date:"Y-m-d H:i:s" }}</span>{% else %}<span class="dm-dim">never</span>{% endif %}</span>
+            </li>
+            <li>
+              <span class="dm-kv-key">Next capture</span>
+              <span class="dm-kv-val">{% if schedule.next_capture %}{{ schedule.next_capture|date:"Y-m-d H:i" }} <small>in {{ schedule.next_capture|timeuntil }}</small>{% else %}<span class="dm-dim">on start</span>{% endif %}</span>
+            </li>
+            <li>
+              <span class="dm-kv-key">Last process</span>
+              <span class="dm-kv-val">{% if schedule.last_process %}<span data-dm-reltime="{{ schedule.last_process|date:'c' }}">{{ schedule.last_process|date:"Y-m-d H:i:s" }}</span>{% else %}<span class="dm-dim">never</span>{% endif %}</span>
+            </li>
+            <li>
+              <span class="dm-kv-key">Next process</span>
+              <span class="dm-kv-val">{% if schedule.next_process %}{{ schedule.next_process|date:"Y-m-d H:i" }} <small>in {{ schedule.next_process|timeuntil }}</small>{% else %}<span class="dm-dim">on start</span>{% endif %}</span>
+            </li>
+          {% else %}
+            <li>
+              <span class="dm-kv-key">Last run</span>
+              <span class="dm-kv-val">{% if schedule.last_process %}<span data-dm-reltime="{{ schedule.last_process|date:'c' }}">{{ schedule.last_process|date:"Y-m-d H:i:s" }}</span>{% else %}<span class="dm-dim">never</span>{% endif %}</span>
+            </li>
+            <li>
+              <span class="dm-kv-key">Next run</span>
+              <span class="dm-kv-val">{% if schedule.next_process %}{{ schedule.next_process|date:"Y-m-d H:i" }} <small>in {{ schedule.next_process|timeuntil }}</small>{% else %}<span class="dm-dim">on start</span>{% endif %}</span>
+            </li>
+          {% endif %}
+          {% if scheduler and not scheduler.is_running %}
+            <li><span class="dm-kv-key">Scheduler</span><span class="dm-kv-val text-warning">stopped, no run happens until started</span></li>
+          {% endif %}
+          <li><span class="dm-kv-key">Avg capture run</span><span class="dm-kv-val">{{ capture.avg_duration|short_duration|default:"-" }}</span></li>
+          {% if schedule.separate %}
+            <li><span class="dm-kv-key">Avg process run</span><span class="dm-kv-val">{{ process.avg_duration|short_duration|default:"-" }}</span></li>
+          {% endif %}
+          {% if capture.unfinished_runs %}
+            <li title="Started but never finished: ongoing, or the worker stopped mid-run"><span class="dm-kv-key">Unfinished runs</span><span class="dm-kv-val">{{ capture.unfinished_runs }}</span></li>
+          {% endif %}
+        </ul>
+      </div>
+    </div>
+
+    <!-- Captured links -->
+    <div class="col-lg-4">
+      <div class="dm-card h-100 mb-0">
+        <div class="dm-card-header"><i class="fas fa-link text-info me-1"></i>Seen links</div>
+        <ul class="dm-kv">
+          <li title="Links remembered for this monitored link, used to tell new links from already seen ones"><span class="dm-kv-key">Remembered</span><span class="dm-kv-val">{{ links_stats.total }}</span></li>
+          <li><span class="dm-kv-key">Processed</span><span class="dm-kv-val">{{ links_stats.processed }}</span></li>
+          <li><span class="dm-kv-key">Pending</span><span class="dm-kv-val {% if links_stats.pending %}text-warning{% endif %}">{{ links_stats.pending }}</span></li>
+          <li title="Given up on after too many failed processing attempts"><span class="dm-kv-key">Failed</span><span class="dm-kv-val {% if links_stats.failed %}text-danger{% endif %}">{{ links_stats.failed }}</span></li>
+          <li><span class="dm-kv-key">New in last 24h / 7d</span><span class="dm-kv-val">{{ links_stats.captured_last_day }} / {{ links_stats.captured_last_week }}</span></li>
+          <li>
+            <span class="dm-kv-key">Last new link</span>
+            <span class="dm-kv-val">{% if links_stats.last_captured %}<span data-dm-reltime="{{ links_stats.last_captured|date:'c' }}">{{ links_stats.last_captured|date:"Y-m-d H:i" }}</span>{% else %}<span class="dm-dim">never</span>{% endif %}</span>
+          </li>
+          {% if links_stats.avg_wait is not None %}
+            <li title="Time from capture to processing, last {{ report.analysis_days }} days"><span class="dm-kv-key">Wait to process (avg / max)</span><span class="dm-kv-val">{{ links_stats.avg_wait|short_duration }} / {{ links_stats.max_wait|short_duration }}</span></li>
+          {% endif %}
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-3">
+    <!-- Capture stats -->
+    <div class="col-lg-6">
+      <div class="dm-card h-100 mb-0">
+        <div class="dm-card-header">
+          <i class="fas fa-search text-info me-1"></i>Capture runs
+          <span class="small dm-muted fw-normal ms-1">last {{ report.analysis_days }} days</span>
+        </div>
+        {% if capture.runs %}
+          <ul class="dm-kv">
+            <li><span class="dm-kv-key">Runs</span><span class="dm-kv-val">{{ capture.runs }}</span></li>
+            <li>
+              <span class="dm-kv-key">Per run (avg)</span>
+              <span class="dm-kv-val">
+                {{ capture.avg_pages|floatformat:1 }} pages ·
+                <span class="ml-legend-new">{{ capture.avg_new|floatformat:1 }} new</span> ·
+                <span class="ml-legend-known">{{ capture.avg_known|floatformat:1 }} seen</span>
+              </span>
+            </li>
+            <li title="Share of the found links an earlier run had already seen. Some overlap means the runs connect with each other.">
+              <span class="dm-kv-key">Overlap</span>
+              <span class="dm-kv-val">{{ capture.overlap_ratio|as_percent:1|default:"-" }}</span>
+            </li>
+            <li><span class="dm-kv-key">Runs with nothing new</span><span class="dm-kv-val">{{ capture.zero_new_runs }}</span></li>
+            <li title="Only new links, and stopped before reaching the ones seen before (stop page or feed end)">
+              <span class="dm-kv-key">Possible gaps</span>
+              <span class="dm-kv-val {% if capture.gap_runs %}text-danger{% endif %}">{{ capture.gap_runs }}</span>
+            </li>
+            {% if capture.error_runs or capture.no_response_runs %}
+              <li><span class="dm-kv-key">Failed / no response</span><span class="dm-kv-val text-warning">{{ capture.error_runs }} / {{ capture.no_response_runs }}</span></li>
+            {% endif %}
+            {% if capture.new_per_hour is not None %}
+              <li title="New links found over the time covered by the capture runs">
+                <span class="dm-kv-key">New link rate</span>
+                <span class="dm-kv-val">{{ capture.new_per_hour|floatformat:2 }}/h <small>≈ {{ report.expected_new_per_capture|floatformat:1 }} between capture runs</small></span>
+              </li>
+            {% endif %}
+            {% if capture.links_per_page %}
+              <li>
+                <span class="dm-kv-key">Links per page</span>
+                <span class="dm-kv-val">{{ capture.links_per_page|floatformat:1 }}{% if capture.run_capacity %} <small>up to ≈{{ capture.run_capacity }} per run before the stop page</small>{% endif %}</span>
+              </li>
+            {% endif %}
+            <li>
+              <span class="dm-kv-key">Stopped because</span>
+              <span class="dm-kv-val">
+                {% for reason, count in capture.stop_reasons %}
+                  <span class="badge dm-badge-outline text-light">{{ reason }}: {{ count }}</span>
+                {% empty %}-{% endfor %}
+              </span>
+            </li>
+          </ul>
+        {% else %}
+          <div class="dm-empty"><i class="fas fa-search"></i>No capture runs recorded yet.</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Process stats -->
+    <div class="col-lg-6">
+      <div class="dm-card h-100 mb-0">
+        <div class="dm-card-header">
+          <i class="fas fa-cogs text-info me-1"></i>Processing
+          <span class="small dm-muted fw-normal ms-1">last {{ report.analysis_days }} days</span>
+        </div>
+        {% if process.runs %}
+          <ul class="dm-kv">
+            <li><span class="dm-kv-key">Runs</span><span class="dm-kv-val">{{ process.runs }}{% if process.idle_runs %} <small>{{ process.idle_runs }} with nothing to process</small>{% endif %}</span></li>
+            <li>
+              <span class="dm-kv-key">Links to process</span>
+              <span class="dm-kv-val">
+                {{ process.to_process }}
+                {% if schedule.separate %}<small>{{ process.pending_loaded }} captured{% if process.recent_added %}, {{ process.recent_added }} re-checked{% endif %}</small>{% endif %}
+              </span>
+            </li>
+            <li title="Galleries already in the database, not fetched again"><span class="dm-kv-key">Already in database</span><span class="dm-kv-val">{{ process.in_database }}</span></li>
+            <li title="Galleries whose metadata was fetched from the API and checked"><span class="dm-kv-key">Metadata checked</span><span class="dm-kv-val">{{ process.evaluated }}</span></li>
+            <li title="Galleries that matched a wanted gallery"><span class="dm-kv-key">Wanted matches</span><span class="dm-kv-val text-success">{{ process.wanted_matches }}</span></li>
+            <li title="Galleries passed on to the downloaders"><span class="dm-kv-key">Sent to downloaders</span><span class="dm-kv-val">{{ process.accepted }}</span></li>
+            {% if process.banned or process.api_errors %}
+              <li><span class="dm-kv-key">Banned / API errors</span><span class="dm-kv-val">{{ process.banned }} / <span class="{% if process.api_errors %}text-warning{% endif %}">{{ process.api_errors }}</span></span></li>
+            {% endif %}
+            {% if schedule.separate or process.pending_processed or process.pending_retried or process.pending_failed %}
+              <li>
+                <span class="dm-kv-key">Captured links processed / retried / given up</span>
+                <span class="dm-kv-val">{{ process.pending_processed }} / <span class="{% if process.pending_retried %}text-warning{% endif %}">{{ process.pending_retried }}</span> / <span class="{% if process.pending_failed %}text-danger{% endif %}">{{ process.pending_failed }}</span></span>
+              </li>
+            {% endif %}
+            {% if process.error_runs %}
+              <li><span class="dm-kv-key">Failed runs</span><span class="dm-kv-val text-warning">{{ process.error_runs }}</span></li>
+            {% endif %}
+          </ul>
+        {% else %}
+          <div class="dm-empty"><i class="fas fa-cogs"></i>No process runs recorded yet.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Runs -->
+  <div class="dm-card" id="runs">
+    <div class="dm-card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+      <div>
+        <i class="fas fa-history text-info me-1"></i>Runs
+        <span class="small dm-muted fw-normal ms-1">
+          <span class="ml-legend-new"><i class="fas fa-square"></i> new</span>
+          <span class="ml-legend-known ms-1"><i class="fas fa-square"></i> already seen</span>
+        </span>
+      </div>
+      <ul class="nav nav-pills ml-tabs">
+        {% for value, label in run_kinds %}
+          <li class="nav-item"><a class="nav-link{% if run_kind == value %} active{% endif %}" href="?{% url_multi_replace run_kind=value runs_page=1 %}#runs">{{ label }}</a></li>
+        {% endfor %}
+      </ul>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-dm table-hover table-sm mb-0">
+        <thead>
+          <tr>
+            <th>Started</th>
+            <th>Kind</th>
+            <th class="num">Took</th>
+            <th class="num" title="Index/feed pages read">Pages</th>
+            <th class="num" title="Links found on the pages">Found</th>
+            <th title="New links vs links already seen by an earlier run">New / seen</th>
+            <th>Stopped</th>
+            <th class="num" title="Links sent to the database check and API">To process</th>
+            <th class="num" title="Already in the database">In DB</th>
+            <th class="num" title="Metadata fetched and checked">Checked</th>
+            <th class="num" title="Matched a wanted gallery">Wanted</th>
+            <th class="num" title="Sent to the downloaders">To DL</th>
+            <th class="num" title="Captured links processed / left for a retry / given up on">Captured ok/retry/fail</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for run in runs %}
+            <tr>
+              <td class="small text-nowrap"><span data-dm-reltime="{{ run.started|date:'c' }}">{{ run.started|date:"Y-m-d H:i:s" }}</span></td>
+              <td class="text-nowrap">
+                {% if run.kind == "capture" %}<span class="badge bg-info text-dark">Capture</span>
+                {% elif run.kind == "process" %}<span class="badge bg-secondary">Process</span>
+                {% else %}<span class="badge dm-badge-outline text-info">Capture + process</span>{% endif %}
+              </td>
+              <td class="num small">{% if run.finished %}{{ run.duration|short_duration }}{% else %}<span class="text-info" title="Ongoing, or the worker stopped mid-run"><i class="fas fa-spinner"></i></span>{% endif %}</td>
+              {% if run.captures %}
+                <td class="num">{{ run.pages_crawled }}</td>
+                <td class="num">{{ run.links_found }}</td>
+                <td class="small text-nowrap">
+                  {% if run.links_new or run.links_known %}
+                    <div class="d-flex align-items-center gap-2">
+                      <div class="ml-split flex-grow-1" title="{{ run.links_new }} new, {{ run.links_known }} already seen">
+                        <span class="ml-split-new" style="width: {{ run.new_pct }}%"></span>
+                        <span class="ml-split-known" style="width: {{ 100|subtract:run.new_pct }}%"></span>
+                      </div>
+                      <span class="font-monospace"><span class="ml-legend-new">{{ run.links_new }}</span>/<span class="ml-legend-known">{{ run.links_known }}</span></span>
+                    </div>
+                  {% else %}
+                    <span class="dm-dim">-</span>
+                  {% endif %}
+                </td>
+                <td class="small text-nowrap">{{ run.get_stop_reason_display|default:"-" }}</td>
+              {% else %}
+                <td class="num dm-dim">-</td><td class="num dm-dim">-</td><td class="dm-dim">-</td><td class="dm-dim">-</td>
+              {% endif %}
+              {% if run.processes %}
+                <td class="num">{{ run.links_to_process }}</td>
+                <td class="num">{{ run.links_in_database }}</td>
+                <td class="num">{{ run.links_evaluated }}</td>
+                <td class="num {% if run.wanted_matches %}text-success{% endif %}">{{ run.wanted_matches }}</td>
+                <td class="num">{{ run.links_accepted }}</td>
+                <td class="num small">
+                  {% if run.pending_loaded %}{{ run.pending_processed }}/<span class="{% if run.pending_retried %}text-warning{% endif %}">{{ run.pending_retried }}</span>/<span class="{% if run.pending_failed %}text-danger{% endif %}">{{ run.pending_failed }}</span>{% else %}<span class="dm-dim">-</span>{% endif %}
+                </td>
+              {% else %}
+                <td class="num dm-dim">-</td><td class="num dm-dim">-</td><td class="num dm-dim">-</td><td class="num dm-dim">-</td><td class="num dm-dim">-</td><td class="num dm-dim">-</td>
+              {% endif %}
+              <td class="text-nowrap">
+                {% if run.gap %}
+                  <i class="fas fa-exclamation-triangle text-warning" title="Only new links and stopped before reaching the ones seen before: links were likely missed"></i>
+                {% endif %}
+                {% if run.first_capture %}
+                  <i class="fas fa-flag dm-muted" title="First capture run: everything is new"></i>
+                {% endif %}
+                {% if run.error %}
+                  <i class="fas fa-times-circle text-danger" title="{{ run.error|truncatechars:600 }}"></i>
+                {% endif %}
+                {% if run.api_errors %}
+                  <i class="fas fa-plug text-warning" title="{{ run.api_errors }} API errors"></i>
+                {% endif %}
+              </td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="14" class="dm-empty"><i class="fas fa-history"></i>No runs recorded{% if run_kind %} for this filter{% endif %}.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if runs.paginator.num_pages > 1 %}
+      <div class="p-2 d-flex justify-content-between align-items-center small">
+        <span class="dm-muted">Page {{ runs.number }} of {{ runs.paginator.num_pages }} · {{ runs.paginator.count }} runs</span>
+        <div class="btn-group btn-group-sm">
+          {% if runs.has_previous %}<a class="btn btn-outline-light" href="?{% url_replace 'runs_page' runs.previous_page_number %}#runs">Newer</a>{% endif %}
+          {% if runs.has_next %}<a class="btn btn-outline-light" href="?{% url_replace 'runs_page' runs.next_page_number %}#runs">Older</a>{% endif %}
+        </div>
+      </div>
+    {% endif %}
+  </div>
+
+  <!-- Seen links -->
+  <div class="dm-card" id="links">
+    <div class="dm-card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+      <div><i class="fas fa-link text-info me-1"></i>Seen links <span class="small dm-muted fw-normal ms-1">newest first</span></div>
+      <ul class="nav nav-pills ml-tabs">
+        <li class="nav-item"><a class="nav-link{% if not link_status %} active{% endif %}" href="?{% url_multi_replace link_status='' links_page=1 %}#links">All</a></li>
+        {% for value, label in link_statuses %}
+          <li class="nav-item"><a class="nav-link{% if link_status == value %} active{% endif %}" href="?{% url_multi_replace link_status=value links_page=1 %}#links">{{ label }}</a></li>
+        {% endfor %}
+      </ul>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-dm table-hover table-sm mb-0">
+        <thead>
+          <tr>
+            <th>First seen</th>
+            <th>Link</th>
+            <th>Status</th>
+            <th class="num" title="Failed processing attempts">Attempts</th>
+            <th>Processed</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for seen in links %}
+            <tr>
+              <td class="small text-nowrap"><span data-dm-reltime="{{ seen.create_date|date:'c' }}">{{ seen.create_date|date:"Y-m-d H:i:s" }}</span></td>
+              <td class="small dm-break-all"><a href="{{ seen.url }}" rel="noreferrer" target="_blank">{{ seen.title|default:seen.url }}</a></td>
+              <td>
+                {% if seen.status == "pending" %}<span class="badge bg-warning text-dark">Pending</span>
+                {% elif seen.status == "failed" %}<span class="badge bg-danger">Failed</span>
+                {% else %}<span class="badge bg-secondary">Processed</span>{% endif %}
+              </td>
+              <td class="num">{{ seen.process_attempts|default:"" }}</td>
+              <td class="small text-nowrap">
+                {% if seen.processed_date %}
+                  {{ seen.processed_date|date:"Y-m-d H:i" }} <span class="dm-dim">after {{ seen.processed_date|subtract:seen.create_date|short_duration }}</span>
+                {% else %}<span class="dm-dim">-</span>{% endif %}
+              </td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="5" class="dm-empty"><i class="fas fa-link"></i>No links seen{% if link_status %} with this status{% endif %}.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if links.paginator.num_pages > 1 %}
+      <div class="p-2 d-flex justify-content-between align-items-center small">
+        <span class="dm-muted">Page {{ links.number }} of {{ links.paginator.num_pages }} · {{ links.paginator.count }} links</span>
+        <div class="btn-group btn-group-sm">
+          {% if links.has_previous %}<a class="btn btn-outline-light" href="?{% url_replace 'links_page' links.previous_page_number %}#links">Newer</a>{% endif %}
+          {% if links.has_next %}<a class="btn btn-outline-light" href="?{% url_replace 'links_page' links.next_page_number %}#links">Older</a>{% endif %}
+        </div>
+      </div>
+    {% endif %}
+  </div>
+
+  {% endwith %}
+</div>
+{% endblock %}
+
+{% block afterJQ %}
+  {% load compress %}
+  {% compress js %}
+    <script src="{% static 'js/dm-pages.js' %}"></script>
+  {% endcompress %}
+{% endblock %}

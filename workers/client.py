@@ -189,6 +189,8 @@ TASK_TYPE_ALIAS_GROUPS: list[set[str]] = [
     {"split_archive_worker", "split_archive", "split_archives"},
     {"mark_similar_worker", "mark_similar_archives", "mark_similar"},
     {"delete_archive_worker", "delete_archive", "delete_archives"},
+    {"cold_storage_offload_worker"},
+    {"cold_storage_restore_worker"},
     {"publish_worker", "publish_archives", "set_all_hidden_as_public"},
     {"contextual_extractor_worker", "extract_contextual_info"},
     {"match_unmatched_worker", "generate_possible_matches_internally", "generate_matches"},
@@ -198,6 +200,7 @@ TASK_TYPE_ALIAS_GROUPS: list[set[str]] = [
     {"web_match_worker"},
     {"database_prune", "prune_database"},
     {"archive_file_check"},
+    {"auto_wanted_worker"},
 ]
 
 

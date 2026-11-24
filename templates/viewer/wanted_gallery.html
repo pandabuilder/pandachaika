@@ -5,6 +5,13 @@
 {% block title %}{{ wanted_gallery.title }} | {{ block.super }}{% endblock %}
 {% block sidebar %}{% endblock %}
 
+{% block extra_head %}
+  {% if can_change %}
+    {% load django_vite %}
+    {% vite_asset 'src/main.tsx' app="admin_widgets" %}
+  {% endif %}
+{% endblock %}
+
 {% block content %}
 {% if messages %}
   {% for message in messages %}
@@ -48,10 +55,23 @@
             <form action="{% url 'viewer:wanted-gallery' wanted_gallery.pk %}" method="POST" class="px-2 py-1">
               {% csrf_token %}
               <div class="input-group input-group-sm mb-2">
-                <input class="form-control form-control-sm" name="provider" value="" placeholder="Provider filter" />
+                <input class="form-control form-control-sm" name="provider" value="" placeholder="Provider filter" aria-label="Provider filter" />
               </div>
-              <button class="btn btn-sm btn-outline-light w-100 mb-1 text-start" name="tool" value="create-possible-matches-internally">
+              <div class="d-flex gap-2 mb-2">
+                <input title="Minimum cutoff (0-1)" aria-label="Minimum cutoff" type="number" step="0.01" min="0" max="1" class="form-control form-control-sm" name="cutoff" value="" placeholder="Cutoff 0.4">
+                <input title="Max possible matches" aria-label="Max possible matches" type="number" step="1" min="1" class="form-control form-control-sm" name="max-matches" value="10" placeholder="Max">
+              </div>
+              <div class="form-check form-switch mb-2">
+                <input id="wanted-must-be-used" class="form-check-input" type="checkbox" name="must-be-used" value="1">
+                <label class="form-check-label small text-white" for="wanted-must-be-used">Must be used</label>
+              </div>
+              <button class="btn btn-sm btn-outline-light w-100 mb-1 text-start" name="tool" value="create-possible-matches-internally"
+                      title="Compare the search title with local gallery titles, using the cutoff and max matches">
                 <i class="fas fa-search-plus me-1"></i>Possible matches locally
+              </button>
+              <button class="btn btn-sm btn-outline-light w-100 mb-1 text-start" name="tool" value="create-rule-matches-internally"
+                      title="Possible matches from the wanted gallery rules (title, tags, providers, categories); only uses the provider filter">
+                <i class="fas fa-filter me-1"></i>Possible matches by rules
               </button>
               <button class="btn btn-sm btn-outline-light w-100 text-start" name="tool" value="create-matches-internally">
                 <i class="fas fa-magic me-1"></i>Matches locally
@@ -397,12 +417,14 @@
             <span>{{ wanted_gallery.wait_for_time }}</span>
           </li>
           {% endif %}
-          {% if wanted_gallery.backlog_url_query %}
+          {% with backlog_query=wanted_gallery.get_backlog_url_query %}
+          {% if backlog_query %}
           <li class="list-group-item bg-dark text-light border-secondary py-2 px-3">
-            <span class="card-field-title d-block mb-1">Backlog query</span>
-            <code class="small text-info text-break">{{ wanted_gallery.backlog_url_query }}</code>
+            <span class="card-field-title d-block mb-1">Backlog query{% if not wanted_gallery.backlog_url_query %} <span class="text-secondary small fw-normal">(from search title)</span>{% endif %}</span>
+            <code class="small text-info text-break">{{ backlog_query }}</code>
           </li>
           {% endif %}
+          {% endwith %}
           <li class="list-group-item bg-dark text-light border-secondary d-flex justify-content-between align-items-center py-2 px-3">
             <span class="card-field-title">Found date</span>
             <span class="fw-semibold">{% if wanted_gallery.date_found %}{{ wanted_gallery.date_found|date:"DATETIME_FORMAT" }}{% else %}-{% endif %}</span>
@@ -428,6 +450,13 @@
       <i class="fas fa-check-circle text-success me-2"></i>Found Galleries
       <span class="badge bg-success ms-1">{{ found_galleries.paginator.count }}</span>
     </h4>
+    <div class="d-flex flex-wrap align-items-center gap-2">
+    {% if can_change %}
+      <button class="btn btn-outline-light btn-sm" type="button" id="add-found-galleries-toggle"
+              data-bs-toggle="collapse" data-bs-target="#add-found-galleries" aria-expanded="false" aria-controls="add-found-galleries">
+        <i class="fas fa-plus me-1"></i>Add found galleries
+      </button>
+    {% endif %}
     {% if found_galleries.paginator.num_pages > 1 %}
       <nav aria-label="Found galleries top pagination">
         <ul class="pagination pagination-sm my-0">
@@ -453,7 +482,35 @@
         </ul>
       </nav>
     {% endif %}
+    </div>
   </div>
+  {% if can_change %}
+    <div class="collapse border-bottom border-secondary" id="add-found-galleries">
+      <form method="POST" action="{% url 'viewer:wanted-gallery' wanted_gallery.pk %}" class="p-3" id="add-found-galleries-form">
+        {% csrf_token %}
+        <input type="hidden" name="tool" value="add-found-galleries">
+        <p class="small text-light opacity-75 mb-2">
+          Search galleries, or add them by id or gallery link, then mark them as found galleries of this wanted gallery.
+          They are removed from the possible matches.
+        </p>
+        <div data-chaika-widget="gallery-picker"
+             id="found-gallery-picker"
+             data-input-name="gallery_ids"
+             data-api-url="{% url 'viewer:api-gallery-picker' %}"
+             data-marked-ids="{{ found_gallery_ids|join:',' }}"
+             data-marked-label="Already found"
+             data-initial-title="{% if wanted_gallery.search_title and not wanted_gallery.regexp_search_title %}{{ wanted_gallery.search_title }}{% else %}{{ wanted_gallery.title }}{% endif %}"></div>
+        <noscript>
+          <label class="form-label text-light small mb-1" for="gallery-ids-input">Gallery ids or links</label>
+          <textarea name="gallery_ids" id="gallery-ids-input" class="form-control form-control-sm font-monospace" rows="2"
+                    placeholder="12, 15 100-120"></textarea>
+        </noscript>
+        <button type="submit" class="btn btn-success btn-sm mt-3" id="add-found-galleries-submit">
+          <i class="fas fa-check me-1"></i>Mark as found
+        </button>
+      </form>
+    </div>
+  {% endif %}
   <div class="card-body p-0">
     {% if found_galleries.paginator.count > 0 %}
       <div class="table-responsive">
@@ -879,5 +936,30 @@
 {% block afterJQ %}
   {% if can_change and edit_form %}
     {{ edit_form.media }}
+  {% endif %}
+  {% if can_change %}
+    <script>
+    (function() {
+      const panel = document.getElementById('add-found-galleries');
+      const picker = document.getElementById('found-gallery-picker');
+      const submit = document.getElementById('add-found-galleries-submit');
+      if (!panel || !picker || !submit) return;
+      let count = 0;
+      function updateSubmit() {
+        submit.disabled = count === 0;
+        submit.innerHTML = '<i class="fas fa-check me-1"></i>' +
+          (count ? `Mark ${count} galler${count === 1 ? 'y' : 'ies'} as found` : 'Mark as found');
+      }
+      // Without the widget (no JS bundle), the plain id list is submitted, so keep the button enabled.
+      picker.addEventListener('chaika:change', e => {
+        count = (e.detail && e.detail.count) || 0;
+        updateSubmit();
+      });
+      // Open the search window the first time the panel is shown with nothing selected.
+      panel.addEventListener('shown.bs.collapse', () => {
+        if (!count) picker.dispatchEvent(new CustomEvent('chaika:open'));
+      });
+    })();
+    </script>
   {% endif %}
 {% endblock %}

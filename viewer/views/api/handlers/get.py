@@ -474,7 +474,7 @@ def handle_get_match(request: HttpRequest, data: QueryDict, user_is_authenticate
                     if gallery.thumbnail
                     else ""
                 ),
-                "thumbnail_url": gallery.thumbnail_url,
+                "thumbnail_url": gallery.get_thumbnail_url(),
                 "gallery_container": gallery.gallery_container.gid if gallery.gallery_container else "",
                 "parent_gid": gallery.parent_gallery.gid if gallery.parent_gallery else "",
                 "first_gid": gallery.first_gallery.gid if gallery.first_gallery else "",
@@ -702,7 +702,7 @@ def handle_get_gd(request: HttpRequest, data: QueryDict, user_is_authenticated: 
                 if gallery.thumbnail
                 else ""
             ),
-            "thumbnail_url": gallery.thumbnail_url,
+            "thumbnail_url": gallery.get_thumbnail_url(),
             "archives": [
                 {
                     "link": request.build_absolute_uri(reverse("viewer:archive-download", args=(archive.pk,))),

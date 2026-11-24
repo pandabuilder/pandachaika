@@ -33,6 +33,7 @@ from viewer.models import (
     ArchiveManageEntry,
     ArchiveRecycleEntry,
     MonitoredLink,
+    MonitoredLinkRun,
     TagQuerySet,
     GalleryProviderData,
     ItemProperties,
@@ -999,6 +1000,18 @@ class MonitoredLinkAdmin(admin.ModelAdmin):
 
 
 
+class MonitoredLinkRunAdmin(admin.ModelAdmin):
+
+    raw_id_fields = ["monitored_link"]
+    list_filter = ["kind", "stop_reason", "provider"]
+    list_display = [
+        "started", "monitored_link", "kind", "pages_crawled", "links_found", "links_new", "links_known",
+        "stop_reason", "links_to_process", "wanted_matches", "finished",
+    ]
+    list_select_related = ["monitored_link"]
+    search_fields = ["monitored_link__name"]
+
+
 class DownloadEventAdmin(admin.ModelAdmin):
 
     raw_id_fields = ["archive", "gallery"]
@@ -1154,6 +1167,7 @@ admin.site.register(EventLog, EventLogAdmin)
 admin.site.register(UserLongLivedToken, UserLongLivedTokenAdmin)
 admin.site.register(Category, CategoryAdmin)
 admin.site.register(ProcessedLinks, ProcessedLinksAdmin)
+admin.site.register(MonitoredLinkRun, MonitoredLinkRunAdmin)
 admin.site.register(ItemProperties, ItemPropertiesAdmin)
 admin.site.register(GallerySubmitEntry, GallerySubmitEntryAdmin)
 admin.site.register(ArchiveManageEntry, ArchiveManageEntryAdmin)

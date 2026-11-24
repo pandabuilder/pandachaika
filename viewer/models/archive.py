@@ -474,6 +474,19 @@ class Archive(TrackedChangesMixin, models.Model):
             return ''
         return os.path.basename(self.zipped.name)
 
+    @property
+    def is_cold_stored(self) -> bool:
+        """Whether the file was offloaded to the cold storage bucket (see viewer.services.cold_storage)."""
+        from viewer.services.cold_storage import is_cold_name
+
+        return is_cold_name(self.zipped.name)
+
+    def has_zipped_file(self) -> bool:
+        """Whether the archive has a file: a local one, or one offloaded to the cold storage (mounted or not)."""
+        if not self.zipped.name:
+            return False
+        return self.is_cold_stored or os.path.isfile(self.zipped.path)
+
     def tags_str(self) -> str:
         lst = [str(x) for x in self.tags.all()]
         return ", ".join(lst)
@@ -552,7 +565,7 @@ class Archive(TrackedChangesMixin, models.Model):
 
     def set_public(self, reason: str = "", skip_zip_check: bool = False) -> bool:
 
-        if not os.path.isfile(self.zipped.path) or not self.crc32:
+        if not self.has_zipped_file() or not self.crc32:
             return False
         activity_cb = getattr(self, "_activity_callback", None)
         if callable(activity_cb):
@@ -586,7 +599,7 @@ class Archive(TrackedChangesMixin, models.Model):
 
     def set_private(self, reason: str = "") -> None:
 
-        if not os.path.isfile(self.zipped.path) or not self.crc32:
+        if not self.has_zipped_file() or not self.crc32:
             return
         self.public = False
         self.public_date = None
@@ -605,6 +618,10 @@ class Archive(TrackedChangesMixin, models.Model):
 
     def delete_all_files(self, create_mark: bool = False, preserve_image_data: bool = False) -> None:
 
+        # First, so that if the bucket can't be reached nothing is deleted and the archive isn't marked as deleted.
+        if self.is_cold_stored:
+            self.delete_cold_stored_file()
+
         results = self.image_set.filter(extracted=True)
 
         if results:
@@ -612,7 +629,8 @@ class Archive(TrackedChangesMixin, models.Model):
                 img.image.delete(save=False)
                 img.thumbnail.delete(save=False)
         self.thumbnail.delete(save=False)
-        self.zipped.delete(save=False)
+        if not self.is_cold_stored:
+            self.zipped.delete(save=False)
         if not preserve_image_data:
             self.image_set.all().delete()
         self.extracted = False
@@ -629,6 +647,17 @@ class Archive(TrackedChangesMixin, models.Model):
             )
         self.file_deleted = True
         self.simple_save()
+
+    def delete_cold_stored_file(self) -> None:
+        """Delete an offloaded file from the bucket. Raises ColdStorageError (and deletes nothing) if the cold
+        storage isn't configured, so the archive isn't marked as deleted while its file stays in the bucket."""
+        from core.base.s3 import S3Error
+        from viewer.services.cold_storage import ColdStorageError, ColdStorageService
+
+        try:
+            ColdStorageService.delete_remote(self)
+        except S3Error as e:
+            raise ColdStorageError("Could not delete {} from the cold storage: {}".format(self.zipped.name, e)) from e
 
     def delete_files_but_archive(self) -> None:
 
@@ -788,7 +817,7 @@ class Archive(TrackedChangesMixin, models.Model):
                 if not settings.ES_CLIENT:
                     return
                 try:
-                    settings.ES_CLIENT.options(request_timeout=30).delete(
+                    settings.ES_CLIENT.delete(
                         index=es_index, id=str(prev_pk), refresh=True
                     )
                 except elasticsearch.exceptions.NotFoundError:
@@ -928,6 +957,9 @@ class Archive(TrackedChangesMixin, models.Model):
     def rename_zipped_tail(self, new_file_name: str) -> bool:
         if not self.zipped.name:
             return False
+        if self.is_cold_stored:
+            logger.warning("Archive %s is offloaded to the cold storage, restore it before renaming its file", self.pk)
+            return False
         initial_path = self.zipped.path
         current_head, current_tail = os.path.split(self.zipped.name)
         new_file_name = os.path.join(current_head, new_file_name)
@@ -940,6 +972,9 @@ class Archive(TrackedChangesMixin, models.Model):
         return True
 
     def rename_zipped_pathname(self, new_file_name: str) -> bool:
+        if self.is_cold_stored:
+            logger.warning("Archive %s is offloaded to the cold storage, restore it before renaming its file", self.pk)
+            return False
         initial_path = self.zipped.path
         if os.path.exists(new_file_name):
             return False

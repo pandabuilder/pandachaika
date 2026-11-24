@@ -197,8 +197,8 @@ class ProcessedLinksStopOnSeenUnitTests(unittest.TestCase):
 
         window_query = MagicMock()
         window_query.values_list.return_value = [
-            "https://e-hentai.org/g/9001/tok9001/",
-            "https://e-hentai.org/g/9002/tok9002/",
+            ("9001", "https://e-hentai.org/g/9001/tok9001/"),
+            ("9002", "https://e-hentai.org/g/9002/tok9002/"),
         ]
 
         def filter_side_effect(*args, **kwargs):

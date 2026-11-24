@@ -2,12 +2,13 @@ import json
 import logging
 import re
 from itertools import groupby
+from typing import Any
 
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import permission_required, login_required
 from django.core.paginator import Paginator, InvalidPage, EmptyPage
-from django.db.models import Prefetch, Count, Case, When, Q
+from django.db.models import Prefetch, Count, Case, When, Q, Exists, OuterRef
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect, Http404, JsonResponse
 from django.shortcuts import render
 from django.urls import reverse
@@ -388,15 +389,8 @@ def gallery_match_groups_possibles(request: HttpRequest) -> HttpResponse:
     except ValueError:
         page = 1
 
-    try:
-        limit = max(1, int(get.get("limit", "100")))
-    except ValueError:
-        limit = 100
-
-    try:
-        inline_thumbnails = bool(get.get("inline-thumbnails", ""))
-    except ValueError:
-        inline_thumbnails = False
+    limit = page_size(get, default=100)
+    inline_thumbnails = bool(get.get("inline-thumbnails", ""))
 
     if "clear" in get:
         form = GallerySearchForm()
@@ -410,6 +404,10 @@ def gallery_match_groups_possibles(request: HttpRequest) -> HttpResponse:
                 # k, pk = k.split('-')
                 # results[pk][k] = v
                 pks.append(v)
+
+        if not pks:
+            messages.warning(request, "No galleries were selected.")
+            return HttpResponseRedirect(request.get_full_path())
 
         preserved = Case(*[When(pk=pk, then=pos) for pos, pk in enumerate(pks)])
 
@@ -434,7 +432,12 @@ def gallery_match_groups_possibles(request: HttpRequest) -> HttpResponse:
             gallery_match_groups = GalleryMatchGroup.objects.filter(pk__in=gallery_match_group_pks)
 
             if thread_exists_in_db("match_unmatched_gallery_groups_worker"):
-                return render_error(request, "Gallery Groups matching worker is already running.")
+                messages.error(
+                    request,
+                    "The gallery groups matching worker is already running, wait for it to finish.",
+                    extra_tags="danger",
+                )
+                return HttpResponseRedirect(request.get_full_path())
             provider = p["create_gallery_match_groups"]
             methods = p.getlist("matcher_type", ["title", "comment"])
             try:
@@ -466,7 +469,7 @@ def gallery_match_groups_possibles(request: HttpRequest) -> HttpResponse:
         elif "delete_gallery_match_groups" in p and request.user.has_perm("viewer.delete_gallerymatchgroup"):
             delete_result = GalleryMatchGroup.objects.filter(galleries__in=galleries).delete()
             logger.info("User {}: Deleting {} Gallery Match Groups for galleries".format(request.user.username, delete_result[0]))
-            messages.success(request, "Clearing possible matches.")
+            messages.success(request, "Deleted the match groups of the selected galleries.")
         elif "auto_select_first_match" in p:
             for gallery in galleries:
                 try:
@@ -502,6 +505,9 @@ def gallery_match_groups_possibles(request: HttpRequest) -> HttpResponse:
 
             messages.success(request, "Adding the first possible match to the Match Group.")
 
+        # Post/redirect/get: reloading the page must not repeat the action.
+        return HttpResponseRedirect(request.get_full_path())
+
     params: dict[str, str] = {
         "sort": "create_date",
         "asc_desc": "desc",
@@ -534,6 +540,7 @@ def gallery_match_groups_possibles(request: HttpRequest) -> HttpResponse:
             to_attr="possible_galleries",
         ),
         "gallery_group__possible_galleries__gallery",
+        "gallery_group__galleries",
     )
 
     if "with-possible-matches" in get:
@@ -545,9 +552,33 @@ def gallery_match_groups_possibles(request: HttpRequest) -> HttpResponse:
     except (InvalidPage, EmptyPage):
         results_page = paginator.page(paginator.num_pages)
 
-    available_providers = Gallery.objects.all().values_list("provider", flat=True).distinct()
+    # Each gallery's match groups, and their possible matches grouped by gallery, best first.
+    results_page.object_list = list(results_page.object_list)
+    for gallery in results_page.object_list:
+        match_groups = list(gallery.gallery_group.all())
+        groups: dict[int, dict[str, Any]] = {}
+        for match_group in match_groups:
+            for match in getattr(match_group, "possible_galleries", []):
+                group = groups.setdefault(match.gallery_id, {"gallery": match.gallery, "matches": [], "best": 0.0})
+                group["matches"].append(match)
+                group["best"] = max(group["best"], match.match_accuracy or 0.0)
+        candidates = sorted(groups.values(), key=lambda g: g["best"], reverse=True)
+        setattr(gallery, "match_groups", match_groups)
+        setattr(gallery, "candidates", candidates)
+        setattr(gallery, "best_accuracy", candidates[0]["best"] if candidates else None)
+
+    available_providers = Gallery.objects.order_by("provider").values_list("provider", flat=True).distinct()
 
     matcher_types = ("title", "comment")
+
+    stats = {
+        "groups": GalleryMatchGroup.objects.count(),
+        "with_possible": GalleryMatchGroup.objects.filter(
+            Exists(GalleryGroupPossibleMatches.objects.filter(gallery_match_group_id=OuterRef("pk")))
+        ).count(),
+        "single": GalleryMatchGroup.objects.annotate(n=Count("galleries")).filter(n=1).count(),
+        "matcher_running": thread_exists_in_db("match_unmatched_gallery_groups_worker"),
+    }
 
     d = {
         "results": results_page,
@@ -555,6 +586,9 @@ def gallery_match_groups_possibles(request: HttpRequest) -> HttpResponse:
         "matcher_types": matcher_types,
         "form": form,
         "inline_thumbnails": inline_thumbnails,
+        "stats": stats,
+        "limit": limit,
+        "per_page_options": PAGE_SIZE_OPTIONS,
     }
     return render(request, "viewer/collaborators/gallery_match_group_tool.html", d)
 
@@ -633,10 +667,25 @@ def archive_update(
 def gallery_update(
     request: HttpRequest, pk: int, tool: str | None = None, tool_use_id: str | None = None
 ) -> HttpResponse:
+    """Gallery match group tools. Called with fetch (X-Requested-With: XMLHttpRequest), answers JSON instead of redirecting."""
+    is_ajax = request.headers.get("x-requested-with") == "XMLHttpRequest"
     try:
         gallery = Gallery.objects.get(pk=pk)
     except Gallery.DoesNotExist:
         raise Http404("Gallery does not exist")
+
+    def done(match_group: GalleryMatchGroup | None = None) -> HttpResponse:
+        if is_ajax:
+            return JsonResponse(
+                {
+                    "success": True,
+                    "gallery": gallery.pk,
+                    "match_group": match_group.pk if match_group else None,
+                    "match_group_url": match_group.get_absolute_url() if match_group else None,
+                    "match_group_title": match_group.title if match_group else None,
+                }
+            )
+        return safe_redirect_back(request, reverse("viewer:gallery", args=[pk]))
 
     if tool == "add-to-match-group" and tool_use_id and request.user.has_perm("viewer.add_gallerymatchgroup"):
         try:
@@ -671,8 +720,10 @@ def gallery_update(
                 result="matched",
             )
         except ValueError:
+            if is_ajax:
+                return JsonResponse({"success": False, "error": "Invalid gallery."}, status=400)
             return safe_redirect_back(request, reverse("viewer:gallery", args=[pk]))
-        return safe_redirect_back(request, reverse("viewer:gallery", args=[pk]))
+        return done(gallery_match_group)
     elif tool == "clear-possible-matches" and request.user.has_perm("viewer.add_gallerymatchgroup"):
         gallery_group = GalleryMatchGroup.objects.filter(galleries__in=(gallery,)).first()
         if gallery_group:
@@ -683,8 +734,10 @@ def gallery_update(
                     gallery_group.pk
                 )
             )
-        return safe_redirect_back(request, reverse("viewer:gallery", args=[pk]))
+        return done(gallery_group)
     else:
+        if is_ajax:
+            return JsonResponse({"success": False, "error": "Unrecognized command or missing permission."}, status=400)
         return render_error(request, "Unrecognized command")
 
 

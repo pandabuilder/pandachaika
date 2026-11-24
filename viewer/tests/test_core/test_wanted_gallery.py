@@ -359,4 +359,19 @@ class WantedGalleryTest(TestCase):
             self.assertFalse(any("matched filters:" in msg for msg in info_messages))
 
 
+class WantedGalleryBacklogUrlQueryTest(TestCase):
+    def test_uses_backlog_url_query_when_set(self):
+        wanted = WantedGallery(search_title="Some Title", backlog_url_query="custom query")
+        self.assertEqual(wanted.get_backlog_url_query(), "custom query")
 
+    def test_falls_back_to_search_title(self):
+        for empty in (None, ""):
+            wanted = WantedGallery(search_title="Some Title", backlog_url_query=empty)
+            self.assertEqual(wanted.get_backlog_url_query(), "Some Title")
+
+    def test_no_fallback_for_regexp_search_title(self):
+        wanted = WantedGallery(search_title="^Some.*Title$", regexp_search_title=True, backlog_url_query=None)
+        self.assertEqual(wanted.get_backlog_url_query(), "")
+
+    def test_empty_when_nothing_set(self):
+        self.assertEqual(WantedGallery().get_backlog_url_query(), "")

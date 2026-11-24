@@ -1,13 +1,15 @@
+import datetime
 import logging
 from itertools import groupby
 
 from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
 from django.core.paginator import Paginator, InvalidPage, EmptyPage
-from django.db.models import Prefetch, Count, Q, Case, When
+from django.db.models import Prefetch, Count, Q, Case, When, F, Exists, OuterRef
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import render
 from django.conf import settings
+import django.utils.timezone as django_tz
 
 from core.base.utilities import thread_exists_in_db, clamp
 from viewer.forms import (
@@ -33,7 +35,6 @@ from viewer.utils.actions import event_log
 from viewer.utils.general import PAGE_SIZE_OPTIONS, page_size, safe_redirect_back
 from workers import client
 from viewer.views.head import (
-    render_error,
     gallery_filter_keys,
     filter_galleries_simple,
     archive_filter_keys,
@@ -45,6 +46,39 @@ from viewer.views.head import (
 
 crawler_settings = settings.CRAWLER_SETTINGS
 logger = logging.getLogger(__name__)
+
+
+def _delete_selected_archives(request: HttpRequest, delete_files: bool) -> None:
+    """Delete the archives checked as ``del-<pk>``, with or without their files."""
+    p = request.POST
+    pks: list[str] = []
+    for k in p.keys():
+        if k.startswith("del-"):
+            pks.extend(p.getlist(k))
+    if not pks:
+        messages.warning(request, "No archives were selected.")
+        return
+    for archive in Archive.objects.filter(id__in=pks).order_by("-pk"):
+        if delete_files:
+            message = "Removing archive: {} and deleting its file: {}".format(archive.title, archive.zipped.name)
+            archive.delete_all_files()
+        else:
+            message = "Removing archive: {} and keeping its file: {}".format(archive.title, archive.zipped.name)
+        logger.info("User {}: {}".format(request.user.username, message))
+        messages.success(request, message)
+        archive.delete()
+
+
+def _galleries_with_archive_details(results_page) -> None:
+    """Give each gallery of the page its archives, with how each one compares to the gallery."""
+    results_page.object_list = list(results_page.object_list)
+    for gallery in results_page.object_list:
+        archives = list(gallery.archive_set.all())
+        for archive in archives:
+            archive.same_size = bool(gallery.filesize) and archive.filesize == gallery.filesize
+            archive.same_count = bool(gallery.filecount) and archive.filecount == gallery.filecount
+            archive.size_diff = (archive.filesize or 0) - (gallery.filesize or 0)
+        gallery.archive_list = archives
 
 
 @staff_member_required(login_url="viewer:login")
@@ -66,25 +100,9 @@ def repeated_archives_for_galleries(request: HttpRequest) -> HttpResponse:
         form = GallerySearchForm(initial={"title": title, "tags": tags})
 
     if p:
-        pks: list[str] = []
-        for k, v in p.items():
-            if k.startswith("del-"):
-                # k, pk = k.split('-')
-                # results[pk][k] = v
-                pks.extend(p.getlist(k))
-        results_archive = Archive.objects.filter(id__in=pks).order_by("-pk")
-
-        for archive in results_archive:
-            if "delete_archives_and_files" in p:
-                message = "Removing archive and deleting file: {}".format(archive.zipped.name)
-                logger.info(message)
-                messages.success(request, message)
-                archive.delete_all_files()
-            else:
-                message = "Removing archive: {}".format(archive.zipped.name)
-                logger.info(message)
-                messages.success(request, message)
-            archive.delete()
+        _delete_selected_archives(request, delete_files="delete_archives_and_files" in p)
+        # Post/redirect/get: reloading the page must not repeat the action.
+        return HttpResponseRedirect(request.get_full_path())
 
     params = {
         "sort": "create_date",
@@ -105,13 +123,31 @@ def repeated_archives_for_galleries(request: HttpRequest) -> HttpResponse:
 
     results = results.distinct()
 
-    paginator = Paginator(results, 50)
+    limit = page_size(get, default=50)
+    paginator = Paginator(results, limit)
     try:
         results_page = paginator.page(page)
     except (InvalidPage, EmptyPage):
         results_page = paginator.page(paginator.num_pages)
 
-    d = {"results": results_page, "form": form}
+    _galleries_with_archive_details(results_page)
+
+    providers = list(
+        Gallery.objects.filter(pk__in=Gallery.objects.several_archives().order_by().values("pk"))
+        .order_by()
+        .values("provider")
+        .annotate(count=Count("id", distinct=True))
+        .order_by("-count", "provider")
+    )
+
+    d = {
+        "results": results_page,
+        "form": form,
+        "providers": providers,
+        "total": sum(row["count"] for row in providers),
+        "limit": limit,
+        "per_page_options": PAGE_SIZE_OPTIONS,
+    }
     return render(request, "viewer/archives_repeated.html", d)
 
 
@@ -260,7 +296,6 @@ def repeated_galleries_by_field(request: HttpRequest) -> HttpResponse:
 
 @staff_member_required(login_url="viewer:login")
 def archive_filesize_different_from_gallery(request: HttpRequest) -> HttpResponse:
-    providers = Gallery.objects.all().values_list("provider", flat=True).distinct()
     p = request.POST
     get = request.GET
 
@@ -277,26 +312,10 @@ def archive_filesize_different_from_gallery(request: HttpRequest) -> HttpRespons
     else:
         form = GallerySearchForm(initial={"title": title, "tags": tags})
     if p:
-        pks: list[str] = []
-        for k, v in p.items():
-            if k.startswith("del-"):
-                # k, pk = k.split('-')
-                # results[pk][k] = v
-                pks.extend(p.getlist(k))
-        results_archive = Archive.objects.filter(id__in=pks).order_by("-pk")
-
-        for archive in results_archive:
-            if "delete_archives" in p:
-                message = "Removing archive: {} and keeping its file: {}".format(archive.title, archive.zipped.name)
-                logger.info(message)
-                messages.success(request, message)
-                archive.delete()
-            if "delete_archives_and_files" in p:
-                message = "Removing archive: {} and deleting its file: {}".format(archive.title, archive.zipped.name)
-                logger.info(message)
-                messages.success(request, message)
-                archive.delete_all_files()
-                archive.delete()
+        if "delete_archives" in p or "delete_archives_and_files" in p:
+            _delete_selected_archives(request, delete_files="delete_archives_and_files" in p)
+        # Post/redirect/get: reloading the page must not repeat the action.
+        return HttpResponseRedirect(request.get_full_path())
 
     params = {}
 
@@ -310,15 +329,34 @@ def archive_filesize_different_from_gallery(request: HttpRequest) -> HttpRespons
 
     results = filter_galleries_simple(params)
 
-    results = results.different_filesize_archive()
+    # A gallery with several archives of a different size would be listed once per archive.
+    results = results.different_filesize_archive().distinct()
 
-    paginator = Paginator(results, 50)
+    limit = page_size(get, default=50)
+    paginator = Paginator(results, limit)
     try:
         results_page = paginator.page(page)
     except (InvalidPage, EmptyPage):
         results_page = paginator.page(paginator.num_pages)
 
-    d = {"results": results_page, "providers": providers, "form": form}
+    _galleries_with_archive_details(results_page)
+
+    providers = list(
+        Gallery.objects.different_filesize_archive()
+        .order_by()
+        .values("provider")
+        .annotate(count=Count("id", distinct=True))
+        .order_by("-count", "provider")
+    )
+
+    d = {
+        "results": results_page,
+        "providers": providers,
+        "total": sum(row["count"] for row in providers),
+        "form": form,
+        "limit": limit,
+        "per_page_options": PAGE_SIZE_OPTIONS,
+    }
     return render(request, "viewer/archives_different_filesize.html", d)
 
 
@@ -341,15 +379,8 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
     except ValueError:
         page = 1
 
-    try:
-        limit = max(1, int(get.get("limit", "100")))
-    except ValueError:
-        limit = 100
-
-    try:
-        inline_thumbnails = bool(get.get("inline-thumbnails", ""))
-    except ValueError:
-        inline_thumbnails = False
+    limit = page_size(get, default=100)
+    inline_thumbnails = bool(get.get("inline-thumbnails", ""))
 
     if "clear" in get:
         form = ArchiveSearchForm()
@@ -360,13 +391,23 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
         pks = []
         for k, v in p.items():
             if k.startswith("sel-") and isinstance(v, str):
-                # k, pk = k.split('-')
-                # results[pk][k] = v
                 pks.append(v)
+
+        if not pks:
+            messages.warning(request, "No archives were selected.")
+            return HttpResponseRedirect(request.get_full_path())
 
         preserved = Case(*[When(pk=pk, then=pos) for pos, pk in enumerate(pks)])
 
         archives = Archive.objects.filter(id__in=pks).order_by(preserved)
+        try:
+            cutoff = clamp(float(p.get("cutoff", "0.4") or "0.4"), 0.0, 1.0)
+        except ValueError:
+            cutoff = 0.4
+        try:
+            max_matches = int(p.get("max-matches", "10") or "10")
+        except ValueError:
+            max_matches = 10
         if "delete_archives" in p:
             for archive in archives:
                 message = "Removing archive not matched: {} and deleting file: {}".format(
@@ -385,19 +426,17 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
                 messages.success(request, message)
                 archive.delete_files_but_archive()
                 archive.delete()
+        elif "clear_possible_matches" in p:
+            for archive in archives:
+                archive.possible_matches.clear()
+            logger.info("User {}: Clearing possible matches for archives".format(request.user.username))
+            messages.success(request, "Cleared the possible matches of {} archive(s).".format(len(pks)))
         elif "create_possible_matches" in p:
             if thread_exists_in_db("web_match_worker"):
-                return render_error(request, "Web match worker is already running.")
+                messages.error(request, "The web match worker is already running, wait for it to finish.", extra_tags="danger")
+                return HttpResponseRedirect(request.get_full_path())
 
             matcher_filter = p["create_possible_matches"]
-            try:
-                cutoff = clamp(float(p.get("cutoff", "0.4")), 0.0, 1.0)
-            except ValueError:
-                cutoff = 0.4
-            try:
-                max_matches = int(p.get("max-matches", "10"))
-            except ValueError:
-                max_matches = 10
 
             client.enqueue_matching_task(
                 task_type="web_match_worker",
@@ -415,16 +454,9 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
             messages.success(request, "Starting web match worker.")
         elif "create_possible_matches_internal" in p:
             if thread_exists_in_db("match_unmatched_worker"):
-                return render_error(request, "Local matching worker is already running.")
+                messages.error(request, "The local matching worker is already running, wait for it to finish.", extra_tags="danger")
+                return HttpResponseRedirect(request.get_full_path())
             provider = p["create_possible_matches_internal"]
-            try:
-                cutoff = clamp(float(p.get("cutoff", "0.4")), 0.0, 1.0)
-            except ValueError:
-                cutoff = 0.4
-            try:
-                max_matches = int(p.get("max-matches", "10"))
-            except ValueError:
-                max_matches = 10
 
             logger.info(
                 "Looking for possible matches in gallery database "
@@ -446,6 +478,9 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
             )
             messages.success(request, "Starting internal match worker.")
 
+        # Post/redirect/get: reloading the page must not repeat the action.
+        return HttpResponseRedirect(request.get_full_path())
+
     params = {
         "sort": "create_date",
         "asc_desc": "desc",
@@ -461,15 +496,16 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
 
     results = filter_archives_simple(params, True)
 
-    results = results.filter(gallery__isnull=True).prefetch_related( # type:ignore[misc]
+    results = results.filter(gallery__isnull=True).prefetch_related(  # type:ignore[misc]
         Prefetch(
             "archivematches_set",
-            queryset=ArchiveMatches.objects.select_related("gallery", "archive").prefetch_related(
+            queryset=ArchiveMatches.objects.select_related("gallery", "archive")
+            .annotate(gallery_archive_count=Count("gallery__archive"))
+            .prefetch_related(
                 Prefetch("gallery__tags", queryset=Tag.objects.filter(scope__exact="artist"), to_attr="artist_tags"),
                 Prefetch(
                     "gallery__tags", queryset=Tag.objects.filter(scope__exact="magazine"), to_attr="magazine_tags"
                 ),
-                "gallery__archive_set",
             ),
             to_attr="possible_galleries",
         ),
@@ -481,7 +517,9 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
             num_custom_tags=Count("tags", filter=Q(archivetag__origin=ArchiveTag.ORIGIN_USER))
         ).filter(num_custom_tags=0)
     if "with-possible-matches" in get:
-        results = results.annotate(n_possible_matches=Count("possible_matches")).filter(n_possible_matches__gt=0)
+        results = results.filter(Exists(ArchiveMatches.objects.filter(archive_id=OuterRef("pk"))))
+    if "without-possible-matches" in get:
+        results = results.filter(~Exists(ArchiveMatches.objects.filter(archive_id=OuterRef("pk"))))
 
     paginator = Paginator(results, limit)
     try:
@@ -489,12 +527,39 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
     except (InvalidPage, EmptyPage):
         results_page = paginator.page(paginator.num_pages)
 
+    # Group each archive's possible matches by gallery, best candidate first.
+    results_page.object_list = list(results_page.object_list)
+    for archive in results_page.object_list:
+        groups: dict[int, dict] = {}
+        for match in getattr(archive, "possible_galleries", []):
+            group = groups.setdefault(
+                match.gallery_id,
+                {"gallery": match.gallery, "matches": [], "best": 0.0, "archive_count": match.gallery_archive_count},
+            )
+            group["matches"].append(match)
+            group["best"] = max(group["best"], match.match_accuracy or 0.0)
+        candidates = sorted(groups.values(), key=lambda g: g["best"], reverse=True)
+        setattr(archive, "candidates", candidates)
+        setattr(archive, "best_accuracy", candidates[0]["best"] if candidates else None)
+
+    unmatched = Archive.objects.filter(gallery__isnull=True)
+    stats = {
+        "unmatched": unmatched.count(),
+        "with_possible": unmatched.filter(Exists(ArchiveMatches.objects.filter(archive_id=OuterRef("pk")))).count(),
+        "local_running": thread_exists_in_db("match_unmatched_worker"),
+        "web_running": thread_exists_in_db("web_match_worker"),
+    }
+    stats["without_possible"] = stats["unmatched"] - stats["with_possible"]
+
     d = {
         "results": results_page,
-        "providers": Gallery.objects.all().values_list("provider", flat=True).distinct(),
+        "providers": Gallery.objects.order_by("provider").values_list("provider", flat=True).distinct(),
         "matchers": crawler_settings.provider_context.get_matchers(crawler_settings, force=True),
         "form": form,
         "inline_thumbnails": inline_thumbnails,
+        "stats": stats,
+        "limit": limit,
+        "per_page_options": PAGE_SIZE_OPTIONS,
     }
     return render(request, "viewer/archives_not_matched.html", d)
 
@@ -671,22 +736,26 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
         if not p.get("submit-wanted-gallery"):
             return HttpResponseRedirect(request.get_full_path())
 
-    params = {}
+    if is_collaborator_or_staff:
+        params = {}
 
-    for k, v in get.items():
-        params[k] = v
+        for k, v in get.items():
+            params[k] = v
 
-    for k in wanted_gallery_filter_keys:
-        if k not in params:
-            params[k] = ""
+        for k in wanted_gallery_filter_keys:
+            if k not in params:
+                params[k] = ""
 
-    if not is_collaborator_or_staff:
-        if not get:
-            params["wanted-should-search"] = "1"
-            params["wanted-not-found"] = "1"
-        results_filtered = filter_wanted_galleries_simple(params).filter(public=True)
-    else:
         results_filtered = filter_wanted_galleries_simple(params)
+    else:
+        # The public list only shows what is still being looked for, and only searches by title:
+        # the management filters (search state, found, tags, providers...) aren't exposed here.
+        results_filtered = WantedGallery.objects.filter(public=True, should_search=True, found=False).order_by(
+            F("release_date").desc(nulls_last=True), "-pk"
+        )
+        if title:
+            q_formatted = "%" + title.replace(" ", "%") + "%"
+            results_filtered = results_filtered.filter(Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted))
 
     if is_collaborator_or_staff:
         results_filtered = results_filtered.prefetch_related(  # type:ignore[misc]
@@ -714,21 +783,21 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
     except (InvalidPage, EmptyPage):
         results_page = paginator.page(paginator.num_pages)
 
-    base_wanted = WantedGallery.objects.all() if is_collaborator_or_staff else WantedGallery.objects.filter(public=True)
-    raw_stats = base_wanted.aggregate(
-        total_count=Count("id"),
-        searching_count=Count("id", filter=Q(should_search=True, found=False)),
-        found_count=Count("id", filter=Q(found=True)),
-        unfound_count=Count("id", filter=Q(found=False)),
-    )
-    stats = {
-        "total": raw_stats["total_count"],
-        "searching": raw_stats["searching_count"],
-        "found": raw_stats["found_count"],
-        "unfound": raw_stats["unfound_count"],
-    }
+    # The summary tiles are only shown on the management version of the page.
+    stats = None
     if is_collaborator_or_staff:
-        stats["with_matches"] = base_wanted.filter(possible_matches__isnull=False).distinct().count()
+        base_wanted = WantedGallery.objects.all()
+        raw_stats = base_wanted.aggregate(
+            total_count=Count("id"),
+            searching_count=Count("id", filter=Q(should_search=True, found=False)),
+            found_count=Count("id", filter=Q(found=True)),
+        )
+        stats = {
+            "total": raw_stats["total_count"],
+            "searching": raw_stats["searching_count"],
+            "found": raw_stats["found_count"],
+            "with_matches": base_wanted.filter(possible_matches__isnull=False).distinct().count(),
+        }
 
     d = {
         "results": results_page,
@@ -743,6 +812,9 @@ def wanted_galleries(request: HttpRequest) -> HttpResponse:
     return render(request, "viewer/wanted_galleries.html", d)
 
 
+FOUND_GALLERY_PERIODS = {"day": 1, "week": 7, "month": 30}
+
+
 def found_galleries(request: HttpRequest) -> HttpResponse:
 
     get = request.GET
@@ -755,48 +827,70 @@ def found_galleries(request: HttpRequest) -> HttpResponse:
     except ValueError:
         page = 1
 
+    can_view_internal = request.user.is_staff or request.user.has_perm("viewer.view_wantedgallery")
+
+    form = None
     if not request.user.is_authenticated:
-        results = (
-            FoundGallery.objects.filter(wanted_gallery__public=True, gallery__public=True)
-            .prefetch_related("wanted_gallery", "gallery")
-            .order_by("-create_date")
-        )
-
-        paginator = Paginator(results, 100)
-        try:
-            results_page = paginator.page(page)
-        except (InvalidPage, EmptyPage):
-            results_page = paginator.page(paginator.num_pages)
-
-        return render(request, "viewer/found_galleries.html", {"results": results_page})
-
-    if "clear" in get:
-        form = WantedGallerySearchForm()
+        base_results = FoundGallery.objects.filter(wanted_gallery__public=True, gallery__public=True)
     else:
-        form = WantedGallerySearchForm(initial={"title": title, "tags": tags})
+        if "clear" in get:
+            form = WantedGallerySearchForm()
+        else:
+            form = WantedGallerySearchForm(initial={"title": title, "tags": tags})
 
-    params = {}
+        params = {}
 
-    for k, v in get.items():
-        params[k] = v
+        for k, v in get.items():
+            params[k] = v
 
-    for k in wanted_gallery_filter_keys:
-        if k not in params:
-            params[k] = ""
+        for k in wanted_gallery_filter_keys:
+            if k not in params:
+                params[k] = ""
 
-    wanted_galleries_results = filter_wanted_galleries_simple(params)
+        wanted_galleries_results = filter_wanted_galleries_simple(params)
 
-    results = (
-        FoundGallery.objects.filter(wanted_gallery__in=wanted_galleries_results)
-        .prefetch_related("wanted_gallery", "gallery")
-        .order_by("-create_date")
+        base_results = FoundGallery.objects.filter(wanted_gallery__in=wanted_galleries_results)
+
+    # Tiles and source chips count over the records matching the wanted gallery filters.
+    now = django_tz.now()
+    stats = base_results.aggregate(
+        total=Count("id"),
+        day=Count("id", filter=Q(create_date__gte=now - datetime.timedelta(days=1))),
+        week=Count("id", filter=Q(create_date__gte=now - datetime.timedelta(days=7))),
+        month=Count("id", filter=Q(create_date__gte=now - datetime.timedelta(days=30))),
+        wanted=Count("wanted_gallery", distinct=True),
+    )
+    sources = list(
+        base_results.order_by().values("source").annotate(count=Count("id")).order_by("-count", "source")[:12]
     )
 
-    paginator = Paginator(results, 100)
+    results = base_results
+    period = get.get("period", "")
+    if period in FOUND_GALLERY_PERIODS:
+        results = results.filter(create_date__gte=now - datetime.timedelta(days=FOUND_GALLERY_PERIODS[period]))
+    else:
+        period = ""
+    source = get.get("source")
+    if source is not None and source != "":
+        results = results.filter(Q(source__isnull=True) | Q(source="")) if source == "-" else results.filter(source=source)
+
+    results = results.select_related("wanted_gallery", "gallery").order_by("-create_date")
+
+    limit = page_size(get, default=100)
+    paginator = Paginator(results, limit)
     try:
         results_page = paginator.page(page)
     except (InvalidPage, EmptyPage):
         results_page = paginator.page(paginator.num_pages)
 
-    d = {"results": results_page, "form": form}
+    d = {
+        "results": results_page,
+        "form": form,
+        "stats": stats,
+        "sources": sources,
+        "period": period,
+        "can_view_internal": can_view_internal,
+        "limit": limit,
+        "per_page_options": PAGE_SIZE_OPTIONS,
+    }
     return render(request, "viewer/found_galleries.html", d)

@@ -1,358 +1,482 @@
 {% extends "viewer/base.html" %}
-{% block title %}Non-matched archives | {{ block.super }}{% endblock %}
+{% load static viewer_extras %}
+{% block title %}Non-matched Archives | {{ block.super }}{% endblock %}
 {% block sidebar %}{% endblock %}
-{% load static %}
-{% block content %}
-  {% load viewer_extras %}
-  {% if messages %}
-    {% for message in messages %}
-      <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
-    {% endfor %}
-  {% endif %}
-  <!-- Non matched archives  -->
-  <div class="page-header">
-    <h2>Archives not matched with any gallery</h2>
-    <p class="lead">Number of archives not matched (in page, total): {{ results|length }}, {{ results.paginator.count }}</p>
-  </div>
-  <form action="{% url 'viewer:archives-not-matched' %}" method="GET">
-    {% for field in form %}
-      <div class="page-line">
-        {{ field.errors }}
-        {{ field }}
-      </div>
-    {% endfor %}
-    <div class="page-line row g-1 align-items-center">
-    <div class="col-md-auto">
-      <button id="toggle-all" class="btn btn-secondary" type="button">Toggle All</button>
-      <button type="submit" name="apply" class="btn btn-info">Search</button>
-      <a class="btn btn-light" href="{% url 'viewer:archives-not-matched' %}">Clear</a>
-    </div>
-    <div class="col-md-auto">
-        <div class="form-check form-check-inline">
-          <input id="checkbox-f1" class="form-check-input" type="checkbox" name="no-custom-tags" value="1" {% if "no-custom-tags" in request.GET %}checked{% endif %}><label for="checkbox-f1">No custom tags</label>
-        </div>
-    </div>
-    <div class="col-md-auto">
-        <div class="form-check form-check-inline">
-          <input id="checkbox-f2" class="form-check-input" type="checkbox" name="with-possible-matches" value="1" {% if "with-possible-matches" in request.GET %}checked{% endif %}><label for="checkbox-f2">With possible matches</label>
-        </div>
-    </div>
-    <div class="col-md-auto">
-        <div class="form-check form-check-inline">
-          <input id="checkbox-f3" class="form-check-input" type="checkbox" name="inline-thumbnails" value="1" {% if "inline-thumbnails" in request.GET %}checked{% endif %}><label for="checkbox-f3">Inline thumbnails</label>
-        </div>
-    </div>
-    <div class="col-md-auto">
-        <input title="Limit" size="18" type="number" step="1" class="form-control" name="limit" value="{{ request.GET.limit }}" placeholder="Archives per page"/>
-    </div>
-    <div class="col-md-auto">
-        <input class="form-control" size="40" name="filename" value="{{ request.GET.filename }}" placeholder="Filename"/>
-    </div>
-    </div>
-  </form>
-  <!-- Next/Prev page links  -->
-  {% if results.object_list and results.paginator.num_pages > 1 %}
-    <div>
-      <nav aria-label="Middle navigation">
-        <ul class="pagination justify-content-center my-0">
-          <li class="page-item{% if results.number == 1 %} disabled{% endif %}">
-            <a class="page-link" href="?{% url_replace 'page' '1' %}" aria-label="First">
-              <span aria-hidden="true">&laquo;</span>
-            </a>
-          </li>
-          {% if results.has_previous %}
-            <li class="page-item"><a class="page-link" href="?{% url_replace 'page' results.previous_page_number %}">Previous</a></li>
-          {% else %}
-            <li class="page-item disabled"><a class="page-link" href="#">Previous</a></li>
-          {% endif %}
-          <li class="page-item">
-            <div class="mid-item">Page {{ results.number }} of {{ results.paginator.num_pages }}</div>
-          </li>
-          {% if results.has_next %}
-            <li class="page-item"><a class="page-link" href="?{% url_replace 'page' results.next_page_number %}">Next</a></li>
-          {% else %}
-            <li class="page-item disabled"><a class="page-link" href="#">Next</a></li>
-          {% endif %}
-          <li class="page-item{% if results.number == results.paginator.num_pages %} disabled{% endif %}">
-            <a class="page-link" href="?{% url_replace 'page' results.paginator.num_pages %}" aria-label="Last">
-              <span aria-hidden="true">&raquo;</span>
-            </a>
-          </li>
-        </ul>
-      </nav>
-    </div>
-  {% endif %}
-  <form id="anm-single-action-form" method="POST" class="d-none">{% csrf_token %}</form>
-  <form action="{% url 'viewer:archives-not-matched' %}" method="POST">{% csrf_token %}
-    <ul class="list-group">
-      {% for archive in results %}
-        <li class="list-group-item">
-        <span class="me-1">
-          <input id="sel-{{ archive.id }}" class="toggle-list form-check-input" type="checkbox" name="sel-{{ archive.id }}" value="{{ archive.pk }}"><label for="sel-{{ archive.id }}"></label>
-        </span>
-        <a href="{{ archive.get_absolute_url }}">{{ archive.pk }}</a> >> {{ archive.best_title }} >>
-          <span class="dropdown">
-            <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">generate matches internally</button>
-            <div class="dropdown-menu">
-            <a class="dropdown-item" href="#" onclick="sendJSONAPICommand('{% url 'viewer:api-v1-remote' %}', '{% static 'favicon-160.png' %}', 'match_archive_internally', {archive: {{ archive.pk }}, provider: ''}); return false;">All</a>
-              {% for provider in providers %}
-                <a class="dropdown-item" href="#" onclick="sendJSONAPICommand('{% url 'viewer:api-v1-remote' %}', '{% static 'favicon-160.png' %}', 'match_archive_internally', {archive: {{ archive.pk }}, provider: '{{ provider }}'}); return false;">{{ provider }}</a>
-              {% endfor %}
-            </div>
-          </span>
-          <span class="dropdown">
-            <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">generate matches internally clear title<span class="caret"></span></button>
-            <div class="dropdown-menu">
-            <a class="dropdown-item" href="#" onclick="sendJSONAPICommand('{% url 'viewer:api-v1-remote' %}', '{% static 'favicon-160.png' %}', 'match_archive_internally', {archive: {{ archive.pk }}, provider: '', clear: ''}); return false;">All</a>
-              {% for provider in providers %}
-                <a class="dropdown-item" href="#" onclick="sendJSONAPICommand('{% url 'viewer:api-v1-remote' %}', '{% static 'favicon-160.png' %}', 'match_archive_internally', {archive: {{ archive.pk }}, provider: '{{ provider }}', clear: ''}); return false;">{{ provider }}</a>
-              {% endfor %}
-            </div>
-          </span>
-          <span class="dropdown">
-            <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">generate matches web<span class="caret"></span></button>
-            <div class="dropdown-menu">
-            <a class="dropdown-item" href="#" onclick="sendJSONAPICommand('{% url 'viewer:api-v1-remote' %}', '{% static 'favicon-160.png' %}', 'match_archive', {archive: {{ archive.pk }}, match_filter: ''}); return false;">All</a>
-              {% for matcher, priority in matchers %}
-                <a class="dropdown-item" href="#" onclick="sendJSONAPICommand('{% url 'viewer:api-v1-remote' %}', '{% static 'favicon-160.png' %}', 'match_archive', {archive: {{ archive.pk }}, match_filter: '{{ matcher }}'}); return false;">{{ matcher }}</a>
-              {% endfor %}
-            </div>
-          </span> >>
-          <button type="submit" form="anm-single-action-form" formaction="{% url 'viewer:archive-update-tool' archive.pk 'clear-possible-matches' %}" class="btn btn-link p-0 align-baseline">Clear possible matches</button>
-          <p>{{ archive.zipped.path }} >>
-            {{ archive.filesize|filesizeformat }}, {{ archive.filesize }} >>
-            {{ archive.filecount }} >>
-            {{ archive.source_type }} >>
-            {% if archive.thumbnail.name %}
-              <a href="#" data-image-url="{{ archive.thumbnail.url }}" class="img-preview" rel="popover">Thumbnail</a></p>
-            {% endif %}
-          {% if archive.thumbnail.name and inline_thumbnails %}
-          <p>
-          {% include 'viewer/include/archive_cover.html' with show_artist=1 %}
-          {% with matches=archive.possible_galleries|dictsort:"gallery.pk" %}
-            {% if matches|length > 0 %}
-                {% regroup matches by gallery as matches_list %}
-                    {% with matches_list_sorted=matches_list|sort_regrouped_by_max_value_in_list:"match_accuracy" %}
-                        {% for gallery, gallery_matches in matches_list_sorted %}
-                      {% include 'viewer/include/archive_match.html' %}
-                    {% endfor %}
-                {% endwith %}
-            {% endif %}
-          {% endwith %}
-          </p>
-          {% else %}
-          {% with matches=archive.possible_galleries|dictsort:"gallery.pk" %}
-            {% if matches|length > 0 %}
-            {% regroup matches by gallery as matches_list %}
-              <table class="table table-bordered table-sm generic-table">
-                <thead>
-                <tr>
-                    <th>Select</th><th>First Artist</th><th>Title</th><th>URL</th>
-                    <th>
-                            <div class="d-flex justify-content-between">
-                            <div>Type</div><div>Accuracy</div>
-                            </div>
-                    </th>
-                    <th>Posted</th><th>Count</th><th>Size</th><th>Linked?</th>
-                </tr>
-                </thead>
-                <tbody>
-                {% with matches_list_sorted=matches_list|sort_regrouped_by_max_value_in_list:"match_accuracy" %}
-                    {% for gallery, gallery_matches in matches_list_sorted %}
-                      <tr>
-                        <td>
-                          <button type="submit" form="anm-single-action-form" formaction="{% url 'viewer:archive-update-tool-id' archive.pk 'select-as-match' gallery.pk %}" class="btn btn-link p-0" title="Select as match"><i class="fas fa-check"></i></button>
-                        </td>
-                        <td>
-                          {{ gallery.artist_tags.0.name }}
-                        </td>
-                        <td>
 
-                        {% if gallery.thumbnail.name %}
-                          <a href="{% url 'viewer:gallery' gallery.pk %}" data-image-url="{{ gallery.thumbnail.url }}" class="img-preview" rel="popover">{{ gallery.title }}</a>
-                        {% else %}
-                          <a href="{% url 'viewer:gallery' gallery.pk %}">{{ gallery.title }}</a>
-                        {% endif %}
-                        </td>
-                        <td>
-                          {{ gallery.get_link|urlize_all_rel }}
-                        </td>
-                        <td>
-                            {% for match in gallery_matches %}
-                                <div class="d-flex justify-content-between acc-{{ match.match_accuracy|color_percent:1 }}">
-                                <div>
-                                    {{ match.match_type }}
-                                </div>
-                                <div>
-                                    {{ match.match_accuracy|floatformat:3 }}
-                                </div>
-                                </div>
-                            {% endfor %}
-                        </td>
-                        <td>
-                          {{ gallery.posted }}
-                        </td>
-                        <td class="{{ gallery.filecount|color_percent:archive.filecount }}">
-                          {{ gallery.filecount }}
-                        </td>
-                        <td class="{{ gallery.filesize|color_percent:archive.filesize }}">
-                          {{ gallery.filesize }}
-                        </td>
-                        <td>
-                          {{ gallery.archive_set.all|yesno }}
-                        </td>
-                      </tr>
-                    {% endfor %}
-                {% endwith %}
-                </tbody>
-              </table>
-            {% endif %}
-          {% endwith %}
-          {% endif %}
-        </li>
-      {% endfor %}
-    </ul>
-    <div class="row g-1 mt-1">
-    <div class="col-md-auto">
-        <input title="Cutoff" size="10" type="number" step="0.01" class="form-control" name="cutoff" value="" placeholder="Cutoff"/>
-    </div>
-    <div class="col-md-auto">
-      <input title="Max matches" size="10" type="number" step="1" class="form-control" name="max-matches" value="10" placeholder="Max Matches"/>
-    </div>
-    <div class="col-md-auto">
-      <div class="form-check mt-2">
-        <input class="form-check-input" type="checkbox" name="auto_link" id="auto_link" title="Link each archive to its best match when it's good enough, instead of only storing possible matches">
-        <label class="form-check-label" for="auto_link">Auto-link best match</label>
-      </div>
-    </div>
-    <div class="col-md-auto">
-    <div class="dropup">
-        <button class="btn btn-primary dropdown-toggle" type="button" data-bs-toggle="dropdown">Create web matches for selected archives<span class="caret"></span></button>
-        <ul class="dropdown-menu dropdown-menu-end">
-        <li><button type="submit" name="create_possible_matches" class="btn btn-light" value="">All</button></li>
-          {% for matcher, priority in matchers %}
-            <li><button type="submit" name="create_possible_matches" class="btn btn-light" value="{{ matcher }}">{{ matcher }}</button></li>
-          {% endfor %}
-        </ul>
-    </div>
-    </div>
-    <div class="col-md-auto">
-    <div class="dropup">
-        <button class="btn btn-primary dropdown-toggle" type="button" data-bs-toggle="dropdown">Create internal matches for selected archives<span class="caret"></span></button>
-        <ul class="dropdown-menu dropdown-menu-end">
-        <li><button type="submit" name="create_possible_matches_internal" class="btn btn-light" value="">All</button></li>
-          {% for provider in providers %}
-            <li><button type="submit" name="create_possible_matches_internal" class="btn btn-light" value="{{ provider }}">{{ provider }}</button></li>
-          {% endfor %}
-        </ul>
-    </div>
-    </div>
-    <div class="col-md-auto">
-    <button type="submit" name="delete_objects" class="btn btn-light">Delete selected archives</button>
-    <button type="submit" name="delete_archives" class="btn btn-light">Delete (WARNING!) selected archives and files</button>
-    </div>
-    </div>
-  </form>
-  <!-- Next/Prev page links  -->
-  {% if results.object_list and results.paginator.num_pages > 1 %}
-    <div>
-      <nav aria-label="Middle navigation">
-        <ul class="pagination justify-content-center">
-          <li class="page-item{% if results.number == 1 %} disabled{% endif %}">
-            <a class="page-link" href="?{% url_replace 'page' '1' %}" aria-label="First">
-              <span aria-hidden="true">&laquo;</span>
-            </a>
-          </li>
-          {% if results.has_previous %}
-            <li class="page-item"><a class="page-link" href="?{% url_replace 'page' results.previous_page_number %}">Previous</a></li>
-          {% else %}
-            <li class="page-item disabled"><a class="page-link" href="#">Previous</a></li>
-          {% endif %}
-          <li class="page-item">
-            <div class="mid-item">Page {{ results.number }} of {{ results.paginator.num_pages }}</div>
-          </li>
-          {% if results.has_next %}
-            <li class="page-item"><a class="page-link" href="?{% url_replace 'page' results.next_page_number %}">Next</a></li>
-          {% else %}
-            <li class="page-item disabled"><a class="page-link" href="#">Next</a></li>
-          {% endif %}
-          <li class="page-item{% if results.number == results.paginator.num_pages %} disabled{% endif %}">
-            <a class="page-link" href="?{% url_replace 'page' results.paginator.num_pages %}" aria-label="Last">
-              <span aria-hidden="true">&raquo;</span>
-            </a>
-          </li>
-        </ul>
-      </nav>
-    </div>
-  {% endif %}
-{% endblock %}
-{% block afterJQ %}
+{% block extra_head %}
   {% load compress %}
   {% compress css %}
     <link href="{% static 'css/vendor/jal/style.css' %}" type="text/css" media="all" rel="stylesheet" />
+    <link href="{% static 'css/dm-pages.css' %}" type="text/css" rel="stylesheet" />
   {% endcompress %}
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+  {% include "viewer/include/dm_messages.html" %}
+
+  <!-- Header -->
+  <div class="dm-page-header">
+    <div>
+      <h2 class="h3 mb-1"><i class="fas fa-unlink text-info me-2"></i>Archives not Matched</h2>
+      <p class="mb-0 small">
+        Archives without a gallery. Find candidates in the gallery database or on the providers' sites, link the right one, or delete the archive.
+      </p>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      <a href="{% url 'viewer:match-archives' %}" class="btn btn-outline-info btn-sm"><i class="fas fa-link me-1"></i>Archive Matching</a>
+      <a href="{% url 'viewer:stats-workers' %}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-tasks me-1"></i>Workers Dashboard</a>
+    </div>
+  </div>
+
+  <!-- Overview tiles -->
+  <div class="row g-2 mb-3">
+    <div class="col-6 col-md-3">
+      <a class="dm-stat{% if 'with-possible-matches' not in request.GET and 'without-possible-matches' not in request.GET %} active{% endif %}" href="{% url 'viewer:archives-not-matched' %}">
+        <div class="dm-lbl">Unmatched archives</div>
+        <div class="dm-val text-warning">{{ stats.unmatched }}</div>
+        <div class="dm-stat-sub">{{ results.paginator.count }} matching filter</div>
+      </a>
+    </div>
+    <div class="col-6 col-md-3">
+      <a class="dm-stat{% if 'with-possible-matches' in request.GET %} active{% endif %}" href="{% url 'viewer:archives-not-matched' %}?with-possible-matches=1">
+        <div class="dm-lbl">With candidates</div>
+        <div class="dm-val text-info">{{ stats.with_possible }}</div>
+        <div class="dm-stat-sub">ready to review</div>
+      </a>
+    </div>
+    <div class="col-6 col-md-3">
+      <a class="dm-stat{% if 'without-possible-matches' in request.GET %} active{% endif %}" href="{% url 'viewer:archives-not-matched' %}?without-possible-matches=1">
+        <div class="dm-lbl">Without candidates</div>
+        <div class="dm-val text-secondary">{{ stats.without_possible }}</div>
+        <div class="dm-stat-sub">select them and find candidates</div>
+      </a>
+    </div>
+    <div class="col-6 col-md-3">
+      <a class="dm-stat" href="{% url 'viewer:stats-workers' %}">
+        <div class="dm-lbl">Matching workers</div>
+        {% if stats.local_running or stats.web_running %}
+          <div class="dm-val text-success"><i class="fas fa-cog fa-spin me-1"></i>Running</div>
+          <div class="dm-stat-sub">{% if stats.local_running %}local{% endif %}{% if stats.local_running and stats.web_running %} and {% endif %}{% if stats.web_running %}web{% endif %}, reload to see new candidates</div>
+        {% else %}
+          <div class="dm-val text-secondary">Idle</div>
+          <div class="dm-stat-sub">ready for a new search</div>
+        {% endif %}
+      </a>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <form action="{% url 'viewer:archives-not-matched' %}" method="GET" class="dm-card" id="filter-form">
+    <div class="p-3">
+      <div class="row g-2 align-items-end">
+        <div class="col-lg-4">
+          <label class="form-label dm-lbl" for="{{ form.title.id_for_label }}">Archive title</label>
+          {{ form.title }}
+        </div>
+        <div class="col-lg-3">
+          <label class="form-label dm-lbl" for="{{ form.tags.id_for_label }}">Tags</label>
+          {{ form.tags }}
+        </div>
+        <div class="col-lg-3">
+          <label class="form-label dm-lbl" for="f-filename">Filename</label>
+          <input id="f-filename" class="form-control form-control-sm" name="filename" value="{{ request.GET.filename }}" placeholder="Part of the file path">
+        </div>
+        <div class="col-lg-2 d-flex flex-wrap gap-2">
+          <button type="submit" name="apply" class="btn btn-info btn-sm"><i class="fas fa-search me-1"></i>Search</button>
+          <a class="btn btn-outline-light btn-sm" href="{% url 'viewer:archives-not-matched' %}"><i class="fas fa-times me-1"></i>Clear</a>
+        </div>
+      </div>
+      <div class="d-flex flex-wrap align-items-center gap-3 mt-3">
+        <div class="dm-toggles">
+          <input type="checkbox" class="btn-check" name="with-possible-matches" value="1" id="f-with-possible" autocomplete="off"{% if "with-possible-matches" in request.GET %} checked{% endif %}>
+          <label class="btn btn-outline-secondary" for="f-with-possible">With candidates</label>
+          <input type="checkbox" class="btn-check" name="without-possible-matches" value="1" id="f-without-possible" autocomplete="off"{% if "without-possible-matches" in request.GET %} checked{% endif %}>
+          <label class="btn btn-outline-secondary" for="f-without-possible">Without candidates</label>
+          <input type="checkbox" class="btn-check" name="no-custom-tags" value="1" id="f-no-custom-tags" autocomplete="off"{% if "no-custom-tags" in request.GET %} checked{% endif %}>
+          <label class="btn btn-outline-secondary" for="f-no-custom-tags">No custom tags</label>
+          <input type="checkbox" class="btn-check" name="inline-thumbnails" value="1" id="f-inline-thumbnails" autocomplete="off"{% if inline_thumbnails %} checked{% endif %}>
+          <label class="btn btn-outline-secondary" for="f-inline-thumbnails"><i class="fas fa-th-large me-1"></i>Cover view</label>
+        </div>
+        <div class="ms-auto d-flex gap-2">
+          <button type="button" class="btn btn-sm btn-outline-light" id="expand-all" title="Show the candidates of every archive"><i class="fas fa-expand-alt me-1"></i>Expand all</button>
+          <button type="button" class="btn btn-sm btn-outline-light" id="collapse-all" title="Hide the candidates of every archive"><i class="fas fa-compress-alt me-1"></i>Collapse all</button>
+        </div>
+      </div>
+      <div class="mt-3 d-none" data-dm-chips-wrapper>
+        <div class="d-flex flex-wrap align-items-center gap-2">
+          <span class="dm-lbl"><i class="fas fa-filter me-1"></i>Active</span>
+          <div class="dm-chips" id="filter-chips"></div>
+        </div>
+      </div>
+    </div>
+  </form>
+
+  <!-- Results -->
+  <form id="anm-single-action-form" method="POST" class="d-none">{% csrf_token %}</form>
+  <form action="{{ request.get_full_path }}" method="POST" id="match-form">
+    {% csrf_token %}
+    <div class="dm-card">
+      <div class="dm-card-header">
+        <div class="d-flex flex-wrap align-items-center gap-2">
+          <input type="checkbox" class="form-check-input mt-0" id="toggle-all" title="Select all on this page" aria-label="Select all on this page">
+          <div class="flex-grow-1">
+            {% include "viewer/include/dm_pagination.html" with page_obj=results noun="archives" per_page_options=per_page_options per_page=limit %}
+          </div>
+        </div>
+      </div>
+      <div id="archive-list">
+        {% for archive in results %}
+          <div class="dm-item" id="archive-{{ archive.pk }}" data-archive-id="{{ archive.pk }}">
+            <div class="dm-item-head d-flex align-items-center gap-2">
+              <input class="form-check-input archive-checkbox mt-0 flex-shrink-0" type="checkbox" name="sel-{{ archive.id }}" value="{{ archive.pk }}" aria-label="Select archive {{ archive.pk }}">
+              {% if archive.thumbnail.name %}
+                <a href="{{ archive.get_absolute_url }}" class="img-preview flex-shrink-0" data-image-url="{{ archive.thumbnail.url }}">
+                  <img class="dm-thumb" src="{{ archive.thumbnail.url }}" alt="" loading="lazy">
+                </a>
+              {% else %}
+                <span class="dm-thumb dm-thumb-placeholder flex-shrink-0"><i class="fas fa-file-archive"></i></span>
+              {% endif %}
+              <div class="flex-grow-1" style="min-width: 0;">
+                <div>
+                  <a class="dm-item-title {{ archive|archive_title_class }}" href="{{ archive.get_absolute_url }}">{{ archive.best_title }}</a>
+                  <span class="dm-dim small ms-1">#{{ archive.pk }}</span>
+                </div>
+                <div class="dm-item-sub">{{ archive.zipped.name }}</div>
+                <div class="small mt-1 d-flex flex-wrap gap-1 align-items-center">
+                  <span class="badge bg-secondary" title="{{ archive.filesize }} bytes">{{ archive.filesize|filesizeformat }}</span>
+                  <span class="badge bg-secondary">{{ archive.filecount }} images</span>
+                  {% if archive.source_type %}<span class="badge dm-badge-outline text-info">{{ archive.source_type }}</span>{% endif %}
+                  {% if archive.reason %}<span class="badge dm-badge-outline text-secondary">{{ archive.reason }}</span>{% endif %}
+                  {% if not archive.crc32 %}<span class="badge bg-warning text-dark" title="No CRC32 yet">Incomplete</span>{% endif %}
+                  {% if archive.binned %}<span class="badge bg-dark">Binned</span>{% endif %}
+                  <span class="dm-dim ms-1" data-dm-reltime="{{ archive.create_date|date:'c' }}">{{ archive.create_date|date:"Y-m-d H:i" }}</span>
+                  <span class="anm-link-status"></span>
+                </div>
+              </div>
+              <div class="d-flex flex-column align-items-end gap-1 flex-shrink-0 dm-no-row-toggle">
+                <div class="d-flex gap-1">
+                  {% if archive.candidates %}
+                    <span class="badge align-self-center {% if archive.best_accuracy >= 0.9 %}bg-success{% elif archive.best_accuracy >= 0.7 %}bg-info text-dark{% else %}bg-secondary{% endif %}" title="Best candidate accuracy">
+                      best {{ archive.best_accuracy|floatformat:2 }}
+                    </span>
+                  {% endif %}
+                  <div class="dropdown">
+                    <button class="btn btn-sm btn-outline-info dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="Look for candidates for this archive only">
+                      <i class="fas fa-search me-1"></i>Find
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end dm-dropdown-menu p-1" style="max-height: 22rem; overflow-y: auto;">
+                      <li><h6 class="dropdown-header">In the gallery database</h6></li>
+                      <li><button type="button" class="dropdown-item text-light anm-api" data-op="match_archive_internally" data-provider="">All providers</button></li>
+                      {% for provider in providers %}
+                        <li><button type="button" class="dropdown-item text-light anm-api" data-op="match_archive_internally" data-provider="{{ provider }}">{{ provider }}</button></li>
+                      {% endfor %}
+                      <li><h6 class="dropdown-header">Database, with a cleaned title</h6></li>
+                      <li><button type="button" class="dropdown-item text-light anm-api" data-op="match_archive_internally" data-provider="" data-clear="1">All providers</button></li>
+                      {% for provider in providers %}
+                        <li><button type="button" class="dropdown-item text-light anm-api" data-op="match_archive_internally" data-provider="{{ provider }}" data-clear="1">{{ provider }}</button></li>
+                      {% endfor %}
+                      <li><h6 class="dropdown-header">On the web</h6></li>
+                      <li><button type="button" class="dropdown-item text-light anm-api" data-op="match_archive" data-matcher="">All matchers</button></li>
+                      {% for matcher, priority in matchers %}
+                        <li><button type="button" class="dropdown-item text-light anm-api" data-op="match_archive" data-matcher="{{ matcher }}">{{ matcher }}</button></li>
+                      {% endfor %}
+                    </ul>
+                  </div>
+                </div>
+                {% if archive.candidates %}
+                  <div class="d-flex gap-1">
+                    <button type="button" class="btn btn-sm btn-outline-light anm-toggle" data-bs-toggle="collapse" data-bs-target="#candidates-{{ archive.pk }}" aria-expanded="true">
+                      <i class="fas fa-list me-1"></i>{{ archive.candidates|length }} candidate{{ archive.candidates|length|pluralize }}
+                    </button>
+                    <button type="submit" form="anm-single-action-form" formaction="{% url 'viewer:archive-update-tool' archive.pk 'clear-possible-matches' %}" class="btn btn-sm btn-outline-secondary anm-clear" title="Remove this archive's candidates">
+                      <i class="fas fa-eraser"></i>
+                    </button>
+                  </div>
+                {% else %}
+                  <span class="badge dm-badge-outline text-secondary">No candidates</span>
+                {% endif %}
+              </div>
+            </div>
+
+            {% if archive.candidates %}
+              <div class="collapse show dm-item-body anm-candidates" id="candidates-{{ archive.pk }}">
+                {% if inline_thumbnails %}
+                  <div class="dm-covers">
+                    {% for candidate in archive.candidates %}
+                      {% include 'viewer/include/archive_match.html' with gallery=candidate.gallery gallery_matches=candidate.matches %}
+                    {% endfor %}
+                  </div>
+                {% else %}
+                  <div class="table-responsive dm-card mb-0">
+                    <table class="table table-dm table-hover table-sm mb-0">
+                      <thead>
+                        <tr>
+                          <th style="width: 4.5rem;"></th>
+                          <th>Gallery</th>
+                          <th>Artist</th>
+                          <th class="dm-acc">Match</th>
+                          <th>Posted</th>
+                          <th class="text-end">Images</th>
+                          <th class="text-end">Size</th>
+                          <th title="Archives already linked to the gallery">Linked</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {% for candidate in archive.candidates %}
+                          {% with gallery=candidate.gallery %}
+                          <tr>
+                            <td>
+                              <button type="submit" form="anm-single-action-form" formaction="{% url 'viewer:archive-update-tool-id' archive.pk 'select-as-match' gallery.pk %}"
+                                      class="btn btn-sm btn-success anm-select" title="Link archive {{ archive.pk }} to gallery {{ gallery.pk }}"><i class="fas fa-link me-1"></i>Link</button>
+                            </td>
+                            <td class="dm-wrap" style="min-width: 16rem;">
+                              <a href="{% url 'viewer:gallery' gallery.pk %}"{% if gallery.thumbnail.name %} class="img-preview" data-image-url="{{ gallery.thumbnail.url }}"{% endif %}>{{ gallery.title|default:gallery.pk }}</a>
+                              <div class="small dm-break-all">{{ gallery.get_link|urlize_all_rel }}{% if gallery.provider %} <span class="badge bg-secondary">{{ gallery.provider }}</span>{% endif %}</div>
+                            </td>
+                            <td class="small">{{ gallery.artist_tags.0.name|default:"" }}</td>
+                            <td class="dm-acc">
+                              {% for match in candidate.matches %}
+                                <div class="dm-acc-row">
+                                  <span class="dm-acc-type">{{ match.match_type }}</span>
+                                  <div class="progress"><div class="progress-bar {% if match.match_accuracy >= 0.9 %}bg-success{% elif match.match_accuracy >= 0.7 %}bg-info{% else %}bg-secondary{% endif %}" style="width: {% widthratio match.match_accuracy 1 100 %}%"></div></div>
+                                  <span class="dm-acc-val">{{ match.match_accuracy|floatformat:3 }}</span>
+                                </div>
+                              {% endfor %}
+                            </td>
+                            <td class="small text-nowrap">{{ gallery.posted|date:"Y-m-d" }}</td>
+                            <td class="text-end font-monospace small {% if gallery.filecount == archive.filecount %}dm-same{% else %}dm-diff{% endif %}"
+                                title="{% if gallery.filecount == archive.filecount %}Same image count as the archive{% else %}Archive has {{ archive.filecount }}{% endif %}">
+                              {{ gallery.filecount|default:"-" }}
+                            </td>
+                            <td class="text-end small text-nowrap {% if gallery.filesize == archive.filesize %}dm-same{% else %}dm-diff{% endif %}"
+                                title="{{ gallery.filesize }} bytes{% if gallery.filesize != archive.filesize %}, archive has {{ archive.filesize }}{% endif %}">
+                              {% if gallery.filesize %}{{ gallery.filesize|filesizeformat }}{% else %}-{% endif %}
+                            </td>
+                            <td>
+                              {% if candidate.archive_count %}<span class="badge bg-warning text-dark" title="This gallery already has archives">{{ candidate.archive_count }}</span>{% else %}<span class="dm-dim small">no</span>{% endif %}
+                            </td>
+                          </tr>
+                          {% endwith %}
+                        {% endfor %}
+                      </tbody>
+                    </table>
+                  </div>
+                {% endif %}
+              </div>
+            {% endif %}
+          </div>
+        {% empty %}
+          <div class="dm-empty"><i class="fas fa-check-circle"></i>No archives match these filters.</div>
+        {% endfor %}
+      </div>
+      {% if results.paginator.num_pages > 1 %}
+        <div class="p-2 border-top" style="border-color: var(--pg-border) !important;">
+          {% include "viewer/include/dm_pagination.html" with page_obj=results noun="archives" compact=1 %}
+        </div>
+      {% endif %}
+    </div>
+
+    <!-- Bulk actions -->
+    <div class="dm-actionbar">
+      <div class="d-flex flex-wrap align-items-center gap-2">
+        <span class="dm-sel-count" data-dm-sel-count>None selected</span>
+        <span class="dm-actionbar-extra dm-lbl ms-2">Find candidates</span>
+        <input name="cutoff" type="number" step="0.01" min="0" max="1" class="dm-actionbar-extra form-control form-control-sm" style="width: 6.5rem;" placeholder="Cutoff 0.4" title="Minimum accuracy (0 to 1, default 0.4)">
+        <input name="max-matches" type="number" step="1" min="1" class="dm-actionbar-extra form-control form-control-sm" style="width: 5.5rem;" value="10" title="Maximum candidates per archive">
+        <div class="dm-actionbar-extra form-check form-switch mb-0" title="Link each archive to its best candidate when it's good enough, instead of only storing candidates">
+          <input class="form-check-input" type="checkbox" name="auto_link" id="auto_link">
+          <label class="form-check-label small" for="auto_link">Auto-link</label>
+        </div>
+        <div class="dropup">
+          <button class="btn btn-sm btn-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" data-dm-needs-selection disabled
+                  {% if stats.local_running %}title="The local matching worker is running, wait for it to finish"{% endif %}>
+            <i class="fas fa-database me-1"></i>In database
+          </button>
+          <ul class="dropdown-menu dm-dropdown-menu p-1" style="max-height: 22rem; overflow-y: auto;">
+            <li><button type="submit" name="create_possible_matches_internal" class="dropdown-item text-light" value="">All providers</button></li>
+            {% for provider in providers %}
+              <li><button type="submit" name="create_possible_matches_internal" class="dropdown-item text-light" value="{{ provider }}">{{ provider }}</button></li>
+            {% endfor %}
+          </ul>
+        </div>
+        <div class="dropup">
+          <button class="btn btn-sm btn-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" data-dm-needs-selection disabled
+                  {% if stats.web_running %}title="The web match worker is running, wait for it to finish"{% endif %}>
+            <i class="fas fa-globe me-1"></i>On the web
+          </button>
+          <ul class="dropdown-menu dm-dropdown-menu p-1" style="max-height: 22rem; overflow-y: auto;">
+            <li><button type="submit" name="create_possible_matches" class="dropdown-item text-light" value="">All matchers</button></li>
+            {% for matcher, priority in matchers %}
+              <li><button type="submit" name="create_possible_matches" class="dropdown-item text-light" value="{{ matcher }}">{{ matcher }}</button></li>
+            {% endfor %}
+          </ul>
+        </div>
+        <div class="ms-auto d-flex flex-wrap gap-2">
+          <button type="submit" name="clear_possible_matches" value="" class="btn btn-sm btn-outline-secondary" data-dm-needs-selection disabled
+                  data-dm-confirm="Clear the candidates of {n} selected archive(s)?">
+            <i class="fas fa-eraser me-1"></i>Clear candidates
+          </button>
+          <button type="submit" name="delete_objects" class="btn btn-sm btn-outline-warning" data-dm-needs-selection disabled
+                  data-dm-confirm="Delete the records of {n} selected archive(s)? Their files are kept on disk.">
+            <i class="fas fa-unlink me-1"></i>Delete records only
+          </button>
+          <button type="submit" name="delete_archives" class="btn btn-sm btn-danger" data-dm-needs-selection disabled
+                  data-dm-confirm="PERMANENTLY DELETE {n} selected archive(s) AND their files on disk?">
+            <i class="fas fa-trash-alt me-1"></i>Delete archives &amp; files
+          </button>
+        </div>
+      </div>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block afterJQ %}
+  {% load compress %}
   {% compress js %}
     <script src="{% static 'js/vendor/jal.js' %}"></script>
+    <script src="{% static 'js/dm-pages.js' %}"></script>
   {% endcompress %}
-  <script type="text/javascript" src="{% static 'js/list_operations.js' %}"></script>
-  <script type="text/javascript" src="{% static 'js/admin.js' %}"></script>
   <script>
-    let tagData = {};
-    const tagUrl = '{% url 'viewer:api' %}?at=';
-    let tagDataGallery = {};
-    const tagUrlGallery = '{% url 'viewer:api' %}?gt=';
-    function tagToHtml (tag) {
-        return '<div class="tag">' + tag + '</div>'
-    }
-    document.addEventListener("DOMContentLoaded", function() {
-        document.querySelectorAll('.tag-preview')?.forEach((element) => {
-            element.addEventListener("click", function(event) {
-                let el = event.currentTarget;
-                const pk = event.currentTarget.dataset['bsPk'];
-                if (tagData[pk]) {
-                    return tagData[pk];
-                } else {
-                    fetch(tagUrl + pk).then(function (response) {
-                        return response.json();
-                    }).then(function (body) {
-                        if (body.tags) {
-                            tagData[pk] = body.tags.map(tagToHtml);
+    document.addEventListener('DOMContentLoaded', function () {
+      const list = document.getElementById('archive-list');
+      const titleInput = document.getElementById('{{ form.title.id_for_label }}');
+      if (titleInput) titleInput.dataset.dmHotkey = '/';
 
-                            const popover = new bootstrap.Popover(el, {
-                                content: tagData[pk].join(""),
-                                html: true,
-                            })
-                            popover.show();
+      DM.selection({
+        root: list,
+        checkbox: '.archive-checkbox',
+        toggleAll: document.getElementById('toggle-all'),
+        row: '.dm-item',
+        rowClick: true,
+      });
+      DM.filterChips(document.getElementById('filter-form'), document.getElementById('filter-chips'), { ignore: ['limit'] });
 
-                        }
-                    });
-                }
-            });
+      // Clicks on the candidates shouldn't toggle the archive selection.
+      list.querySelectorAll('.anm-candidates').forEach(function (el) { el.classList.add('dm-no-row-toggle'); });
+
+      document.getElementById('expand-all').addEventListener('click', function () {
+        list.querySelectorAll('.anm-candidates').forEach(function (el) { bootstrap.Collapse.getOrCreateInstance(el, { toggle: false }).show(); });
+      });
+      document.getElementById('collapse-all').addEventListener('click', function () {
+        list.querySelectorAll('.anm-candidates').forEach(function (el) { bootstrap.Collapse.getOrCreateInstance(el, { toggle: false }).hide(); });
+      });
+
+      const csrfToken = document.querySelector('#anm-single-action-form input[name="csrfmiddlewaretoken"]')?.value || '';
+
+      function note(row, html, cls) {
+        let el = row.querySelector('.anm-note');
+        if (!el) {
+          el = document.createElement('div');
+          row.appendChild(el);
+        }
+        el.className = 'anm-note small px-3 pb-2 ' + (cls || '');
+        el.innerHTML = html;
+      }
+
+      async function callTool(url) {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'X-CSRFToken': csrfToken, 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
         });
-        document.querySelectorAll('.tag-preview-g')?.forEach((element) => {
-            element.addEventListener("click", function (event) {
-                let el = event.currentTarget;
-                const pk = event.currentTarget.dataset['bsPk'];
-                if (tagDataGallery[pk]) {
-                    return tagDataGallery[pk];
-                } else {
-                    fetch(tagUrlGallery + pk).then(function (response) {
-                        return response.json();
-                    }).then(function (body) {
-                        if (body.tags) {
-                            tagDataGallery[pk] = body.tags.map(tagToHtml);
+        const data = await res.json().catch(function () { return {}; });
+        if (!res.ok || !data.success) throw new Error(data.error || ('HTTP ' + res.status));
+        return data;
+      }
 
-                            const popover = new bootstrap.Popover(el, {
-                                content: tagDataGallery[pk].join(""),
-                                html: true,
-                            })
-                            popover.show();
+      // Link / clear without leaving the page.
+      list.addEventListener('click', async function (e) {
+        const btn = e.target.closest('button.anm-select, button.anm-clear, .dm-covers button.btn-info');
+        if (!btn) return;
+        e.preventDefault();
+        const url = btn.getAttribute('formaction');
+        if (!url) return;
+        const row = btn.closest('.dm-item');
+        const isClear = btn.classList.contains('anm-clear');
+        btn.disabled = true;
+        try {
+          const data = await callTool(url);
+          if (isClear) {
+            row.querySelector('.anm-candidates')?.remove();
+            row.querySelectorAll('.anm-toggle, .anm-clear').forEach(function (el) { el.remove(); });
+            note(row, '<i class="fas fa-eraser me-1"></i>Candidates cleared.', 'dm-muted');
+          } else {
+            row.classList.add('dm-item-done');
+            row.querySelector('.anm-link-status').innerHTML = '<span class="badge bg-success"><i class="fas fa-link me-1"></i>Matched</span> ' +
+              (data.gallery_url ? '<a class="small" href="' + DM.escapeHtml(data.gallery_url) + '">' + DM.escapeHtml(data.gallery_title || ('Gallery ' + data.gallery)) + '</a>' : '');
+            const collapse = row.querySelector('.anm-candidates');
+            if (collapse) bootstrap.Collapse.getOrCreateInstance(collapse, { toggle: false }).hide();
+            const cb = row.querySelector('.archive-checkbox');
+            if (cb && cb.checked) cb.click();
+          }
+        } catch (err) {
+          note(row, '<i class="fas fa-exclamation-triangle me-1"></i>' + DM.escapeHtml(err.message), 'text-danger');
+          btn.disabled = false;
+        }
+      });
 
-                        }
-                    });
-                }
-            });
+      // Per archive searches, through the remote API: the answer shows under the archive.
+      const apiUrl = '{% url "viewer:api-v1-remote" %}';
+      list.addEventListener('click', async function (e) {
+        const btn = e.target.closest('button.anm-api');
+        if (!btn) return;
+        e.preventDefault();
+        const row = btn.closest('.dm-item');
+        const args = { archive: parseInt(row.dataset.archiveId, 10) };
+        if (btn.dataset.op === 'match_archive') {
+          args.match_filter = btn.dataset.matcher || '';
+        } else {
+          args.provider = btn.dataset.provider || '';
+          if (btn.dataset.clear) args.clear = '';
+        }
+        const headers = { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken };
+        try { const token = localStorage.getItem('activeUserToken'); if (token) headers.Authorization = 'Bearer ' + token; } catch (err) { /* ignore */ }
+        note(row, '<i class="fas fa-spinner fa-spin me-1"></i>Looking for candidates (' + DM.escapeHtml(btn.textContent.trim()) + ')...', 'dm-muted');
+        // The database matcher takes the cutoff and max matches of the action bar.
+        const query = new URLSearchParams();
+        const cutoff = document.querySelector('#match-form input[name="cutoff"]').value;
+        const maxMatches = document.querySelector('#match-form input[name="max-matches"]').value;
+        if (cutoff) query.set('cutoff', cutoff);
+        if (maxMatches) query.set('max-matches', maxMatches);
+        if (document.getElementById('auto_link').checked) args.auto_link = true;
+        try {
+          const res = await fetch(apiUrl + (query.toString() ? '?' + query.toString() : ''), { method: 'POST', headers: headers, body: JSON.stringify({ operation: btn.dataset.op, args: args }) });
+          const data = await res.json().catch(function () { return {}; });
+          if (data.error) throw new Error(typeof data.error === 'object' ? data.error.message : data.error);
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          note(row, '<i class="fas fa-check me-1"></i>' + DM.escapeHtml(data.message || 'Done.') + ' <a href="#" class="anm-reload">Reload</a> to see the candidates.', 'text-info');
+        } catch (err) {
+          note(row, '<i class="fas fa-exclamation-triangle me-1"></i>' + DM.escapeHtml(err.message), 'text-danger');
+        }
+      });
+      list.addEventListener('click', function (e) {
+        if (!e.target.closest('a.anm-reload')) return;
+        e.preventDefault();
+        window.location.reload();
+      });
+
+      // Cover view: gallery tags popover.
+      const tagCache = {};
+      list.addEventListener('click', function (e) {
+        const el = e.target.closest('.tag-preview-g');
+        if (!el) return;
+        const pk = el.dataset.bsPk;
+        if (tagCache[pk]) return;
+        fetch('{% url "viewer:api" %}?gt=' + encodeURIComponent(pk)).then(function (r) { return r.json(); }).then(function (body) {
+          if (!body.tags) return;
+          tagCache[pk] = body.tags.map(function (tag) { return '<div class="tag">' + DM.escapeHtml(tag) + '</div>'; }).join('');
+          new bootstrap.Popover(el, { content: tagCache[pk], html: true }).show();
         });
+      });
+
+      // Busy matching workers: don't start another search of the same kind.
+      {% if stats.local_running %}
+        document.querySelectorAll('button[name="create_possible_matches_internal"]').forEach(function (b) { b.disabled = true; });
+      {% endif %}
+      {% if stats.web_running %}
+        document.querySelectorAll('button[name="create_possible_matches"]').forEach(function (b) { b.disabled = true; });
+      {% endif %}
     });
   </script>
 {% endblock %}

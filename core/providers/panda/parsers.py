@@ -7,7 +7,6 @@ from typing import Any
 import urllib.parse
 from collections import defaultdict
 from collections.abc import Iterable
-from datetime import timedelta
 
 import requests
 import feedparser
@@ -24,7 +23,7 @@ from core.base.utilities import (
     set_provider_cooldown,
 )
 from core.base.types import GalleryData, DataDict
-from viewer.models import Gallery
+from viewer.models import Gallery, MonitoredLinkRun
 from .utilities import (
     link_from_gid_token_fjord,
     map_external_gallery_data_to_internal,
@@ -142,7 +141,7 @@ class Parser(BaseParser):
         gallery_urls: Iterable[str],
         unique_urls: set[str],
     ) -> bool:
-        """Process gallery URLs from a search/lofi page.
+        """Process gallery URLs from a search/lofi/feed page.
 
         Only records ProcessedLinks and checks stop_on_seen_links for MonitoredLinks.
         On-demand page requests do not record ProcessedLinks or stop on seen links.
@@ -151,147 +150,22 @@ class Parser(BaseParser):
         crawling stops, and if configured, previously processed links within the specified
         time window ("how long after already seen") are added to unique_urls.
         """
-        monitored_link = getattr(self.own_settings, "monitored_link", None) or getattr(self.settings, "monitored_link", None)
-
-        # On-demand pages (monitored_link is None):
-        # Disable stop_on_seen_links interaction and link capture.
-        if monitored_link is None:
-            for gallery_url in gallery_urls:
-                unique_urls.add(gallery_url)
-            return False
-
-        # Determine stop_on_seen_links setting for MonitoredLink
-        stop_on_seen_val = getattr(monitored_link, "stop_on_seen_link", None)
-        if stop_on_seen_val in ("on", "ON", True):
-            stop_on_seen = True
-        elif stop_on_seen_val in ("off", "OFF", False):
-            stop_on_seen = False
-        else:
-            stop_on_seen = bool(
-                getattr(self.own_settings, "stop_on_seen_links", False)
-                or getattr(self.own_settings, "stop_on_seen_link", False)
-                or getattr(self.settings, "stop_on_seen_links", False)
-                or getattr(self.settings, "stop_on_seen_link", False)
-            )
-
-        capture_only = bool(getattr(self.settings, "capture_links_only", False))
-
-        try:
-            from viewer.models import ProcessedLinks
-
-            provider = self._get_provider()
-        except Exception as e:
-            logger.warning("Could not access Provider or ProcessedLinks: %s", e)
-            for gallery_url in gallery_urls:
-                unique_urls.add(gallery_url)
-            return False
-
-        gallery_list = list(gallery_urls)
-        source_id_map: list[tuple[str, str]] = []
-        source_ids: list[str] = []
-        for g_url in gallery_list:
+        links = []
+        for g_url in gallery_urls:
             gid, _ = get_gid_token_from_link(g_url)
-            s_id = gid if gid else g_url
-            source_id_map.append((g_url, s_id))
-            source_ids.append(s_id)
-
-        query = ProcessedLinks.objects.filter(
-            provider=provider,
-            source_id__in=source_ids,
-            monitored_link=monitored_link,
-        )
-        seen_source_ids = set(query.values_list("source_id", flat=True))
-
-        to_create: list[ProcessedLinks] = []
-        should_stop = False
-
-        for g_url, s_id in source_id_map:
-            if s_id in seen_source_ids:
-                if stop_on_seen:
-                    logger.info(
-                        "Encountered previously processed link %s (source_id: %s) for monitored link %s, stopping (setting: stop_on_seen_links).",
-                        g_url,
-                        s_id,
-                        getattr(monitored_link, "name", monitored_link),
-                    )
-                    should_stop = True
-                    break
-                else:
-                    unique_urls.add(g_url)
-            else:
-                unique_urls.add(g_url)
-                to_create.append(
-                    ProcessedLinks(
-                        provider=provider,
-                        monitored_link=monitored_link,
-                        source_id=s_id,
-                        url=g_url,
-                        # Captured links wait for the process run, otherwise they are processed in this run.
-                        status=ProcessedLinks.Status.PENDING if capture_only else ProcessedLinks.Status.PROCESSED,
-                    )
-                )
-                seen_source_ids.add(s_id)
-
-        if to_create:
-            try:
-                ProcessedLinks.objects.bulk_create(to_create, ignore_conflicts=True)
-            except Exception as e:
-                logger.warning("Could not bulk create ProcessedLinks: %s", e)
+            links.append((gid if gid else g_url, g_url))
+        to_process, should_stop = self._record_seen_links(links)
+        unique_urls.update(url for _, url in to_process)
 
         # In capture mode the recent links are added by the process run instead.
-        if should_stop and not capture_only:
-            unique_urls.update(self._recent_seen_urls(monitored_link, provider))
+        if should_stop and not self._capturing_links_only():
+            unique_urls.update(self._recent_seen_urls(self.current_monitored_link(), self._get_provider()))
 
         return should_stop
 
-    def _get_provider(self) -> "Provider":
-        from viewer.models import Provider
-
-        provider = Provider.objects.filter(slug=self.name).first()
-        if not provider:
-            provider, _ = Provider.objects.get_or_create(slug=self.name, defaults={"name": self.name.capitalize()})
-        return provider
-
     def _recent_seen_urls(self, monitored_link: Any, provider: "Provider") -> set[str]:
         """Links seen within the monitored link's "how long after already seen" window, if configured to use them."""
-        from django.utils import timezone
-        from viewer.models import ProcessedLinks
-        from viewer.models.events import MonitoredLink as MLModel
-
-        already_seen_mode = (
-            getattr(monitored_link, "already_seen_links_mode", None)
-            or getattr(self.own_settings, "already_seen_links_mode", None)
-            or getattr(self.settings, "already_seen_links_mode", None)
-            or "dont_use"
-        )
-        if already_seen_mode not in (MLModel.AlreadySeenLinksMode.USE_BEFORE_NOW, "use_before_now", "use_x_time_before"):
-            return set()
-        window_duration = (
-            getattr(monitored_link, "how_long_after_already_seen", None)
-            or getattr(self.own_settings, "how_long_after_already_seen", None)
-            or getattr(self.settings, "how_long_after_already_seen", None)
-        )
-        if isinstance(window_duration, (int, float)):
-            window_duration = timedelta(seconds=window_duration)
-        if not window_duration or window_duration.total_seconds() <= 0:
-            return set()
-        cutoff = timezone.now() - window_duration
-        recent_urls = {
-            r_url
-            for r_url in ProcessedLinks.objects.filter(
-                provider=provider,
-                monitored_link=monitored_link,
-                create_date__gte=cutoff,
-            ).values_list("url", flat=True)
-            if r_url
-        }
-        logger.info(
-            "Adding %d links seen within the last %s for monitored link %s.",
-            len(recent_urls),
-            window_duration,
-            getattr(monitored_link, "name", monitored_link),
-        )
-        return recent_urls
+        return set(self._recent_seen_links(monitored_link, provider).values())
 
     def _load_pending_links(self, unique_urls: set[str]) -> None:
         """Add the links captured but not yet processed for the current monitored link to the URLs to process."""
@@ -307,16 +181,21 @@ class Parser(BaseParser):
                     provider=provider, monitored_link=monitored_link, status=ProcessedLinks.Status.PENDING
                 ).values_list("pk", "source_id", "url")
             )
+            recent_urls: set[str] = set()
             if getattr(self.settings, "skip_link_capture", False):
                 # Separate frequencies: the window of recent links is applied here, since the capture run
                 # doesn't call the API and can't tell which links are worth checking again.
-                unique_urls.update(self._recent_seen_urls(monitored_link, provider))
+                recent_urls = self._recent_seen_urls(monitored_link, provider)
+                unique_urls.update(recent_urls)
         except Exception as e:
             logger.warning("Could not load the pending links: %s", e)
             return
         for pk, source_id, url in pending:
             self._pending_links[source_id] = pk
             unique_urls.add(url)
+        if self.link_run is not None:
+            self.link_run.pending_loaded += len(pending)
+            self.link_run.recent_added += len(recent_urls - {url for _, _, url in pending})
         if pending:
             logger.info(
                 "Processing %d captured links for monitored link '%s'.", len(pending), getattr(monitored_link, "name", "")
@@ -335,6 +214,7 @@ class Parser(BaseParser):
         failed = [pk for source_id, pk in self._pending_links.items() if source_id not in self._resolved_links]
         self._pending_links = {}
         self._resolved_links = set()
+        given_up = 0
         try:
             now = timezone.now()
             for group in chunks(done, 900):
@@ -343,9 +223,13 @@ class Parser(BaseParser):
                 )
             for group in chunks(failed, 900):
                 ProcessedLinks.objects.filter(pk__in=group).update(process_attempts=F("process_attempts") + 1)
-                ProcessedLinks.objects.filter(
+                given_up += ProcessedLinks.objects.filter(
                     pk__in=group, process_attempts__gte=MAX_LINK_PROCESS_ATTEMPTS, status=ProcessedLinks.Status.PENDING
                 ).update(status=ProcessedLinks.Status.FAILED)
+            if self.link_run is not None:
+                self.link_run.pending_processed += len(done)
+                self.link_run.pending_retried += len(failed) - given_up
+                self.link_run.pending_failed += given_up
             if failed:
                 logger.warning("%d captured links could not be processed and will be retried.", len(failed))
         except Exception as e:
@@ -368,14 +252,18 @@ class Parser(BaseParser):
 
             if not response:
                 logger.info("Got no response, stopping")
+                self._note_run_stop(MonitoredLinkRun.StopReason.NO_RESPONSE)
                 break
 
             response.encoding = "utf-8"
 
             if "No hits found" in response.text:
                 logger.info("Empty page found, ending")
+                self._note_run_stop(MonitoredLinkRun.StopReason.END_OF_RESULTS)
                 break
             else:
+                if self.link_run is not None:
+                    self.link_run.pages_crawled += 1
                 logger.info(
                     "Got content on search page {}, looking for galleries and jumping "
                     "to the next page. Link: {}".format(current_page, url)
@@ -389,6 +277,7 @@ class Parser(BaseParser):
                         break
                 else:
                     logger.info("Empty page found, ending")
+                    self._note_run_stop(MonitoredLinkRun.StopReason.END_OF_RESULTS)
                     break
                 if self.own_settings.stop_page_number is not None:
                     if current_page >= self.own_settings.stop_page_number:
@@ -396,6 +285,7 @@ class Parser(BaseParser):
                             "Got to stop page number: {}, "
                             "ending (setting: provider.stop_page_number).".format(self.own_settings.stop_page_number)
                         )
+                        self._note_run_stop(MonitoredLinkRun.StopReason.STOP_PAGE)
                         break
 
                 last_gallery = main_page_parser.galleries[-1]
@@ -409,6 +299,7 @@ class Parser(BaseParser):
                 query = urllib.parse.parse_qs(parsed.query)
                 if query.get("next") == [last_gid]:
                     logger.info("Next gid did not change ({}), ending".format(last_gid))
+                    self._note_run_stop(MonitoredLinkRun.StopReason.REPEATED_PAGE)
                     break
 
                 query.pop("page", None)
@@ -417,6 +308,18 @@ class Parser(BaseParser):
                 url = urllib.parse.urlunparse(list(parsed[0:4]) + [new_query] + list(parsed[5:]))
 
         return unique_urls
+
+    def links_from_search_page(self, url: str) -> list[str]:
+        request_dict = construct_request_dict(self.settings, self.own_settings)
+        response = self.web_request(url, request_dict, post=False)
+        if not response:
+            raise requests.RequestException("Got no response from the search page.")
+        response.encoding = "utf-8"
+        if "No hits found" in response.text:
+            return []
+        main_page_parser = SearchHTMLParser()
+        main_page_parser.feed(response.text)
+        return list(main_page_parser.galleries)
 
     def get_galleries_from_lofi_page_link(self, url: str) -> set[str]:
 
@@ -434,14 +337,18 @@ class Parser(BaseParser):
 
             if not response:
                 logger.info("Got no response, stopping")
+                self._note_run_stop(MonitoredLinkRun.StopReason.NO_RESPONSE)
                 break
 
             response.encoding = "utf-8"
 
             if "No hits found" in response.text:
                 logger.info("Empty page found, ending")
+                self._note_run_stop(MonitoredLinkRun.StopReason.END_OF_RESULTS)
                 break
             else:
+                if self.link_run is not None:
+                    self.link_run.pages_crawled += 1
                 logger.info(
                     "Got content on search page {}, looking for galleries and jumping "
                     "to the next page. Link: {}".format(current_page, url)
@@ -464,6 +371,7 @@ class Parser(BaseParser):
                         break
                 else:
                     logger.info("Empty page found, ending")
+                    self._note_run_stop(MonitoredLinkRun.StopReason.END_OF_RESULTS)
                     break
                 if self.own_settings.stop_page_number is not None:
                     if current_page >= self.own_settings.stop_page_number:
@@ -471,6 +379,7 @@ class Parser(BaseParser):
                             "Got to stop page number: {}, "
                             "ending (setting: provider.stop_page_number).".format(self.own_settings.stop_page_number)
                         )
+                        self._note_run_stop(MonitoredLinkRun.StopReason.STOP_PAGE)
                         break
 
                 last_gallery = current_found_links[-1]
@@ -484,6 +393,7 @@ class Parser(BaseParser):
                 query = urllib.parse.parse_qs(parsed.query)
                 if query.get("next") == [last_gid]:
                     logger.info("Next gid did not change ({}), ending".format(last_gid))
+                    self._note_run_stop(MonitoredLinkRun.StopReason.REPEATED_PAGE)
                     break
 
                 query.pop("page", None)
@@ -783,13 +693,16 @@ class Parser(BaseParser):
                 if skip_capture:
                     continue
                 feed_links = self.crawl_feed(url)
-                if capture_only:
-                    self._record_and_check_processed_links(feed_links, unique_urls)
-                    continue
-                unique_urls.update(feed_links)
-                logger.info(
-                    "Provided RSS URL for provider ({}), adding {} found links".format(self.name, len(feed_links))
-                )
+                if self.link_run is not None:
+                    self.link_run.pages_crawled += 1
+                self._note_run_stop(MonitoredLinkRun.StopReason.FEED)
+                feed_urls: set[str] = set()
+                self._record_and_check_processed_links(feed_links, feed_urls)
+                unique_urls.update(feed_urls)
+                if not capture_only:
+                    logger.info(
+                        "Provided RSS URL for provider ({}), adding {} found links".format(self.name, len(feed_urls))
+                    )
                 continue
 
             if constants.ex_page_short not in url and constants.ge_page_short not in url:
@@ -836,6 +749,8 @@ class Parser(BaseParser):
             return
 
         self._load_pending_links(unique_urls)
+        if self.link_run is not None:
+            self.link_run.links_to_process += len(unique_urls) + len(unique_page_urls)
 
         batch_collector = getattr(self.settings, "crawl_batch_collector", None)
         summary_log = logger.debug if batch_collector is not None else logger.info

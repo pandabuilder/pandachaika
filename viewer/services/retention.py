@@ -95,7 +95,7 @@ def get_entity_definitions() -> list[dict[str, Any]]:
     """Return entity definitions specifying model, date fields, and query builders."""
     from django.contrib.sessions.models import Session
     from django_db_logger.models import StatusLog
-    from viewer.models import DownloadEvent, EventLog, ProcessedLinks
+    from viewer.models import DownloadEvent, EventLog, MonitoredLinkRun, ProcessedLinks
     from viewer.models.change_log import ArchiveChange, GalleryChange
     from workers.models import TaskQueue
 
@@ -180,6 +180,21 @@ def get_entity_definitions() -> list[dict[str, Any]]:
             "build_prunable_qs": lambda cutoff: ProcessedLinks.objects.filter(create_date__lt=cutoff).exclude(
                 status=ProcessedLinks.Status.PENDING
             ),
+            "get_active_count": None,
+        },
+        {
+            "key": "monitored_link_runs",
+            "label": "Monitored Link Runs",
+            "model_name": "MonitoredLinkRun",
+            "app_label": "viewer",
+            "model": MonitoredLinkRun,
+            "description": "Per run stats of the monitored links (links found, overlap, processing results)",
+            "date_field": "started",
+            "fallback_date_field": None,
+            # Same window as the processed links: the overlap between runs is measured against them.
+            "config_field": "processed_links_days",
+            "policy": "Runs older than the processed links retention period",
+            "build_prunable_qs": lambda cutoff: MonitoredLinkRun.objects.filter(started__lt=cutoff),
             "get_active_count": None,
         },
         {

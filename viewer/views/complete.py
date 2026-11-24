@@ -618,6 +618,26 @@ class GalleryReasonAutocomplete(GalleryFieldAutocomplete):
         return reasons[0 : self.limit_choices]
 
 
+class GalleryDlTypeAutocomplete(GalleryFieldAutocomplete):
+
+    def choices_for_request(self) -> "ValuesQuerySet[Gallery, str | None]":
+
+        if not self.request.user.is_authenticated:
+            return Gallery.objects.none().values_list("dl_type", flat=True)
+
+        q = self.request.GET.get("q", "")
+
+        dl_types = (
+            Gallery.objects.filter(dl_type__icontains=q)
+            .exclude(dl_type="")
+            .order_by("dl_type")
+            .distinct()
+            .values_list("dl_type", flat=True)
+        )
+
+        return dl_types[0 : self.limit_choices]
+
+
 class GalleryCategoryJSONAutocomplete(GalleryFieldJSONAutocompleteMixin, GalleryCategoryAutocomplete):
     pass
 

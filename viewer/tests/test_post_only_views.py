@@ -212,6 +212,7 @@ class PostOnlyViewsTests(TestCase):
             f"?tool=select-as-match&tool-id={self.gallery.pk}",
             f"?tool=remove-match&tool-id={self.gallery.pk}",
             "?tool=create-possible-matches-internally",
+            "?tool=create-rule-matches-internally",
             "?tool=create-matches-internally",
             "?tool=backlog-search",
         ):
@@ -232,6 +233,41 @@ class PostOnlyViewsTests(TestCase):
         self.assertEqual(resp.status_code, 302)
         self.wanted.refresh_from_db()
         self.assertFalse(self.wanted.should_search)
+
+    def test_wanted_gallery_possible_matches_locally_queues_title_search_with_options(self):
+        base_url = reverse("viewer:wanted-gallery", args=[self.wanted.pk])
+
+        resp = self.client.post(
+            base_url,
+            {
+                "tool": "create-possible-matches-internally",
+                "provider": "panda",
+                "cutoff": "0.7",
+                "max-matches": "3",
+                "must-be-used": "1",
+            },
+        )
+        self.assertEqual(resp.status_code, 302)
+        task = TaskQueue.objects.get(task_type="wanted_local_search_worker")
+        self.assertEqual(task.args, [self.wanted.pk])
+        self.assertEqual(
+            task.options["matching_kwargs"],
+            {"provider_filter": "panda", "cutoff": 0.7, "max_matches": 3, "must_be_used": True},
+        )
+
+        # Already queued: refuse instead of stacking another run.
+        resp = self.client.post(base_url, {"tool": "create-possible-matches-internally"})
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(TaskQueue.objects.filter(task_type="wanted_local_search_worker").count(), 1)
+
+        # Empty or invalid values fall back to the defaults, the cutoff is clamped.
+        TaskQueue.objects.all().delete()
+        self.client.post(base_url, {"tool": "create-possible-matches-internally", "cutoff": "5", "max-matches": ""})
+        task = TaskQueue.objects.get(task_type="wanted_local_search_worker")
+        self.assertEqual(
+            task.options["matching_kwargs"],
+            {"provider_filter": "", "cutoff": 1.0, "max_matches": 10, "must_be_used": False},
+        )
 
     def test_archive_group_extract_all_requires_post(self):
         detail_url = reverse("viewer:archive-group", args=[self.group.title_slug])

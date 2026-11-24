@@ -22,7 +22,11 @@ from viewer.views import (
     workers_dashboard,
     file_check,
     archive_picker,
+    gallery_picker,
     admin_report,
+    release_series,
+    auto_wanted,
+    auto_updater,
 )
 
 from viewer.views.api import legacy as api_legacy
@@ -229,6 +233,24 @@ urlpatterns += [
         name="archive-not-present",
     ),
     path("archive-file-check/", file_check.archive_file_check, name="archive-file-check"),
+    path("auto-wanted/", auto_wanted.auto_wanted_list, name="auto-wanted"),
+    path("auto-wanted/create/", auto_wanted.auto_wanted_create, name="auto-wanted-create"),
+    path("auto-wanted/<int:pk>/", auto_wanted.auto_wanted_edit, name="auto-wanted-edit"),
+    path("auto-updater/", auto_updater.auto_updater_list, name="auto-updater"),
+    path("auto-updater/<str:provider>/", auto_updater.auto_updater_edit, name="auto-updater-edit"),
+    path("auto-updater/<str:provider>/preview/", auto_updater.auto_updater_preview, name="auto-updater-preview"),
+    path("release-series/", release_series.release_series_list, name="release-series"),
+    path("release-series/create/", release_series.release_series_create, name="release-series-create"),
+    path(
+        "release-series/backlog-add/", release_series.release_series_backlog_add, name="release-series-backlog-add"
+    ),
+    path("release-series/<int:pk>/", release_series.release_series_detail, name="release-series-detail"),
+    path("release-series/<int:pk>/edit/", release_series.release_series_edit, name="release-series-edit"),
+    path(
+        "release-series/<int:pk>/backlog-search/",
+        release_series.release_series_backlog_search,
+        name="release-series-backlog-search",
+    ),
     path("archives-not-matched/", manager.archives_not_matched_with_gallery, name="archives-not-matched"),
     path("wanted-galleries/", manager.wanted_galleries, name="wanted-galleries"),
     path("found-galleries/", manager.found_galleries, name="found-galleries"),
@@ -255,7 +277,6 @@ urlpatterns += [
     path("public-stats/", head.public_stats, name="public-stats"),
     path("stats/workers/", admin.stats_workers, name="stats-workers"),
     re_path(r"^stats/workers$", admin.stats_workers),
-    path("stats/settings/", admin.stats_settings, name="stats-settings"),
     path("database/maintenance/", admin.database_maintenance, name="database-maintenance"),
     path("web-queue/<str:operation>/<str:arguments>/", admin.queue_operations, name="queue-operations"),
     re_path(r"^web-queue/(?P<operation>[\w-]+)/(?P<arguments>[\w-]+)$", admin.queue_operations),
@@ -270,6 +291,7 @@ urlpatterns += [
     path("api/tasks/status/", workers_dashboard.task_batch_status, name="task-batch-status"),
     path("api/tasks/<int:pk>/status/", workers_dashboard.task_status, name="task-status"),
     path("api/archive-picker/", archive_picker.archive_picker_api, name="api-archive-picker"),
+    path("api/gallery-picker/", gallery_picker.gallery_picker_api, name="api-gallery-picker"),
     path(
         "api/archive-file-check/<int:pk>/",
         file_check.archive_file_check_status_api,
@@ -326,6 +348,7 @@ urlpatterns += [
     path("activity-event-log/", collaborators.activity_event_log, name="activity-event-log"),
     path("monitored-links/", collaborators.monitored_links, name="monitored-links"),
     path("monitored-link/create/", collaborators.create_monitored_link, name="col-create-monitored-link"),
+    path("monitored-link/<int:pk>/", collaborators.monitored_link_detail, name="col-monitored-link"),
     path("monitored-link/<int:pk>/edit/", collaborators.edit_monitored_link, name="col-edit-monitored-link"),
     path("monitored-link/<int:pk>/delete/", collaborators.delete_monitored_link, name="col-delete-monitored-link"),
     path("monitored-link/<int:pk>/<str:action>/", collaborators.monitored_link_action, name="col-monitored-link-action"),

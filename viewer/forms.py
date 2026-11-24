@@ -1,3 +1,4 @@
+import json
 import os
 from datetime import datetime, timedelta
 from typing import Any, cast
@@ -27,6 +28,8 @@ from dal import autocomplete
 
 from core.base.utilities import available_filename
 from viewer.models import (
+    AutoUpdaterSchedule,
+    AutoWantedSource,
     AdminReportSubscription,
     Archive,
     Gallery,
@@ -42,6 +45,7 @@ from viewer.models import (
     GalleryMatchGroupEntry,
     MonitoredLink,
     Provider,
+    ReleaseSeries,
 )
 
 from dal.widgets import WidgetMixin
@@ -561,6 +565,20 @@ class GallerySearchSimpleForm(forms.Form):
         ),
     )
 
+    dl_type = forms.CharField(
+        required=False,
+        label="DL Type",
+        widget=JalTextWidget(
+            url="gallery-dl-type-autocomplete",
+            attrs={
+                "class": "form-control mr-sm-1",
+                "placeholder": "manual, etc.",
+                "data-autocomplete-minimum-characters": 0,
+                "size": 10,
+            },
+        ),
+    )
+
     uploader = forms.CharField(
         required=False,
         label="Uploader",
@@ -838,7 +856,10 @@ class WantedGalleryCreateOrEditForm(ModelForm):
             "unwanted_providers": "Exclude galleries from these providers (panda, fakku, etc)",
             "wait_for_time": "Time after gallery is posted to wait for it to be considered, in timedelta format."
             " Useful if waiting for unwanted tags",
-            "backlog_url_query": "String that will be used when triggering Backlog searches. It will be HTML quoted internally",
+            "backlog_url_query": (
+                "String that will be used when triggering Backlog searches. It will be HTML quoted internally. "
+                "If empty, Search Title is used instead, unless it's a regexp"
+            ),
             "release_date": "This Gallery will only be searched when the current date is higher than this value",
             "should_search": "Enable searching for this Gallery",
             "keep_searching": "Keep searching for this Gallery after one successful match",
@@ -1190,7 +1211,10 @@ class ArchiveEditForm(ModelForm):
         zipped = data["zipped"]
         if zipped and zipped != archive.zipped.name:
             if not archive.rename_zipped_pathname(zipped):
-                errors.append("File {} already exists, renaming failed".format(zipped))
+                if archive.is_cold_stored:
+                    errors.append("The file is offloaded to the cold storage, restore it before renaming it")
+                else:
+                    errors.append("File {} already exists, renaming failed".format(zipped))
 
         return errors
 
@@ -1882,3 +1906,259 @@ class MonitoredLinkSearchForm(forms.Form):
         initial="desc",
         widget=forms.Select(attrs={"class": "form-select form-control"}),
     )
+
+class ReleaseSeriesForm(ModelForm):
+    """Create or edit a release series. Empty title regex and title texts get defaults built from the name."""
+
+    class Meta:
+        model = ReleaseSeries
+        fields = [
+            "name",
+            "key_type",
+            "title_contains",
+            "title_excludes",
+            "title_regex",
+            "tags",
+            "allowed_languages",
+            "schedule",
+            "lead_days",
+            "backlog_query",
+            "backlog_page_query",
+            "active",
+            "notes",
+        ]
+        widgets = {
+            "name": forms.TextInput(attrs={"class": "form-control form-control-sm", "placeholder": "COMIC Kairakuten BEAST"}),
+            "key_type": forms.Select(attrs={"class": "form-select form-select-sm"}),
+            "title_contains": forms.Textarea(attrs={"class": "form-control form-control-sm font-monospace", "rows": 2, "placeholder": "Defaults to the name"}),
+            "title_excludes": forms.Textarea(attrs={"class": "form-control form-control-sm font-monospace", "rows": 2, "placeholder": "BEAST"}),
+            "title_regex": forms.Textarea(attrs={"class": "form-control form-control-sm font-monospace", "rows": 3, "placeholder": "Built from the name and kind of issue when empty"}),
+            "tags": forms.TextInput(attrs={"class": "form-control form-control-sm", "placeholder": "anthology, other:anthology"}),
+            "allowed_languages": forms.TextInput(attrs={"class": "form-control form-control-sm", "placeholder": "japanese"}),
+            "schedule": forms.Textarea(attrs={"class": "form-control form-control-sm font-monospace", "rows": 4, "placeholder": "2010-01 monthly\n2024-02 even"}),
+            "lead_days": forms.NumberInput(attrs={"class": "form-control form-control-sm", "placeholder": "Measured from the galleries"}),
+            "backlog_query": forms.Textarea(attrs={"class": "form-control form-control-sm font-monospace", "rows": 2}),
+            "backlog_page_query": forms.Textarea(attrs={"class": "form-control form-control-sm font-monospace", "rows": 2}),
+            "active": forms.CheckboxInput(attrs={"class": "form-check-input"}),
+            "notes": forms.Textarea(attrs={"class": "form-control form-control-sm", "rows": 2}),
+        }
+
+    def clean(self) -> dict[str, Any]:
+        from viewer.services import release_series as rs
+
+        cleaned_data = super().clean() or {}
+        name = (cleaned_data.get("name") or "").strip()
+        key_type = cleaned_data.get("key_type")
+        if not name or not key_type:
+            return cleaned_data
+        if not (cleaned_data.get("title_regex") or "").strip():
+            cleaned_data["title_regex"] = rs.default_title_regex(name, key_type)
+        if not (cleaned_data.get("title_contains") or "").strip() and not (cleaned_data.get("tags") or "").strip():
+            cleaned_data["title_contains"] = name
+        # Validate with a copy of the instance, without saving it.
+        series = ReleaseSeries(
+            name=name,
+            key_type=key_type,
+            title_regex=cleaned_data["title_regex"],
+            backlog_query=cleaned_data.get("backlog_query") or "",
+        )
+        try:
+            rs.compile_title_patterns(series)
+        except rs.ConfigError as e:
+            self.add_error("title_regex", str(e))
+        try:
+            rs.parse_schedule(key_type, cleaned_data.get("schedule") or "")
+        except rs.ConfigError as e:
+            self.add_error("schedule", str(e))
+        for field in ("backlog_query", "backlog_page_query"):
+            if cleaned_data.get(field):
+                try:
+                    rs.validate_backlog_query(cleaned_data[field])
+                except rs.ConfigError as e:
+                    self.add_error(field, str(e))
+        return cleaned_data
+
+
+class AutoWantedSourceForm(ModelForm):
+    """Create or edit an auto wanted source.
+
+    The query parameters are fields named ``p__<provider>__<name>``, from each provider's ``WANTED_PARAMS``; only the
+    chosen provider's are read. ``params`` (import) gives the parameters as a dict instead.
+    """
+
+    PARAM_PREFIX = "p__"
+
+    provider = forms.ChoiceField(widget=forms.Select(attrs={"class": "form-select form-select-sm"}))
+
+    class Meta:
+        model = AutoWantedSource
+        fields = [
+            "name",
+            "provider",
+            "active",
+            "frequency",
+            "force_process",
+            "reason",
+            "public",
+            "should_search",
+            "keep_searching",
+            "notify_when_found",
+            "wanted_providers",
+            "unwanted_title",
+            "regexp_unwanted_title",
+            "regexp_unwanted_title_icase",
+            "notes",
+        ]
+        widgets = {
+            "name": forms.TextInput(attrs={"class": "form-control form-control-sm", "placeholder": "wanimagazine comics"}),
+            "frequency": forms.TextInput(attrs={"class": "form-control form-control-sm font-monospace", "placeholder": "Every cycle_timer hours"}),
+            "reason": forms.TextInput(attrs={"class": "form-control form-control-sm", "placeholder": "wanimagazine"}),
+            "wanted_providers": forms.TextInput(attrs={"class": "form-control form-control-sm", "placeholder": "panda, fakku"}),
+            "unwanted_title": forms.TextInput(attrs={"class": "form-control form-control-sm", "placeholder": "[Chinese]"}),
+            "notes": forms.Textarea(attrs={"class": "form-control form-control-sm", "rows": 2}),
+            **{
+                name: forms.CheckboxInput(attrs={"class": "form-check-input"})
+                for name in (
+                    "active",
+                    "force_process",
+                    "public",
+                    "should_search",
+                    "keep_searching",
+                    "notify_when_found",
+                    "regexp_unwanted_title",
+                    "regexp_unwanted_title_icase",
+                )
+            },
+        }
+
+    def __init__(self, *args: Any, params: dict | None = None, **kwargs: Any) -> None:
+        from viewer.services import auto_wanted as aw
+
+        super().__init__(*args, **kwargs)
+        self.params_override = params
+        # The template explains it, with the scheduler's default.
+        self.fields["frequency"].help_text = ""
+        providers = aw.wanted_providers()
+        current = self.instance.provider if self.instance and self.instance.pk else ""
+        if current and current not in providers:
+            providers = [*providers, current]
+        cast(forms.ChoiceField, self.fields["provider"]).choices = [(p, p) for p in providers]
+        self.param_groups: list[tuple[str, list[str]]] = []
+        instance_params = (self.instance.params or {}) if self.instance and self.instance.pk else {}
+        for provider in providers:
+            names = []
+            for param in aw.params_schema(provider):
+                field_name = self.param_field_name(provider, param.name)
+                self.fields[field_name] = self._param_field(param)
+                if provider == current and param.name in instance_params:
+                    self.initial[field_name] = instance_params[param.name]
+                names.append(field_name)
+            self.param_groups.append((provider, names))
+
+    @classmethod
+    def param_field_name(cls, provider: str, name: str) -> str:
+        return f"{cls.PARAM_PREFIX}{provider}__{name}"
+
+    @staticmethod
+    def _param_field(param: Any) -> forms.Field:
+        label = f"{param.label}{' *' if param.required else ''}"
+        common = {"label": label, "required": False, "help_text": param.help}
+        if param.kind == "bool":
+            return forms.BooleanField(widget=forms.CheckboxInput(attrs={"class": "form-check-input"}), **common)
+        if param.kind == "int":
+            return forms.IntegerField(
+                widget=forms.NumberInput(attrs={"class": "form-control form-control-sm", "placeholder": param.placeholder}),
+                **common,
+            )
+        if param.kind == "choice":
+            return forms.ChoiceField(
+                choices=list(param.choices), widget=forms.Select(attrs={"class": "form-select form-select-sm"}), **common
+            )
+        attrs = {"class": "form-control form-control-sm font-monospace", "placeholder": param.placeholder}
+        if param.kind == "date":
+            attrs["type"] = "date"
+        return forms.CharField(widget=forms.TextInput(attrs=attrs), **common)
+
+    def provider_params(self) -> list[tuple[str, list[Any]]]:
+        """Bound fields of each provider's parameters, for the template."""
+        return [(provider, [self[name] for name in names]) for provider, names in self.param_groups]
+
+    def clean(self) -> dict[str, Any]:
+        from core.base.auto_wanted import ParamError
+        from viewer.services import auto_wanted as aw
+
+        cleaned_data = super().clean() or {}
+        frequency = cleaned_data.get("frequency")
+        if frequency is not None and frequency.total_seconds() <= 0:
+            self.add_error("frequency", "Must be greater than zero.")
+        provider = cleaned_data.get("provider")
+        if not provider:
+            return cleaned_data
+        if self.params_override is not None:
+            params = self.params_override
+        else:
+            params = {}
+            for param in aw.params_schema(provider):
+                params[param.name] = cleaned_data.get(self.param_field_name(provider, param.name))
+        try:
+            cleaned_data["params"] = aw.clean_source_params(provider, params)
+        except ParamError as e:
+            self.add_error(None, f"Parameters: {e}")
+        slugs = AutoWantedSource(wanted_providers=cleaned_data.get("wanted_providers") or "").wanted_provider_slugs()
+        known = set(settings.CRAWLER_SETTINGS.provider_context.names)
+        unknown = [slug for slug in slugs if slug not in known and not Provider.objects.filter(slug=slug).exists()]
+        if unknown:
+            self.add_error("wanted_providers", f"Unknown provider(s): {', '.join(unknown)}")
+        return cleaned_data
+
+    def save(self, commit: bool = True) -> AutoWantedSource:
+        source = super().save(commit=False)
+        source.params = self.cleaned_data.get("params", source.params)
+        if commit:
+            source.save()
+        return source
+
+
+class AutoUpdaterScheduleForm(ModelForm):
+    """Edit a provider's auto updater schedule. ``rules`` is the JSON the schedule editor writes."""
+
+    rules = forms.CharField(required=False, widget=forms.HiddenInput())
+    queue_every = forms.CharField(
+        label="Queue every",
+        widget=forms.TextInput(attrs={"class": "form-control form-control-sm", "placeholder": "1h"}),
+        help_text="How often the galleries that reached an update age are queued (5m minimum): 30m, 1h, 6h. Only "
+        "changes how many galleries each update task gets, not how many times a gallery is updated.",
+    )
+
+    class Meta:
+        model = AutoUpdaterSchedule
+        fields = ["active", "queue_every", "rules", "notes"]
+        widgets = {
+            "active": forms.CheckboxInput(attrs={"class": "form-check-input"}),
+            "notes": forms.Textarea(attrs={"class": "form-control form-control-sm", "rows": 2}),
+        }
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        from viewer.services import auto_updater as au
+
+        super().__init__(*args, **kwargs)
+        if not self.is_bound:
+            instance = self.instance
+            self.initial["queue_every"] = au.format_age(instance.queue_every or au.DEFAULT_QUEUE_EVERY)
+            self.initial["rules"] = json.dumps(self.initial.get("rules", instance.rules) or [])
+
+    def clean_rules(self) -> list[dict[str, str]]:
+        from viewer.services import auto_updater as au
+
+        try:
+            return au.clean_rules(self.cleaned_data.get("rules") or "")
+        except au.ScheduleError as e:
+            raise ValidationError(str(e))
+
+    def clean_queue_every(self) -> timedelta:
+        from viewer.services import auto_updater as au
+
+        try:
+            return au.clean_queue_every(self.cleaned_data.get("queue_every"))
+        except au.ScheduleError as e:
+            raise ValidationError(str(e))

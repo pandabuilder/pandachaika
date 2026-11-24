@@ -345,6 +345,7 @@ downloaders:
 # ------------------------------------------------------------------------------
 # Auto Wanted Generator
 # Automatically queries providers to create WantedGallery entries for missing works.
+# The queries are the auto wanted sources, set up on /auto-wanted/ (Manage menu).
 # ------------------------------------------------------------------------------
 auto_wanted:
   # Enable the auto-wanted generator background scheduler.
@@ -355,15 +356,17 @@ auto_wanted:
   # Default: false
   startup: false
 
-  # Cycle interval (in seconds) between auto-wanted runs.
+  # How often (in hours) the auto wanted sources without their own frequency run.
+  # The scheduler checks which sources are due at least every 15 minutes.
   # Default: 4.0
   cycle_timer: 4.0
 
-  # Providers queried by the auto-wanted generator.
+  # Deprecated: the active auto wanted sources run. Only used when importing the old provider attribute
+  # queries (wanted_params_<query>_<name>), which are active when their provider is listed here.
   # Default: []
   providers: []
 
-  # Text filter automatically added to the unwanted_title field on generated wanted galleries.
+  # Default unwanted title of new auto wanted sources, added to the wanted galleries they create.
   # Default: '[Chinese]'
   unwanted_title: '[Chinese]'
 
@@ -513,9 +516,11 @@ gallery_dl:
 # ------------------------------------------------------------------------------
 # Metadata Auto-Updater
 # Periodically queries upstream providers to update tags, ratings, and titles.
+# When each provider's galleries are updated (by gallery age) is set up on
+# /auto-updater/ (Manage menu): a schedule per provider.
 # ------------------------------------------------------------------------------
 autoupdater:
-  # Enable automatic metadata updating.
+  # Enable the auto updater scheduler (runs the active schedules).
   # Default: false
   enable: false
 
@@ -523,20 +528,22 @@ autoupdater:
   # Default: false
   startup: false
 
-  # List of providers enabled for metadata updating.
+  # Deprecated: only used to import the old configuration as schedules on /auto-updater/.
+  # Providers that were updated.
   # Default: ['panda']
   providers:
     - panda
 
-  # Cycle interval (in seconds) between update checks.
+  # Deprecated (import only): days between the old updater's runs.
   # Default: 2.0
   cycle_timer: 2.0
 
-  # Number of days in the past from current date to filter galleries for updating.
+  # Deprecated (import only): the old updater updated the galleries posted up to
+  # cycle_timer + buffer_back days ago.
   # Default: 8
   buffer_back: 8
 
-  # Number of days after/offset to filter galleries for updating.
+  # Deprecated (import only): and at least buffer_after days ago.
   # Default: 0
   buffer_after: 0
 
@@ -933,6 +940,66 @@ admin_report:
   check_interval_minutes: 15.0
 
 # ------------------------------------------------------------------------------
+# Archive Cold Storage (S3-compatible Object Storage)
+# Offload rarely downloaded archives to a private bucket (OVH Object Storage,
+# Backblaze B2, MinIO...) with `manage.py archive_cold_storage offload`.
+# Downloads of offloaded archives are redirected to short-lived presigned URLs.
+# Mount the bucket read-only at MEDIA_ROOT/<local_prefix> (rclone mount,
+# mountpoint-s3) to keep extraction, hashing and the other file tools working.
+# ------------------------------------------------------------------------------
+cold_storage:
+  # Enable offloading/restoring and presigned downloads of offloaded archives.
+  # Default: false
+  enable: false
+
+  # S3 endpoint URL, e.g. https://s3.gra.io.cloud.ovh.net
+  # Default: ''
+  endpoint_url: ''
+
+  # Region used to sign requests (e.g. 'gra' for OVH GRA).
+  # Default: us-east-1
+  region: us-east-1
+
+  # Private bucket that holds the offloaded archives.
+  # Default: ''
+  bucket: ''
+
+  # Credentials (or env COLD_STORAGE_ACCESS_KEY_ID / COLD_STORAGE_SECRET_ACCESS_KEY).
+  # Default: ''
+  access_key_id: ''
+  secret_access_key: ''
+
+  # 'path' (https://endpoint/bucket/key) or 'virtual' (https://bucket.endpoint/key).
+  # Default: path
+  addressing_style: path
+
+  # Prefix of the object keys inside the bucket, e.g. 'archives/'.
+  # Default: ''
+  key_prefix: ''
+
+  # Path under MEDIA_ROOT that offloaded archive names are moved under. It
+  # identifies offloaded archives: don't change it once archives were offloaded.
+  # Default: galleries/cold
+  local_prefix: galleries/cold
+
+  # Redirect downloads of offloaded archives to presigned bucket URLs. When
+  # false they go through X-Accel-Redirect, which needs the bucket mounted.
+  # Default: true
+  redirect_downloads: true
+
+  # Seconds a presigned download URL stays valid (max 604800, 7 days).
+  # Default: 21600
+  presigned_url_expiry: 21600
+
+  # Multipart upload part size in MiB.
+  # Default: 64
+  part_size_mb: 64
+
+  # Timeout in seconds for each request to the bucket.
+  # Default: 120.0
+  timeout: 120.0
+
+# ------------------------------------------------------------------------------
 # Contextual Extractor (manga-extractor Integration)
 # External REST API integration for extracting page and archive metrics
 # (panels, speech bubbles, dialogue density, OCR transcripts, spreads, color).
@@ -1178,25 +1245,25 @@ providers:
     cookies:
       fakku_sid: ''
 
-  # Mugimugi ('mugimugi')
-  mugimugi:
+  # doujinshi.org mirror ('doujinshi_mirror')
+  # Metadata of the closed doujinshi.org (MugiMugi), from a doujinshi-browser server: book links, search
+  # pages, title matching and auto wanted sources. Add galleries with the 'doujinshi_mirror_info' downloader.
+  doujinshi_mirror:
     general:
-      # Mugimugi API key for metadata lookups.
+      # Base URL of the doujinshi-browser server, e.g. https://doujinshi.example.com/.
+      # Gallery links are built from it when shown, so it can change at any time. Empty disables the provider.
       # Default: ''
-      api_key: ''
+      url: ''
 
-    wanted:
-      # Text filter automatically assigned to unwanted_title on generated wanted galleries.
-      # Default: ''
-      unwanted_title: ''
+      # Wait time (in seconds) between requests. The mirror has no rate limits.
+      # Default: 1
+      wait_timer: 1
 
-      # Regular expression pattern to identify unwanted titles.
-      # Default: ''
-      regexp_unwanted_title: ''
-
-      # Case-insensitive regular expression pattern to identify unwanted titles.
-      # Default: ''
-      regexp_unwanted_title_icase: ''
+      # HTTPS certificate verification, available on every provider: true (Python's bundled CAs, which don't
+      # include a private CA), false (don't verify), or the path to a CA bundle file with the server's CA, like
+      # the system's /etc/ssl/certs/ca-certificates.crt (inside the container, if pandagallery runs in one).
+      # Default: true
+      ssl_verify: true
 
   # NHentai ('nhentai')
   nhentai:

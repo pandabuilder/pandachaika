@@ -8,6 +8,7 @@ from django.core import management
 from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator, InvalidPage, EmptyPage
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect, Http404
+from django.db.models import Count, Q
 from django.shortcuts import render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
@@ -27,10 +28,13 @@ from viewer.models import (
     Gallery,
     WantedGallery,
     MonitoredLink,
+    MonitoredLinkRun,
+    ProcessedLinks,
     UserLongLivedToken,
     Category,
     Provider
 )
+from viewer.services.monitored_link_stats import is_gap, monitored_link_report
 from viewer.utils.types import AuthenticatedHttpRequest
 
 crawler_settings = settings.CRAWLER_SETTINGS
@@ -319,6 +323,30 @@ def monitored_links(request: HttpRequest) -> HttpResponse:
     except (InvalidPage, EmptyPage):
         results_page = paginator.page(paginator.num_pages)
 
+    # Latest capture run and pending links of each link in the page, to see at a glance how they are doing.
+    page_pks = [ml.pk for ml in results_page.object_list]
+    capture_kinds = (MonitoredLinkRun.Kind.CAPTURE, MonitoredLinkRun.Kind.FULL)
+    pending_counts = dict(
+        ProcessedLinks.objects.filter(monitored_link_id__in=page_pks, status=ProcessedLinks.Status.PENDING)
+        .values_list("monitored_link_id")
+        .annotate(count=Count("pk"))
+        .values_list("monitored_link_id", "count")
+    )
+    first_capture_ids = dict(
+        MonitoredLinkRun.objects.filter(monitored_link_id__in=page_pks, kind__in=capture_kinds)
+        .order_by("monitored_link_id", "started")
+        .distinct("monitored_link_id")
+        .values_list("monitored_link_id", "pk")
+    )
+    last_captures = {}
+    for run in (
+        MonitoredLinkRun.objects.filter(monitored_link_id__in=page_pks, kind__in=capture_kinds, finished__isnull=False)
+        .order_by("monitored_link_id", "-started")
+        .distinct("monitored_link_id")
+    ):
+        setattr(run, "gap", is_gap(run, first_capture_ids.get(run.monitored_link_id)))
+        last_captures[run.monitored_link_id] = run
+
     enabled_count = sum(1 for ml in all_links if ml.enabled)
     stats = {
         "total": len(all_links),
@@ -333,6 +361,8 @@ def monitored_links(request: HttpRequest) -> HttpResponse:
         "results": results_page,
         "title": "Monitored Links",
         "schedulers": schedulers,
+        "pending_counts": pending_counts,
+        "last_captures": last_captures,
         "edit_form": edit_form,
         "filter_form": filter_form,
         "can_manage": _can_manage_monitored_links(request.user),
@@ -341,6 +371,68 @@ def monitored_links(request: HttpRequest) -> HttpResponse:
         "per_page_options": PAGE_SIZE_OPTIONS,
     }
     return render(request, "viewer/collaborators/monitored_links.html", d)
+
+
+def _page_of(paginator: Paginator, number: str | None) -> Any:
+    try:
+        return paginator.page(int(number or 1))
+    except (ValueError, InvalidPage, EmptyPage):
+        return paginator.page(paginator.num_pages if number and number.isdigit() else 1)
+
+
+@permission_required("viewer.view_monitored_links")
+def monitored_link_detail(request: HttpRequest, pk: int) -> HttpResponse:
+    """Configuration, schedule and run stats of a monitored link, to judge whether its configuration fits."""
+    link = MonitoredLink.objects.select_related("provider", "user").filter(pk=pk).first()
+    if not link:
+        raise Http404("Monitored link not found")
+    get = request.GET
+
+    report = monitored_link_report(link)
+
+    scheduler_state = link.get_scheduler_state()
+    scheduler = get_schedulers_status([scheduler_state])[0] if scheduler_state else None
+
+    runs = MonitoredLinkRun.objects.filter(monitored_link=link).select_related("provider")
+    run_kind = get.get("run_kind", "")
+    if run_kind == "capture":
+        runs = runs.filter(kind__in=(MonitoredLinkRun.Kind.CAPTURE, MonitoredLinkRun.Kind.FULL))
+    elif run_kind == "process":
+        runs = runs.filter(kind__in=(MonitoredLinkRun.Kind.PROCESS, MonitoredLinkRun.Kind.FULL))
+    elif run_kind == "issues":
+        runs = runs.filter(
+            Q(links_known=0, links_new__gt=0)
+            | ~Q(error="")
+            | Q(stop_reason=MonitoredLinkRun.StopReason.NO_RESPONSE)
+            | Q(pending_retried__gt=0)
+            | Q(pending_failed__gt=0)
+        )
+    runs_page = _page_of(Paginator(runs, 25), get.get("runs_page"))
+    for run in runs_page:
+        setattr(run, "gap", is_gap(run, report["first_capture_id"]))
+        setattr(run, "first_capture", run.pk == report["first_capture_id"])
+        setattr(run, "new_pct", round(100 * run.links_new / run.links_found) if run.links_found else 0)
+
+    links = ProcessedLinks.objects.filter(monitored_link=link).order_by("-create_date")
+    link_status = get.get("link_status", "")
+    if link_status in ProcessedLinks.Status.values:
+        links = links.filter(status=link_status)
+    links_page = _page_of(Paginator(links, 25), get.get("links_page"))
+
+    d = {
+        "link": link,
+        "title": link.name,
+        "report": report,
+        "scheduler": scheduler,
+        "runs": runs_page,
+        "run_kind": run_kind,
+        "run_kinds": [("", "All"), ("capture", "Capture"), ("process", "Process"), ("issues", "Issues")],
+        "links": links_page,
+        "link_status": link_status,
+        "link_statuses": ProcessedLinks.Status.choices,
+        "limited_wanted_galleries": list(link.limited_wanted_galleries.all()) if link.use_limited_wanted_galleries else [],
+    }
+    return render(request, "viewer/collaborators/monitored_link.html", d)
 
 
 @permission_required("viewer.view_monitored_links")

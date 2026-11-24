@@ -315,6 +315,119 @@ class MonitoredLink(models.Model):
         return deleted
 
 
+class MonitoredLinkRun(models.Model):
+    """What a single crawler run of a monitored link found and did, to judge whether its configuration fits.
+
+    A capture run (or the capture part of a full run) reports the links found on the index/feed pages, split in
+    the ones never seen before by this monitored link and the ones already known from earlier runs (the overlap).
+    A process run (or the process part of a full run) reports what happened to the links sent to the API."""
+
+    class Kind(models.TextChoices):
+        # Separate frequencies, capture phase: only stores the links found.
+        CAPTURE = "capture", _("Capture")
+        # Separate frequencies, process phase: only processes the stored links.
+        PROCESS = "process", _("Process")
+        # Single frequency: captures and processes in the same run.
+        FULL = "full", _("Capture + process")
+
+    class StopReason(models.TextChoices):
+        SEEN_LINK = "seen_link", _("Reached a seen link")
+        STOP_PAGE = "stop_page", _("Reached the stop page")
+        END_OF_RESULTS = "end_of_results", _("End of results")
+        FEED = "feed", _("Read the feed")
+        NO_RESPONSE = "no_response", _("No response")
+        REPEATED_PAGE = "repeated_page", _("Next page didn't change")
+
+    monitored_link = models.ForeignKey(MonitoredLink, on_delete=models.CASCADE, related_name="runs")
+    provider = models.ForeignKey("viewer.Provider", on_delete=models.SET_NULL, null=True, blank=True)
+    kind = models.CharField(max_length=20, choices=Kind.choices)
+    started = models.DateTimeField(default=django_tz.now, db_index=True)
+    # Empty while the run is ongoing (or if the worker died mid-run).
+    finished = models.DateTimeField(blank=True, null=True)
+
+    # Link capture.
+    pages_crawled = models.PositiveIntegerField(default=0)
+    links_found = models.PositiveIntegerField(default=0, help_text=_("Links read from the index/feed pages."))
+    links_new = models.PositiveIntegerField(default=0, help_text=_("Found links never seen before by this monitored link."))
+    links_known = models.PositiveIntegerField(
+        default=0, help_text=_("Found links already seen by an earlier run (overlap between runs).")
+    )
+    stop_reason = models.CharField(max_length=30, choices=StopReason.choices, blank=True, default="")
+
+    # Link processing.
+    pending_loaded = models.PositiveIntegerField(default=0, help_text=_("Captured links taken from the pending queue."))
+    recent_added = models.PositiveIntegerField(
+        default=0, help_text=_("Already seen links added again by the 'already seen links' window.")
+    )
+    links_to_process = models.PositiveIntegerField(default=0, help_text=_("Links sent to the database check and API."))
+    links_in_database = models.PositiveIntegerField(default=0, help_text=_("Links whose gallery was already in the database."))
+    links_evaluated = models.PositiveIntegerField(default=0, help_text=_("Galleries whose metadata was fetched and checked."))
+    links_accepted = models.PositiveIntegerField(default=0, help_text=_("Galleries passed on to the downloaders."))
+    wanted_matches = models.PositiveIntegerField(default=0, help_text=_("Galleries that matched a wanted gallery."))
+    links_banned = models.PositiveIntegerField(default=0, help_text=_("Galleries discarded by the banned data checks."))
+    api_errors = models.PositiveIntegerField(default=0)
+    pending_processed = models.PositiveIntegerField(default=0, help_text=_("Captured links processed by this run."))
+    pending_retried = models.PositiveIntegerField(
+        default=0, help_text=_("Captured links that couldn't be processed, left pending for the next run.")
+    )
+    pending_failed = models.PositiveIntegerField(default=0, help_text=_("Captured links given up on after too many attempts."))
+
+    error = models.TextField(blank=True, default="")
+
+    class Meta:
+        verbose_name_plural = "Monitored link runs"
+        ordering = ["-started"]
+        indexes = [
+            models.Index(fields=["monitored_link", "-started"], name="mlrun_link_started_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.monitored_link_id} {self.kind} {self.started}"
+
+    @property
+    def captures(self) -> bool:
+        return self.kind in (self.Kind.CAPTURE, self.Kind.FULL)
+
+    @property
+    def processes(self) -> bool:
+        return self.kind in (self.Kind.PROCESS, self.Kind.FULL)
+
+    @property
+    def duration(self) -> timedelta | None:
+        if self.finished is None:
+            return None
+        return self.finished - self.started
+
+    @property
+    def overlap_ratio(self) -> float | None:
+        """Share of the links found that an earlier run had already seen."""
+        if not self.links_found:
+            return None
+        return self.links_known / self.links_found
+
+    @property
+    def reached_end(self) -> bool:
+        """Whether the run read everything there was to read, so it couldn't have missed links."""
+        return self.stop_reason in (
+            self.StopReason.SEEN_LINK,
+            self.StopReason.END_OF_RESULTS,
+            self.StopReason.REPEATED_PAGE,
+        )
+
+    @property
+    def possible_gap(self) -> bool:
+        """Every link found was new and the run stopped before getting back to the known ones: the links published
+        between the last page read and the previous run were never seen. Not meaningful for the very first run."""
+        return bool(
+            self.captures
+            and self.finished is not None
+            and self.links_new > 0
+            and self.links_known == 0
+            and not self.reached_end
+            and self.stop_reason != self.StopReason.NO_RESPONSE
+        )
+
+
 
 class DownloadEventQuerySet(models.QuerySet):
     def in_progress(self, **kwargs: typing.Any) -> QuerySet:

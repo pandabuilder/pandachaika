@@ -1,0 +1,97 @@
+{% load viewer_extras %}{% comment %}
+One card per gallery with its archives, for the repeated archives and different filesize pages.
+  gallery.archive_list   archives, each with same_size, same_count and size_diff (see manager._galleries_with_archive_details)
+{% endcomment %}
+<div class="dm-card ga-group" data-gallery-id="{{ gallery.pk }}">
+  <div class="dm-card-header d-flex flex-wrap align-items-center gap-2">
+    {% if gallery.thumbnail.name %}
+      <a href="{% url 'viewer:gallery' gallery.pk %}" class="img-preview flex-shrink-0" data-image-url="{{ gallery.thumbnail.url }}">
+        <img class="dm-thumb" style="width: 32px; height: 44px;" src="{{ gallery.thumbnail.url }}" alt="" loading="lazy">
+      </a>
+    {% endif %}
+    <div class="flex-grow-1" style="min-width: 0;">
+      <div class="text-truncate">
+        <a href="{% url 'viewer:gallery' gallery.pk %}" class="text-decoration-none">{{ gallery.title|default:"(no title)" }}</a>
+        <span class="dm-dim small ms-1">#{{ gallery.pk }}</span>
+      </div>
+      <div class="small fw-normal dm-break-all dm-muted">{{ gallery.get_link|urlize_all_rel }}</div>
+    </div>
+    <div class="d-flex flex-wrap align-items-center gap-1 small fw-normal">
+      {% if gallery.provider %}<span class="badge bg-secondary">{{ gallery.provider }}</span>{% endif %}
+      <span class="badge dm-badge-outline text-info" title="{{ gallery.filesize }} bytes">{{ gallery.filesize|filesizeformat }}</span>
+      <span class="badge dm-badge-outline text-info">{{ gallery.filecount }} images</span>
+      {% if gallery.public %}<span class="badge dm-badge-outline text-success">Public</span>{% else %}<span class="badge dm-badge-outline text-secondary">Private</span>{% endif %}
+      {% if gallery.posted %}<span class="dm-muted ms-1" title="Posted">{{ gallery.posted|date:"Y-m-d" }}</span>{% endif %}
+      <span class="badge bg-info text-dark ms-1">{{ gallery.archive_list|length }} archive{{ gallery.archive_list|length|pluralize }}</span>
+    </div>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-dm table-hover table-sm mb-0">
+      <thead>
+        <tr>
+          <th class="dm-check-col" title="Select to delete">Del</th>
+          <th></th>
+          <th>Archive</th>
+          <th>Match / Source</th>
+          <th>Reason</th>
+          <th class="text-end">Images</th>
+          <th class="text-end">Size</th>
+          <th>Flags</th>
+          <th>Created</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for archive in gallery.archive_list %}
+          <tr>
+            <td class="dm-check-col">
+              <input id="del-{{ archive.id }}" class="form-check-input archive-checkbox" type="checkbox" name="del-{{ archive.id }}" value="{{ archive.id }}"
+                     data-same-size="{{ archive.same_size|yesno:'1,0' }}" data-position="{{ forloop.counter0 }}" aria-label="Select archive {{ archive.pk }}">
+            </td>
+            <td style="width: 52px;">
+              {% if archive.thumbnail.name %}
+                <a href="{% url 'viewer:archive' archive.pk %}" class="img-preview" data-image-url="{{ archive.thumbnail.url }}">
+                  <img class="dm-thumb" src="{{ archive.thumbnail.url }}" alt="" loading="lazy">
+                </a>
+              {% else %}
+                <span class="dm-thumb dm-thumb-placeholder"><i class="fas fa-file-archive"></i></span>
+              {% endif %}
+            </td>
+            <td class="dm-wrap" style="min-width: 18rem;">
+              <a href="{% url 'viewer:archive' archive.pk %}" class="fw-semibold {{ archive|archive_title_class }}">{{ archive.title|default:"(no title)" }}</a>
+              <span class="dm-dim small ms-1">#{{ archive.pk }}</span>
+              <div class="small dm-muted dm-break-all">{{ archive.zipped }}</div>
+            </td>
+            <td class="small">
+              {% if archive.match_type %}<span class="badge dm-badge-outline text-info">{{ archive.match_type }}</span>{% endif %}
+              {% if archive.source_type %}<span class="badge bg-secondary">{{ archive.source_type }}</span>{% endif %}
+              {% if not archive.match_type and not archive.source_type %}<span class="dm-dim">-</span>{% endif %}
+            </td>
+            <td class="small dm-wrap" style="max-width: 12rem;">{{ archive.reason|default:"" }}</td>
+            <td class="text-end font-monospace small {% if archive.same_count %}dm-same{% else %}dm-diff{% endif %}"
+                title="{% if archive.same_count %}Same image count as the gallery{% else %}Gallery has {{ gallery.filecount }}{% endif %}">
+              {{ archive.filecount|default:"-" }}
+            </td>
+            <td class="text-end text-nowrap small" title="{{ archive.filesize }} bytes">
+              <div class="{% if archive.same_size %}dm-same{% else %}dm-diff{% endif %}">{{ archive.filesize|filesizeformat }}</div>
+              {% if archive.same_size %}
+                <div class="dm-dim" style="font-size: 0.72rem;"><i class="fas fa-check me-1"></i>same as gallery</div>
+              {% elif gallery.filesize %}
+                <div class="dm-dim font-monospace" style="font-size: 0.72rem;" title="Difference with the gallery: {{ archive.size_diff }} bytes">{% if archive.size_diff > 0 %}+{% endif %}{{ archive.size_diff|filesizeformat }}</div>
+              {% endif %}
+            </td>
+            <td class="small">
+              <div class="d-flex flex-wrap gap-1">
+                {% if archive.public %}<span class="badge dm-badge-outline text-success">Public</span>{% else %}<span class="badge dm-badge-outline text-secondary">Private</span>{% endif %}
+                {% if not archive.crc32 %}<span class="badge bg-warning text-dark" title="No CRC32 yet">Incomplete</span>{% endif %}
+                {% if archive.binned %}<span class="badge bg-danger">Recycled</span>{% endif %}
+              </div>
+            </td>
+            <td class="small text-nowrap" title="{{ archive.create_date|date:'Y-m-d H:i:s' }}">
+              <span data-dm-reltime="{{ archive.create_date|date:'c' }}">{{ archive.create_date|date:"Y-m-d H:i" }}</span>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>

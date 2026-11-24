@@ -1,0 +1,219 @@
+{% extends "viewer/base.html" %}
+{% load static compress %}
+{% block title %}Auto Wanted Sources | {{ block.super }}{% endblock %}
+{% block sidebar %}{% endblock %}
+
+{% block extra_head %}
+  {% compress css %}
+    <link href="{% static 'css/dm-pages.css' %}" type="text/css" rel="stylesheet" />
+  {% endcompress %}
+  <style>
+    .aw-params { font-size: 0.78rem; max-width: 26rem; word-break: break-all; }
+    .aw-params code { color: var(--pg-text-secondary); }
+    .aw-message { white-space: pre-line; font-size: 0.75rem; max-width: 28rem; }
+  </style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+  {% include "viewer/include/dm_messages.html" %}
+
+  <div class="dm-page-header">
+    <div>
+      <h2 class="h3 mb-1"><i class="fas fa-magic text-info me-2"></i>Auto Wanted Sources</h2>
+      <p class="mb-0 small">
+        Provider queries (feeds, listings, API searches) whose new releases become wanted galleries. The
+        <code>auto_wanted</code> scheduler runs the active ones; each source sets the values of the wanted galleries it creates.
+      </p>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      <a href="{% url 'viewer:auto-wanted-create' %}" class="btn btn-info btn-sm"><i class="fas fa-plus me-1"></i>New source</a>
+      <button type="button" class="btn btn-outline-light btn-sm" data-bs-toggle="modal" data-bs-target="#aw-import-modal"><i class="fas fa-file-import me-1"></i>Import</button>
+      <a href="?export=1" class="btn btn-outline-light btn-sm"><i class="fas fa-file-export me-1"></i>Export</a>
+      <a href="?format=json" class="btn btn-outline-secondary btn-sm"><i class="fas fa-code me-1"></i>JSON</a>
+    </div>
+  </div>
+
+  {% if legacy.attribute_count %}
+    <div class="dm-card border-warning">
+      <div class="p-3 d-flex flex-wrap align-items-center gap-2">
+        <i class="fas fa-history text-warning"></i>
+        <div class="flex-grow-1 small">
+          {% if legacy.pending %}
+            <strong>{{ legacy.pending|length }} auto wanted quer{{ legacy.pending|length|pluralize:"y,ies" }} still in the provider attributes</strong>
+            (the old <code>wanted_params_&lt;query&gt;_&lt;name&gt;</code> configuration, no longer read):
+            {% for s in legacy.pending %}<code>{{ s.name }}</code>{% if not forloop.last %}, {% endif %}{% endfor %}.
+            Import them as sources; a query is active when its provider is in the <code>auto_wanted.providers</code> setting
+            ({% if providers_setting %}{{ providers_setting|join:", " }}{% else %}empty{% endif %}).
+          {% else %}
+            The {{ legacy.attribute_count }} old auto wanted provider attributes (<code>wanted_params_…</code>, <code>wanted_reason_…</code>…)
+            are imported as sources and no longer read. Delete them once the sources work.
+          {% endif %}
+        </div>
+        <a href="?legacy=1" class="btn btn-sm btn-outline-light"><i class="fas fa-code me-1"></i>As JSON</a>
+        <form method="post" class="d-inline">
+          {% csrf_token %}
+          {% if legacy.pending %}
+            <button type="submit" name="action" value="import_legacy" class="btn btn-sm btn-warning"><i class="fas fa-file-import me-1"></i>Import as sources</button>
+          {% else %}
+            <button type="submit" name="action" value="delete_legacy" class="btn btn-sm btn-outline-danger"
+                    onclick="return confirm('Delete the {{ legacy.attribute_count }} old auto wanted provider attributes? The sources are kept.');"><i class="fas fa-trash-alt me-1"></i>Delete old attributes</button>
+          {% endif %}
+        </form>
+      </div>
+    </div>
+  {% endif %}
+
+  <div class="row g-2 mb-3">
+    <div class="col-6 col-md-3">
+      <div class="dm-stat">
+        <div class="dm-lbl">Sources</div>
+        <div class="dm-val text-info">{{ sources|length }}</div>
+        <div class="dm-stat-sub">{{ active_count }} active</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="dm-stat">
+        <div class="dm-lbl">Scheduler</div>
+        <div class="dm-val {% if scheduler.enable %}text-success{% else %}text-secondary{% endif %}">{% if scheduler.enable %}On{% else %}Off{% endif %}</div>
+        <div class="dm-stat-sub">sources without a frequency run every {{ default_period }}{% if scheduler.startup %}; starts with the workers{% endif %}</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="dm-stat">
+        <div class="dm-lbl">Last check</div>
+        <div class="dm-val" style="font-size: 1.1rem;">{% if scheduler.state.last_run %}{{ scheduler.state.last_run|timesince }} ago{% else %}never{% endif %}</div>
+        <div class="dm-stat-sub">checks at least every {{ check_interval_minutes }} min{% if scheduler.state.next_run %}, next ~{{ scheduler.state.next_run|date:"H:i" }}{% elif scheduler.state %}{% if scheduler.state.is_running %}running{% else %}stopped{% endif %}{% else %}not registered{% endif %}</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="dm-stat">
+        <div class="dm-lbl">Failing</div>
+        <div class="dm-val {% if failing_count %}text-danger{% else %}text-success{% endif %}">{{ failing_count }}</div>
+        <div class="dm-stat-sub">{{ created_total }} wanted galleries created on the last runs</div>
+      </div>
+    </div>
+  </div>
+
+  {% if not sources %}
+    <div class="dm-card">
+      <div class="dm-empty">
+        <i class="fas fa-magic"></i>
+        No sources yet. Create one for each feed or listing to follow (for example the wanimagazine <code>comics/feed/</code>
+        feed), import an export from another instance{% if legacy.pending %}, or import the old provider attribute queries above{% endif %}.
+        Providers with a wanted generator: {{ providers|join:", " }}.
+      </div>
+    </div>
+  {% else %}
+    <form method="post" class="dm-card" id="aw-sources-form">
+      {% csrf_token %}
+      <div class="table-responsive">
+        <table class="table table-sm table-dm table-hover mb-0">
+          <thead>
+            <tr>
+              <th style="width: 1.5rem;"><input type="checkbox" class="form-check-input" id="aw-check-all" aria-label="Select all"></th>
+              <th>Source</th>
+              <th>Provider</th>
+              <th>Parameters</th>
+              <th>Runs</th>
+              <th>Wanted galleries</th>
+              <th>Last run</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for s in sources %}
+              <tr class="{% if not s.active %}opacity-50{% endif %}">
+                <td><input type="checkbox" class="form-check-input aw-check" name="source" value="{{ s.pk }}" aria-label="Select {{ s.name }}"></td>
+                <td>
+                  <a href="{% url 'viewer:auto-wanted-edit' s.pk %}" class="fw-semibold">{{ s.name }}</a>
+                  {% if not s.active %}<span class="badge bg-secondary ms-1">inactive</span>{% endif %}
+                  {% if s.force_process %}<span class="badge bg-warning text-dark ms-1" title="Processes every link, even the ones already processed">force</span>{% endif %}
+                </td>
+                <td class="small text-nowrap">
+                  {{ s.provider }}
+                  {% if s.pk in unknown_provider_ids %}<span class="badge bg-danger ms-1" title="This provider has no wanted generator">unknown</span>{% endif %}
+                </td>
+                <td class="aw-params">
+                  {% for k, v in s.params.items %}<code>{{ k }}</code>={{ v }}{% if not forloop.last %}, {% endif %}{% empty %}<span class="dm-dim">none</span>{% endfor %}
+                </td>
+                <td class="small text-nowrap">
+                  {% if s.frequency %}every {{ s.frequency }}{% else %}<span class="dm-muted" title="auto_wanted.cycle_timer">every {{ default_period }}</span>{% endif %}
+                  <div class="dm-dim">
+                    {% if not s.active %}not scheduled{% elif s.is_due %}due, at the next check{% else %}next ~{{ s.next_run|date:"Y-m-d H:i" }}{% endif %}
+                  </div>
+                </td>
+                <td class="small">
+                  {% if s.reason %}<span class="badge bg-dark border border-secondary">{{ s.reason }}</span>{% endif %}
+                  {% if s.should_search %}<span class="badge bg-info text-dark" title="Searched in the providers">search</span>{% endif %}
+                  {% if s.keep_searching %}<span class="badge bg-info text-dark" title="Keeps searching after found">keep</span>{% endif %}
+                  {% if s.public %}<span class="badge bg-success">public</span>{% endif %}
+                  {% if s.wanted_providers %}<span class="dm-muted">in {{ s.wanted_providers }}</span>{% endif %}
+                  <div class="dm-dim">{{ s.wanted_count }} created</div>
+                </td>
+                <td class="small">
+                  {% if s.last_run_at %}
+                    <span class="text-nowrap" title="{{ s.last_run_at|date:'Y-m-d H:i' }}">{{ s.last_run_at|timesince }} ago</span>
+                    {% if s.last_run_status == "ok" %}<span class="badge bg-success">ok</span>
+                    {% elif s.last_run_status == "errors" %}<span class="badge bg-warning text-dark">errors</span>
+                    {% else %}<span class="badge bg-danger">failed</span>{% endif %}
+                    <div class="dm-muted">{{ s.last_run_links }} new links, {{ s.last_run_created }} created, {{ s.last_run_mentions }} mentions</div>
+                    {% if s.last_run_message %}<div class="aw-message text-warning">{{ s.last_run_message|truncatechars:300 }}</div>{% endif %}
+                  {% else %}
+                    <span class="dm-dim">never</span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="dm-actionbar d-flex flex-wrap align-items-center gap-2 p-2 border-top" style="border-color: var(--pg-border) !important;">
+        <button type="submit" name="action" value="run" class="btn btn-sm btn-info"><i class="fas fa-play me-1"></i>Run selected</button>
+        <button type="submit" name="action" value="activate" class="btn btn-sm btn-outline-light">Activate</button>
+        <button type="submit" name="action" value="deactivate" class="btn btn-sm btn-outline-light">Deactivate</button>
+        <span class="small dm-muted">Runs are queued as an <code>auto_wanted_worker</code> task.</span>
+        <button type="submit" name="action" value="run_active" class="btn btn-sm btn-outline-info ms-auto"><i class="fas fa-play-circle me-1"></i>Run all active now</button>
+      </div>
+    </form>
+  {% endif %}
+
+  <!-- Import -->
+  <div class="modal fade dm-modal" id="aw-import-modal" tabindex="-1" aria-labelledby="aw-import-title" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+      <form class="modal-content" method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="import">
+        <div class="modal-header">
+          <h5 class="modal-title" id="aw-import-title"><i class="fas fa-file-import text-info me-2"></i>Import sources</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <p class="small dm-muted">
+            A file from Export (here or on another instance). Sources are matched by name: existing ones are updated
+            (fields left out keep their value), the rest created. Each one is validated like the form, its parameters with
+            its provider's.
+          </p>
+          <input type="file" name="file" accept="application/json,.json" class="form-control form-control-sm mb-2" aria-label="JSON file">
+          <textarea name="data" class="form-control form-control-sm font-monospace" rows="10" aria-label="JSON"
+                    placeholder='or paste it: {"sources": [{"name": "wanimagazine comics", "provider": "wanimagazine", "params": {"subpath": "comics/feed/"}, "reason": "wanimagazine"}]}'></textarea>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-sm btn-outline-light" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-sm btn-info"><i class="fas fa-file-import me-1"></i>Import</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block afterJQ %}
+  <script>
+    (function () {
+      const all = document.getElementById('aw-check-all');
+      if (all) all.addEventListener('change', () => {
+        document.querySelectorAll('.aw-check').forEach(cb => { cb.checked = all.checked; });
+      });
+    })();
+  </script>
+{% endblock %}

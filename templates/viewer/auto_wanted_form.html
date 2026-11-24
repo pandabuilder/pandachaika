@@ -1,0 +1,167 @@
+{% extends "viewer/base.html" %}
+{% load static compress %}
+{% block title %}{% if source %}Edit {{ source.name }}{% else %}New source{% endif %} | Auto Wanted | {{ block.super }}{% endblock %}
+{% block sidebar %}{% endblock %}
+
+{% block extra_head %}
+  {% compress css %}
+    <link href="{% static 'css/dm-pages.css' %}" type="text/css" rel="stylesheet" />
+  {% endcompress %}
+  <style>
+    .aw-message { white-space: pre-line; font-size: 0.8rem; }
+    .aw-json { font-size: 0.75rem; max-height: 22rem; overflow: auto; white-space: pre; }
+  </style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+  {% include "viewer/include/dm_messages.html" %}
+
+  <div class="dm-page-header">
+    <div>
+      <h2 class="h3 mb-1"><i class="fas fa-magic text-info me-2"></i>{% if source %}{{ source.name }}{% else %}New auto wanted source{% endif %}</h2>
+      <p class="mb-0 small">A provider query whose new releases become wanted galleries.</p>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      {% if source %}
+        <a href="{% url 'viewer:auto-wanted-create' %}?copy={{ source.pk }}" class="btn btn-outline-light btn-sm"><i class="fas fa-copy me-1"></i>Duplicate</a>
+      {% endif %}
+      <a href="{% url 'viewer:auto-wanted' %}" class="btn btn-outline-light btn-sm"><i class="fas fa-arrow-left me-1"></i>All sources</a>
+    </div>
+  </div>
+
+  {% if source and source.last_run_at %}
+    <div class="dm-card">
+      <div class="p-3 small d-flex flex-wrap gap-3 align-items-start">
+        <div>
+          <div class="dm-lbl">Last run</div>
+          {{ source.last_run_at|date:"Y-m-d H:i" }} ({{ source.last_run_at|timesince }} ago)
+          {% if source.last_run_status == "ok" %}<span class="badge bg-success">ok</span>
+          {% elif source.last_run_status == "errors" %}<span class="badge bg-warning text-dark">finished with errors</span>
+          {% else %}<span class="badge bg-danger">failed</span>{% endif %}
+        </div>
+        <div><div class="dm-lbl">New links</div>{{ source.last_run_links }}</div>
+        <div><div class="dm-lbl">Wanted galleries created</div>{{ source.last_run_created }}</div>
+        <div><div class="dm-lbl">Mentions added</div>{{ source.last_run_mentions }}</div>
+        {% if source.last_run_message %}<div class="w-100 aw-message text-warning">{{ source.last_run_message }}</div>{% endif %}
+      </div>
+    </div>
+  {% endif %}
+
+  <form method="post" class="dm-card">
+    {% csrf_token %}
+    {% if form.non_field_errors %}<div class="alert alert-danger m-3">{{ form.non_field_errors }}</div>{% endif %}
+    <div class="p-3">
+      <div class="row g-3">
+        <div class="col-lg-6">
+          <div class="dm-lbl mb-2">Source</div>
+          {% include "viewer/include/release_series_field.html" with field=form.name %}
+          {% include "viewer/include/release_series_field.html" with field=form.provider %}
+          {% include "viewer/include/auto_wanted_check.html" with field=form.active %}
+          {% include "viewer/include/release_series_field.html" with field=form.frequency %}
+          <div class="form-text mb-3 mt-n2">Same format as Monitored Links: <code>06:00:00</code> for 6 hours, <code>1 00:00:00</code> for a day. Empty: every {{ default_period }} (<code>auto_wanted.cycle_timer</code>).</div>
+          {% include "viewer/include/auto_wanted_check.html" with field=form.force_process %}
+          {% include "viewer/include/release_series_field.html" with field=form.notes %}
+
+          <div class="dm-lbl mb-2 mt-4">Query parameters</div>
+          {% for provider, fields in form.provider_params %}
+            <fieldset class="aw-provider-params" data-provider="{{ provider }}">
+              {% for field in fields %}
+                {% if field.field.widget.input_type == "checkbox" %}
+                  {% include "viewer/include/auto_wanted_check.html" with field=field %}
+                {% else %}
+                  {% include "viewer/include/release_series_field.html" with field=field %}
+                {% endif %}
+              {% empty %}
+                <p class="small dm-muted">This provider takes no parameters.</p>
+              {% endfor %}
+            </fieldset>
+          {% endfor %}
+        </div>
+        <div class="col-lg-6">
+          <div class="dm-lbl mb-2">Wanted galleries created</div>
+          <p class="small dm-muted mt-n1">Values of the wanted galleries this source creates. A release that's already a wanted gallery (same title) only gets a mention.</p>
+          {% include "viewer/include/release_series_field.html" with field=form.reason %}
+          {% include "viewer/include/auto_wanted_check.html" with field=form.should_search %}
+          {% include "viewer/include/auto_wanted_check.html" with field=form.keep_searching %}
+          {% include "viewer/include/auto_wanted_check.html" with field=form.notify_when_found %}
+          {% include "viewer/include/auto_wanted_check.html" with field=form.public %}
+          {% include "viewer/include/release_series_field.html" with field=form.wanted_providers %}
+          {% include "viewer/include/release_series_field.html" with field=form.unwanted_title %}
+          <div class="form-text mb-2 mt-n2">The <code>auto_wanted.unwanted_title</code> setting ({% if default_unwanted_title %}<code>{{ default_unwanted_title }}</code>{% else %}empty{% endif %}) is the default for new sources.</div>
+          {% include "viewer/include/auto_wanted_check.html" with field=form.regexp_unwanted_title %}
+          {% include "viewer/include/auto_wanted_check.html" with field=form.regexp_unwanted_title_icase %}
+        </div>
+      </div>
+    </div>
+    <div class="dm-actionbar d-flex flex-wrap gap-2 p-2 border-top" style="border-color: var(--pg-border) !important;">
+      <button type="submit" class="btn btn-sm btn-info"><i class="fas fa-save me-1"></i>{% if source %}Save{% else %}Create{% endif %}</button>
+      <button type="submit" name="then" value="run" class="btn btn-sm btn-outline-info"><i class="fas fa-play me-1"></i>{% if source %}Save{% else %}Create{% endif %} and run</button>
+      {% if source %}
+        <button type="submit" name="action" value="run" class="btn btn-sm btn-outline-light" formnovalidate title="Run the saved configuration"><i class="fas fa-play-circle me-1"></i>Run now</button>
+        <button type="submit" name="action" value="delete" class="btn btn-sm btn-outline-danger ms-auto" formnovalidate
+                onclick="return confirm('Delete the source {{ source.name|escapejs }}? The wanted galleries it created are kept.');"><i class="fas fa-trash-alt me-1"></i>Delete</button>
+      {% endif %}
+    </div>
+  </form>
+
+  {% if source %}
+    <div class="dm-card">
+      <div class="dm-card-header d-flex justify-content-between align-items-center">
+        <span><i class="fas fa-list me-2"></i>Wanted galleries created</span>
+        <span class="small dm-muted fw-normal">{{ wanted_count }} in total{% if wanted_count > recent_wanted|length %}, newest {{ recent_wanted|length }}{% endif %}</span>
+      </div>
+      {% if recent_wanted %}
+        <div class="table-responsive">
+          <table class="table table-sm table-dm table-hover mb-0">
+            <thead><tr><th>Title</th><th>Release date</th><th>Created</th><th>Found</th></tr></thead>
+            <tbody>
+              {% for w in recent_wanted %}
+                <tr>
+                  <td><a href="{{ w.get_absolute_url }}">{{ w.title|default:w.title_jpn }}</a></td>
+                  <td class="small text-nowrap">{{ w.release_date|date:"Y-m-d" }}</td>
+                  <td class="small text-nowrap">{{ w.create_date|date:"Y-m-d H:i" }}</td>
+                  <td>{% if w.found %}<i class="fas fa-check text-success"></i>{% endif %}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="dm-empty"><i class="fas fa-inbox"></i>None yet (wanted galleries created before the sources existed aren't linked to one).</div>
+      {% endif %}
+    </div>
+
+    <div class="dm-card">
+      <div class="dm-card-header d-flex justify-content-between align-items-center">
+        <span><i class="fas fa-code me-2"></i>As JSON</span>
+        <button type="button" class="btn btn-sm btn-outline-light" id="aw-copy-json"><i class="fas fa-copy me-1"></i>Copy</button>
+      </div>
+      <pre class="aw-json p-3 mb-0" id="aw-json">{{ source_json }}</pre>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block afterJQ %}
+  <script>
+    (function () {
+      const select = document.getElementById('{{ form.provider.id_for_label }}');
+      const groups = document.querySelectorAll('.aw-provider-params');
+      function show() {
+        groups.forEach(g => {
+          const on = select && g.dataset.provider === select.value;
+          g.hidden = !on;
+          g.disabled = !on;
+        });
+      }
+      if (select) { select.addEventListener('change', show); show(); }
+      const copy = document.getElementById('aw-copy-json');
+      if (copy) copy.addEventListener('click', () => {
+        navigator.clipboard.writeText(document.getElementById('aw-json').textContent).then(() => {
+          copy.innerHTML = '<i class="fas fa-check me-1"></i>Copied';
+        });
+      });
+    })();
+  </script>
+{% endblock %}

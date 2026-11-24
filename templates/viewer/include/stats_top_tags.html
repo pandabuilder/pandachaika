@@ -1,0 +1,22 @@
+{% comment %}Top tags card of the stats pages: tags (annotated with num_archive), title, group (share bar group).{% endcomment %}
+<div class="dm-card h-100 mb-0">
+  <div class="dm-card-header"><i class="fas fa-tags text-info me-1"></i>{{ title }}</div>
+  {% if tags %}
+    <ol class="dm-kv">
+      {% for tag in tags %}
+        <li>
+          <span class="dm-kv-key text-truncate" style="min-width: 0;">
+            <span class="dm-dim font-monospace me-1">{{ forloop.counter }}.</span>
+            <a href="{% url 'viewer:archive-tag-search' 'tag' tag %}">{{ tag }}</a>
+          </span>
+          <span class="dm-bar-wrap flex-shrink-0" style="width: 45%;">
+            <span class="dm-bar-track"><span class="dm-bar dm-bar-green" data-dm-bar="{{ tag.num_archive }}" data-dm-bar-group="{{ group }}"></span></span>
+            <span class="dm-bar-val" title="Used by {{ tag.num_archive }} archive{{ tag.num_archive|pluralize }}">{{ tag.num_archive }}</span>
+          </span>
+        </li>
+      {% endfor %}
+    </ol>
+  {% else %}
+    <div class="dm-empty"><i class="fas fa-tags"></i>No tags yet.</div>
+  {% endif %}
+</div>

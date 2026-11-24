@@ -102,7 +102,9 @@ build-image:
   when: manual
   dependencies: []
   image:
-    name: gcr.io/kaniko-project/executor:debug
+    # Upstream gcr.io/kaniko-project was archived in June 2025; this is the maintained community fork.
+    # Pinned so runners can reuse the cached image instead of re-pulling a moving tag.
+    name: ghcr.io/osscontainertools/kaniko:v1.29.2-debug
     entrypoint: [""]
   script:
     - mkdir -p /kaniko/.docker

@@ -37,11 +37,12 @@ Pager for the streamlined pages (needs css/dm-pages.css and js/dm-pages.js).
         </ul>
       </nav>
       {% if not compact and paginator.num_pages > 2 %}
-        <form class="dm-page-jump d-flex align-items-center gap-1" action="" method="get">
+        {% comment %}Not a <form>: the pager is often inside a POST form, and a nested form would close it early.{% endcomment %}
+        <div class="dm-page-jump d-flex align-items-center gap-1">
           <label class="small dm-muted" for="dm-page-jump-{{ jump_id|default:'top' }}">Page</label>
-          <input id="dm-page-jump-{{ jump_id|default:'top' }}" type="number" name="page" min="1" max="{{ paginator.num_pages }}" value="{{ page_obj.number }}"
-                 class="form-control form-control-sm dm-page-input bg-transparent text-light">
-        </form>
+          <input id="dm-page-jump-{{ jump_id|default:'top' }}" type="number" min="1" max="{{ paginator.num_pages }}" value="{{ page_obj.number }}"
+                 class="form-control form-control-sm dm-page-input bg-transparent text-light" title="Press Enter to go to the page">
+        </div>
       {% endif %}
     {% endif %}
     {% if not compact and per_page_options %}

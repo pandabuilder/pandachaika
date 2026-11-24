@@ -2,6 +2,7 @@
 
 import datetime
 import logging
+from unittest.mock import patch
 
 from django.contrib.auth.models import Permission, User
 from django.http import QueryDict
@@ -16,7 +17,9 @@ from viewer.models import (
     ArchiveMatches,
     DownloadEvent,
     EventLog,
+    FoundGallery,
     Gallery,
+    GalleryGroupPossibleMatches,
     GalleryMatchGroup,
     GalleryMatchGroupEntry,
     GallerySubmitEntry,
@@ -273,6 +276,52 @@ class PagesTest(TestCase):
         self.other_gallery.refresh_from_db()
         self.assertTrue(self.other_gallery.public)
 
+    def test_manage_galleries_pager_does_not_nest_forms(self):
+        # A <form> inside the POST form would close it early, leaving the bulk action buttons outside of it.
+        from html.parser import HTMLParser
+
+        class FormNesting(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.depth = 0
+                self.nested = 0
+
+            def handle_starttag(self, tag, attrs):
+                if tag == "form":
+                    if self.depth:
+                        self.nested += 1
+                    self.depth += 1
+
+            def handle_endtag(self, tag):
+                if tag == "form":
+                    self.depth = max(0, self.depth - 1)
+
+        Gallery.objects.create(gid="3", token="t", provider="panda", title="Gallery Three", filecount=10, filesize=1000)
+        response = self.client.get(reverse("viewer:manage-galleries") + "?size=1")
+        self.assertEqual(response.context["results"].paginator.num_pages, 3)
+        self.assertContains(response, "dm-page-jump")
+        parser = FormNesting()
+        parser.feed(response.content.decode())
+        self.assertEqual(parser.nested, 0)
+
+    def test_manage_galleries_dl_type_filter(self):
+        self.gallery.dl_type = "manual"
+        self.gallery.save()
+        self.other_gallery.dl_type = "failed"
+        self.other_gallery.save()
+        response = self.client.get(reverse("viewer:manage-galleries") + "?dl_type=manual")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([g.pk for g in response.context["results"]], [self.gallery.pk])
+        self.assertContains(response, 'name="dl_type"')
+
+        response = self.client.get(reverse("gallery-dl-type-autocomplete") + "?q=man")
+        self.assertContains(response, 'data-value="manual"')
+        self.assertNotContains(response, "failed")
+
+        self.client.logout()
+        response = self.client.get(reverse("gallery-dl-type-autocomplete"))
+        self.assertNotContains(response, "manual")
+
     def test_wanted_galleries_stats_public_and_staff(self):
         WantedGallery.objects.create(title="Public Wanted", search_title="pub", public=True, should_search=True, found=False)
         WantedGallery.objects.create(title="Private Found", search_title="priv", public=False, should_search=False, found=True)
@@ -286,9 +335,54 @@ class PagesTest(TestCase):
         self.client.logout()
         response = self.client.get(reverse("viewer:wanted-galleries"))
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context["stats"]["total"], 1)
+        self.assertIsNone(response.context["stats"])
         self.assertContains(response, "Public Wanted")
         self.assertNotContains(response, "Private Found")
+
+    def test_wanted_galleries_public_version(self):
+        wanted = WantedGallery.objects.create(
+            title="Public Wanted", search_title="pub", public=True, should_search=True, found=False
+        )
+        WantedGallery.objects.create(
+            title="Public Found", search_title="pubfound", public=True, should_search=True, found=True
+        )
+        WantedGallery.objects.create(
+            title="Public Paused", search_title="pubpaused", public=True, should_search=False, found=False
+        )
+        WantedGallery.objects.create(
+            title="Private Wanted", search_title="priv", public=False, should_search=True, found=False
+        )
+        WantedGallery.objects.create(
+            title="Other Wanted", search_title="Public Wanted", public=True, should_search=True, found=False
+        )
+        self.client.logout()
+        url = reverse("viewer:wanted-galleries")
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(sorted(g.title for g in response.context["results"]), ["Other Wanted", "Public Wanted"])
+        # No management filters, status badges or links to the login-only wanted gallery pages.
+        self.assertContains(response, 'name="title"')
+        for hidden in (
+            'name="tags"',
+            "more-filters",
+            "wanted-should-search",
+            'name="sort"',
+            "Keep searching",
+            ">Public<",
+            "dm-stat-sub",
+        ):
+            self.assertNotContains(response, hidden)
+        self.assertNotContains(response, wanted.get_absolute_url())
+
+        # Searching by title keeps the public defaults and only looks at the titles.
+        response = self.client.get(url + "?title=public&wanted-found=1&wanted-should-search-not=1")
+        self.assertEqual([g.title for g in response.context["results"]], ["Public Wanted"])
+
+        # Logged-in users can open public wanted galleries, so they keep the links.
+        self.client.force_login(User.objects.create_user("normaluser", "normal@example.invalid", "pw"))
+        response = self.client.get(url)
+        self.assertContains(response, wanted.get_absolute_url())
+        self.assertNotContains(response, "more-filters")
 
     def test_gallery_match_groups_stats_and_create_redirect(self):
         group = GalleryMatchGroup.objects.create(title="Group Alpha")
@@ -351,3 +445,192 @@ class PagesTest(TestCase):
         )
         self.assertRedirects(resp, url, fetch_redirect_response=False)
         self.assertEqual(GalleryMatchGroup.objects.count(), 1)
+
+
+class RedesignedPagesTest(TestCase):
+    """Stats, tools, found galleries and the staff archive/gallery review pages on dm-pages."""
+
+    def setUp(self):
+        self.admin = User.objects.create_superuser("admin", "admin@example.invalid", "pw")
+        self.client.force_login(self.admin)
+        self.gallery = Gallery.objects.create(gid="1", token="t", provider="panda", title="Gallery One", filecount=10, filesize=1000)
+        self.other_gallery = Gallery.objects.create(gid="2", token="t", provider="fakku", title="Gallery Two", filecount=10, filesize=1000)
+
+    def test_pages_render_with_dm_pages(self):
+        url_names = (
+            "tools",
+            "stats-collection",
+            "found-galleries",
+            "manage-archives",
+            "archives-not-matched",
+            "repeated-archives",
+            "gallery-match-groups-batch",
+            "archive-filesize-different",
+        )
+        for name in url_names:
+            response = self.client.get(reverse(f"viewer:{name}"))
+            self.assertEqual(response.status_code, 200, name)
+            self.assertContains(response, "dm-page-header")
+            self.assertContains(response, "dm-pages.css")
+
+        with patch("viewer.views.head.search.crawler_settings.urls.enable_public_stats", True):
+            self.client.logout()
+            response = self.client.get(reverse("viewer:public-stats"))
+            self.assertEqual(response.status_code, 200)
+            self.assertContains(response, "dm-page-header")
+
+    def test_full_metadata_stats_link_is_gone(self):
+        self.client.logout()
+        response = self.client.get(reverse("viewer:found-galleries"))
+        self.assertNotContains(response, "/public/stats.html")
+        self.assertNotContains(response, "Full Metadata stats")
+
+    def test_settings_object_page_is_gone(self):
+        self.assertEqual(self.client.get("/stats/settings/").status_code, 404)
+        response = self.client.get(reverse("viewer:tools"))
+        self.assertContains(response, reverse("viewer:tools-id", args=["modify_settings_editor"]))
+
+    def test_tools_counts(self):
+        Archive.objects.create(title="No thumb", zipped="t.zip", thumbnail="", crc32="", user=self.admin)
+        response = self.client.get(reverse("viewer:tools"))
+        self.assertEqual(response.context["counts"]["missing_thumbs"], 1)
+        self.assertEqual(response.context["counts"]["missing_info"], 1)
+        self.assertEqual(response.context["counts"]["unmatched_archives"], 1)
+        self.assertContains(response, 'data-dm-filter=".dm-tool"')
+
+    def test_found_galleries_period_and_source(self):
+        wanted = WantedGallery.objects.create(title="Wanted", search_title="w", public=True)
+        recent = FoundGallery.objects.create(wanted_gallery=wanted, gallery=self.gallery, source="web")
+        old = FoundGallery.objects.create(wanted_gallery=wanted, gallery=self.other_gallery, source="")
+        FoundGallery.objects.filter(pk=old.pk).update(create_date=timezone.now() - datetime.timedelta(days=10))
+        url = reverse("viewer:found-galleries")
+
+        response = self.client.get(url)
+        self.assertEqual(response.context["stats"]["total"], 2)
+        self.assertEqual(response.context["stats"]["week"], 1)
+        self.assertEqual(response.context["stats"]["month"], 2)
+
+        response = self.client.get(url + "?period=week")
+        self.assertEqual([f.pk for f in response.context["results"]], [recent.pk])
+        response = self.client.get(url + "?source=-")
+        self.assertEqual([f.pk for f in response.context["results"]], [old.pk])
+        response = self.client.get(url + "?source=web&limit=25")
+        self.assertEqual([f.pk for f in response.context["results"]], [recent.pk])
+        self.assertEqual(response.context["limit"], 25)
+
+        # Visitors only see public galleries found by public wanted galleries, without the filters.
+        self.client.logout()
+        self.gallery.public = True
+        self.gallery.save()
+        response = self.client.get(url)
+        self.assertEqual([f.pk for f in response.context["results"]], [recent.pk])
+        self.assertIsNone(response.context["form"])
+        self.assertNotContains(response, 'id="filter-form"')
+
+    def test_manage_archives_stats_and_post_redirect(self):
+        archive = Archive.objects.create(title="Private", zipped="p.zip", public=False, crc32="x", user=self.admin)
+        Archive.objects.create(title="Binned", zipped="b.zip", binned=True, crc32="x", user=self.admin)
+        url = reverse("viewer:manage-archives") + "?size=20"
+        response = self.client.get(url)
+        self.assertEqual(response.context["size"], 20)
+        self.assertEqual(response.context["stats"]["total"], 1)
+        self.assertEqual(response.context["stats"]["private"], 1)
+        self.assertEqual(response.context["stats"]["recycled"], 1)
+
+        response = self.client.post(
+            url, {f"sel-{archive.pk}": str(archive.pk), "change_archive_reason": "", "archive_reason": "new reason"}
+        )
+        self.assertRedirects(response, url, fetch_redirect_response=False)
+        archive.refresh_from_db()
+        self.assertEqual(archive.reason, "new reason")
+
+    def test_repeated_and_different_filesize_archives(self):
+        same = Archive.objects.create(title="A1", zipped="a1.zip", filesize=1000, filecount=10, gallery=self.gallery, user=self.admin)
+        diff = Archive.objects.create(title="A2", zipped="a2.zip", filesize=900, filecount=9, gallery=self.gallery, user=self.admin)
+        Archive.objects.create(title="A3", zipped="a3.zip", filesize=800, filecount=9, gallery=self.gallery, user=self.admin)
+
+        response = self.client.get(reverse("viewer:repeated-archives"))
+        galleries = list(response.context["results"])
+        self.assertEqual([g.pk for g in galleries], [self.gallery.pk])
+        archives = {a.pk: a for a in galleries[0].archive_list}
+        self.assertTrue(archives[same.pk].same_size)
+        self.assertFalse(archives[diff.pk].same_size)
+        self.assertEqual(archives[diff.pk].size_diff, -100)
+        self.assertEqual(response.context["providers"], [{"provider": "panda", "count": 1}])
+
+        # Several archives of a different size: the gallery is listed once.
+        response = self.client.get(reverse("viewer:archive-filesize-different") + "?provider=panda")
+        self.assertEqual([g.pk for g in response.context["results"]], [self.gallery.pk])
+        self.assertEqual(response.context["total"], 1)
+
+        url = reverse("viewer:repeated-archives")
+        response = self.client.post(url, {f"del-{diff.pk}": str(diff.pk), "delete_archives": ""})
+        self.assertRedirects(response, url, fetch_redirect_response=False)
+        self.assertFalse(Archive.objects.filter(pk=diff.pk).exists())
+
+        response = self.client.post(url, {"delete_archives": ""})
+        self.assertRedirects(response, url, fetch_redirect_response=False)
+
+    def test_archives_not_matched_candidates_and_redirect(self):
+        archive = Archive.objects.create(title="Unmatched", zipped="u.zip", filecount=10, filesize=1000, user=self.admin)
+        lonely = Archive.objects.create(title="Lonely", zipped="l.zip", filecount=10, filesize=1000, user=self.admin)
+        ArchiveMatches.objects.create(archive=archive, gallery=self.gallery, match_type="title", match_accuracy=0.5)
+        ArchiveMatches.objects.create(archive=archive, gallery=self.gallery, match_type="image", match_accuracy=0.95)
+        ArchiveMatches.objects.create(archive=archive, gallery=self.other_gallery, match_type="title", match_accuracy=0.7)
+        url = reverse("viewer:archives-not-matched")
+
+        response = self.client.get(url + "?with-possible-matches=1")
+        listed = response.context["results"][0]
+        self.assertEqual([c["gallery"].pk for c in listed.candidates], [self.gallery.pk, self.other_gallery.pk])
+        self.assertAlmostEqual(listed.best_accuracy, 0.95)
+        self.assertEqual(response.context["stats"]["with_possible"], 1)
+        self.assertEqual(response.context["stats"]["without_possible"], 1)
+
+        response = self.client.get(url + "?without-possible-matches=1")
+        self.assertEqual([a.pk for a in response.context["results"]], [lonely.pk])
+
+        response = self.client.post(url, {f"sel-{archive.pk}": str(archive.pk), "clear_possible_matches": ""})
+        self.assertRedirects(response, url, fetch_redirect_response=False)
+        self.assertFalse(ArchiveMatches.objects.filter(archive=archive).exists())
+
+    def test_staff_archive_update_answers_json_to_fetch(self):
+        archive = Archive.objects.create(title="Archive", zipped="a.zip", filecount=10, filesize=1000, user=self.admin)
+        ArchiveMatches.objects.create(archive=archive, gallery=self.gallery, match_type="title", match_accuracy=0.9)
+        ajax = {"HTTP_X_REQUESTED_WITH": "XMLHttpRequest"}
+
+        url = reverse("viewer:archive-update-tool-id", args=(archive.pk, "select-as-match", self.gallery.pk))
+        response = self.client.post(url, **ajax)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["gallery"], self.gallery.pk)
+
+        response = self.client.post(reverse("viewer:archive-update-tool", args=(archive.pk, "nonsense")), **ajax)
+        self.assertEqual(response.status_code, 400)
+
+        response = self.client.post(reverse("viewer:archive-update-tool", args=(archive.pk, "clear-possible-matches")))
+        self.assertEqual(response.status_code, 302)
+
+    def test_gallery_match_groups_batch_candidates_and_json(self):
+        group = GalleryMatchGroup.objects.create(title="Group")
+        GalleryMatchGroupEntry.objects.create(gallery_match_group=group, gallery=self.gallery, gallery_position=1)
+        GalleryGroupPossibleMatches.objects.create(
+            gallery_match_group=group, gallery=self.other_gallery, match_type="title", match_accuracy=0.8
+        )
+        url = reverse("viewer:gallery-match-groups-batch")
+        response = self.client.get(url + "?with-possible-matches=1")
+        listed = response.context["results"][0]
+        self.assertEqual(listed.pk, self.gallery.pk)
+        self.assertEqual([c["gallery"].pk for c in listed.candidates], [self.other_gallery.pk])
+        self.assertEqual(response.context["stats"]["with_possible"], 1)
+        self.assertEqual(response.context["stats"]["single"], 1)
+
+        ajax = {"HTTP_X_REQUESTED_WITH": "XMLHttpRequest"}
+        add_url = reverse(
+            "viewer:col-gallery-update-tool-id", args=(self.gallery.pk, "add-to-match-group", self.other_gallery.pk)
+        )
+        response = self.client.post(add_url, **ajax)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["match_group"], group.pk)
+        self.assertEqual(group.galleries.count(), 2)
+
+        response = self.client.post(url, {"auto_select_first_match": ""})
+        self.assertRedirects(response, url, fetch_redirect_response=False)

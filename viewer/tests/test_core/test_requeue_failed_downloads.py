@@ -2,7 +2,6 @@ import os
 import subprocess
 from unittest.mock import MagicMock, patch
 
-import django.utils.timezone as django_tz
 from django.test import TestCase
 
 from core.base.setup import Settings
@@ -129,6 +128,44 @@ class RequeueFailedDownloadTest(TestCase):
             self.assertEqual(override_options.downloaders["panda_archive"], 1)
             self.assertEqual(override_options.downloaders["panda_hath"], 2)
             self.assertEqual(override_options.downloaders.get("chaika_archive"), -1)
+
+    @patch("core.downloaders.postdownload.ZipFile")
+    def test_process_downloaded_archive_requeue_error_still_recycles(self, mock_zipfile):
+        mock_zip = MagicMock()
+        mock_zip.testzip.return_value = "044.jpg"
+        mock_zipfile.return_value = mock_zip
+
+        settings = Settings(load_from_disk=False)
+        settings.recycle_failed_checks_downloads = True
+        mock_web_queue = MagicMock()
+        mock_web_queue.enqueue_args_list.side_effect = RuntimeError("queue unavailable")
+        post_downloader = PostDownloader(settings=settings, web_queue=mock_web_queue)
+
+        gallery = Gallery.objects.create(title="gallery panda", gid="2319433", provider="panda")
+        archive = Archive.objects.create(
+            title="panda torrent archive",
+            zipped="torrent_dls/panda_torrent.zip",
+            match_type="torrent",
+            gallery=gallery,
+            user=None,
+        )
+        event = DownloadEvent.objects.create(
+            name="panda torrent", archive=archive, gallery=gallery, method="torrent", agent="torrent", download_id="x"
+        )
+
+        with patch("os.path.isfile", return_value=True):
+            with self.assertLogs("core.downloaders.postdownload", level="ERROR") as cm:
+                result = post_downloader.process_downloaded_archive(archive)
+
+        self.assertFalse(result)
+        mock_web_queue.enqueue_args_list.assert_called_once()
+        self.assertTrue(any("could not requeue the download: queue unavailable" in msg for msg in cm.output))
+        archive.refresh_from_db()
+        self.assertTrue(archive.is_recycled())
+        event.refresh_from_db()
+        self.assertTrue(event.completed)
+        self.assertTrue(event.failed)
+        self.assertEqual(event.error_message, "Failed on ZIP file opening")
 
     @patch("core.downloaders.postdownload.ZipFile")
     def test_process_downloaded_archive_provider_mismatch_no_requeue(self, mock_zipfile):
@@ -649,19 +686,6 @@ class RequeueFailedDownloadTest(TestCase):
         self.assertEqual(downloader.fileDownloaded, 0)
         self.assertTrue(len(failed_dir) > 0)
         self.assertFalse(os.path.exists(failed_dir[0]))
-
-    def test_autoupdate_provider_name_formatting(self):
-        from core.workers.autoupdate import ProviderTimedAutoUpdater
-
-        settings = Settings(load_from_disk=True)
-        updater = ProviderTimedAutoUpdater(settings, provider_name="panda")
-        start_date = django_tz.now()
-        end_date = django_tz.now()
-        msg = "No galleries posted from {} to {} need updating. Provider: {}".format(
-            start_date, end_date, updater.provider_name
-        )
-        self.assertIn("Provider: panda", msg)
-        self.assertNotIn("p, a, n, d, a", msg)
 
     def test_settings_load_elasticsearch_from_environment(self):
         settings = Settings(load_from_disk=False)

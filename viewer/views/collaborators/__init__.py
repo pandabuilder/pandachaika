@@ -35,6 +35,7 @@ from viewer.views.collaborators.links import (
     delete_monitored_link,
     edit_monitored_link,
     monitored_link_action,
+    monitored_link_detail,
     monitored_links,
     user_token,
 )
@@ -74,6 +75,7 @@ __all__ = [
     "delete_monitored_link",
     "edit_monitored_link",
     "monitored_link_action",
+    "monitored_link_detail",
     "monitored_links",
     "user_token",
 ]

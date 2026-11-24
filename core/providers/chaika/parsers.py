@@ -11,7 +11,7 @@ from urllib.parse import urljoin
 
 from core.base.parsers import BaseParser
 from core.base.types import GalleryData
-from viewer.models import Gallery
+from viewer.models import Gallery, MonitoredLinkRun
 from core.base.utilities import chunks, request_by_provider, construct_request_dict
 
 from .utilities import ChaikaGalleryData
@@ -87,6 +87,8 @@ class Parser(BaseParser):
         return total_galleries_filtered
 
     def crawl_elastic_json_paginated(self, feed_url: str = "") -> list[ChaikaGalleryData]:
+        """Read every page of an es-gallery-json search. When crawling a monitored link, the galleries found are
+        recorded as its seen links and, with stop on seen links, the crawl ends at the first one seen before."""
 
         unique_urls: dict[str, ChaikaGalleryData] = dict()
 
@@ -112,16 +114,24 @@ class Parser(BaseParser):
             )
 
             if not response:
+                self._note_run_stop(MonitoredLinkRun.StopReason.NO_RESPONSE)
                 break
 
             try:
                 json_decoded = response.json()
             except (ValueError, KeyError):
                 logger.error("Could not parse response to JSON: {}".format(response.text))
+                self._note_run_stop(MonitoredLinkRun.StopReason.NO_RESPONSE)
                 break
 
             dict_list = json_decoded["hits"]
             limit_page = json_decoded["paginator"]["num_pages"]
+
+            if self.link_run is not None:
+                self.link_run.pages_crawled += 1
+
+            # (seen link id, gallery) of this page, in page order.
+            page_galleries: list[tuple[str, ChaikaGalleryData]] = []
 
             for gallery in dict_list:
                 gallery["posted"] = datetime.fromisoformat(gallery["posted_date"].replace("+0000", "+00:00"))
@@ -138,7 +148,28 @@ class Parser(BaseParser):
                     if "source_thumbnail" in gallery:
                         gallery_data.thumbnail_url = gallery["source_thumbnail"]
                     if gallery["source_url"] not in unique_urls:
-                        unique_urls[gallery["source_url"]] = gallery_data
+                        page_galleries.append((self.seen_link_id(gallery_data), gallery_data))
+
+            if not dict_list:
+                logger.info("Empty page found, ending")
+                self._note_run_stop(MonitoredLinkRun.StopReason.END_OF_RESULTS)
+                break
+
+            to_process, should_stop = self._record_seen_links(
+                [(seen_id, str(gallery_data.link)) for seen_id, gallery_data in page_galleries]
+            )
+            to_process_ids = {seen_id for seen_id, _ in to_process}
+            if should_stop:
+                # The seen links within the "already seen" window are processed again. Chaika needs the gallery
+                # data to process a link, so only the ones on this page can be.
+                monitored_link = self.current_monitored_link()
+                to_process_ids.update(self._recent_seen_links(monitored_link, self._get_provider()).keys())
+            for seen_id, gallery_data in page_galleries:
+                if seen_id in to_process_ids:
+                    unique_urls[str(gallery_data.link)] = gallery_data
+
+            if should_stop:
+                break
 
             if self.own_settings.stop_page_number is not None:
                 if current_page >= self.own_settings.stop_page_number:
@@ -146,16 +177,18 @@ class Parser(BaseParser):
                         "Got to stop page number: {}, "
                         "ending (setting: provider.stop_page_number).".format(self.own_settings.stop_page_number)
                     )
+                    self._note_run_stop(MonitoredLinkRun.StopReason.STOP_PAGE)
                     break
-                    
+
             if current_page >= limit_page:
                 logger.info(
                     "Got to last page: {}.".format(
                         limit_page
                     )
                 )
+                self._note_run_stop(MonitoredLinkRun.StopReason.END_OF_RESULTS)
                 break
-                    
+
             current_page += 1
             params = {"page": [str(current_page)]}
             query.update(params)
@@ -165,6 +198,11 @@ class Parser(BaseParser):
         total_galleries_filtered: list[ChaikaGalleryData] = list(unique_urls.values())
 
         return total_galleries_filtered
+
+    @staticmethod
+    def seen_link_id(gallery_data: GalleryData) -> str:
+        """Chaika keeps its own seen links, of galleries from several real providers: the gid alone could repeat."""
+        return "{}:{}".format(gallery_data.provider, gallery_data.gid)
 
     def crawl_elastic_json(self, feed_url: str = "") -> list[ChaikaGalleryData]:
 
@@ -411,8 +449,10 @@ class Parser(BaseParser):
                 gallery_data = ChaikaGalleryData(**gal_dict)
                 total_galleries_filtered.append(gallery_data)
 
+            in_database_count = 0
             for galleries_gid_group in list(chunks(galleries_gids, 900)):
                 for found_gallery in Gallery.objects.filter(gid__in=galleries_gid_group):
+                    in_database_count += 1
                     discard_approved, discard_message = self.discard_gallery_by_internal_checks(
                         gallery=found_gallery, link=found_gallery.get_link()
                     )
@@ -426,16 +466,21 @@ class Parser(BaseParser):
 
             logger.info("Already found galleries: {}".format(len(found_galleries)))
 
+            evaluated_count = 0
+            banned_count = 0
+            accepted_count = 0
             for count, gallery in enumerate(total_galleries_filtered, start=1):
 
                 if gallery.gid in found_galleries:
                     continue
+                evaluated_count += 1
 
                 banned_result, banned_reasons = self.general_utils.discard_by_gallery_data(
                     gallery.tags, gallery.uploader, gallery_data=gallery
                 )
 
                 if banned_result:
+                    banned_count += 1
                     if self.gallery_callback:
                         self.gallery_callback(None, gallery.link, "banned_data")
 
@@ -453,6 +498,7 @@ class Parser(BaseParser):
                     if wanted_only and not gallery_wanted_lists[gallery.gid]:
                         continue
 
+                accepted_count += 1
                 logger.info(
                     "Gallery {} of {}: Gallery {} (Real GID: {}) will be processed.".format(
                         count, len(total_galleries_filtered), gallery.title, gallery.gid
@@ -493,6 +539,14 @@ class Parser(BaseParser):
                             archive_gallery.temp_archive = archive
                             archive_galleries.append(archive_gallery)
                         self.pass_gallery_data_to_downloaders(archive_galleries, gallery_wanted_lists)
+
+            if self.link_run is not None:
+                # Chaika already returns the metadata, every gallery not discarded by the database check is evaluated.
+                self.link_run.links_to_process += len(total_galleries_filtered)
+                self.link_run.links_in_database += in_database_count
+                self.link_run.links_evaluated += evaluated_count
+                self.link_run.links_banned += banned_count
+                self.link_run.links_accepted += accepted_count
 
             if wanted_only:
 

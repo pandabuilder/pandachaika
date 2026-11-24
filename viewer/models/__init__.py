@@ -94,13 +94,21 @@ from viewer.models.events import (
     DownloadEventQuerySet,
     EventLog,
     MonitoredLink,
+    MonitoredLinkRun,
 )
 
 from viewer.models.file_check import ArchiveFileCheck, ArchiveFileCheckIssue
+from viewer.models.release_series import ReleaseSeries, ReleaseSeriesDismissal
+from viewer.models.auto_wanted import AutoWantedSource
+from viewer.models.auto_updater import AutoUpdaterSchedule
 
 __all__ = [
     "ArchiveFileCheck",
+    "AutoWantedSource",
+    "AutoUpdaterSchedule",
     "ArchiveFileCheckIssue",
+    "ReleaseSeries",
+    "ReleaseSeriesDismissal",
     # Common
     "EMPTY_TITLE",
     "IMAGE_PHASH_BLACK",
@@ -188,4 +196,5 @@ __all__ = [
     "DownloadEventQuerySet",
     "EventLog",
     "MonitoredLink",
+    "MonitoredLinkRun",
 ]

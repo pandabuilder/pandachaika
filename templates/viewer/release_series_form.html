@@ -1,0 +1,89 @@
+{% extends "viewer/base.html" %}
+{% block title %}{% if series %}Edit {{ series.name }}{% else %}New series{% endif %} | Release Completeness | {{ block.super }}{% endblock %}
+{% block sidebar %}{% endblock %}
+
+{% block extra_head %}
+  {% include "viewer/include/release_series_head.html" %}
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+  {% include "viewer/include/dm_messages.html" %}
+
+  <div class="dm-page-header">
+    <div>
+      <h2 class="h3 mb-1"><i class="fas fa-book-open text-info me-2"></i>{% if series %}Edit {{ series.name }}{% else %}New release series{% endif %}</h2>
+      <p class="mb-0 small">A magazine or other periodical whose issues should all be in the collection.</p>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      {% if series %}
+        <a href="{% url 'viewer:release-series-detail' series.pk %}" class="btn btn-outline-light btn-sm"><i class="fas fa-arrow-left me-1"></i>Back to the series</a>
+      {% else %}
+        <a href="{% url 'viewer:release-series' %}" class="btn btn-outline-light btn-sm"><i class="fas fa-arrow-left me-1"></i>All series</a>
+      {% endif %}
+    </div>
+  </div>
+
+  <form method="post" class="dm-card">
+    {% csrf_token %}
+    {% if form.non_field_errors %}<div class="alert alert-danger m-3">{{ form.non_field_errors }}</div>{% endif %}
+    <div class="p-3">
+      <div class="row g-3">
+        <div class="col-lg-6">
+          <div class="dm-lbl mb-2">Series</div>
+          {% include "viewer/include/release_series_field.html" with field=form.name %}
+          {% include "viewer/include/release_series_field.html" with field=form.key_type %}
+          <div class="form-check mb-3">
+            {{ form.active }}
+            <label class="form-check-label" for="{{ form.active.id_for_label }}">Active</label>
+            <div class="form-text">{{ form.active.help_text }}</div>
+          </div>
+          {% include "viewer/include/release_series_field.html" with field=form.notes %}
+
+          <div class="dm-lbl mb-2 mt-4">Which galleries and archives</div>
+          {% include "viewer/include/release_series_field.html" with field=form.title_contains %}
+          {% include "viewer/include/release_series_field.html" with field=form.title_excludes %}
+          {% include "viewer/include/release_series_field.html" with field=form.tags %}
+          {% include "viewer/include/release_series_field.html" with field=form.allowed_languages %}
+        </div>
+        <div class="col-lg-6">
+          <div class="dm-lbl mb-2">Issues</div>
+          {% include "viewer/include/release_series_field.html" with field=form.title_regex %}
+          <div class="form-text mb-3 mt-n2">
+            Empty: built from the name. It matches the name at the start of the title (after optional <code>[..]</code> or <code>(..)</code> groups),
+            then <code>2026-12</code> (also <code>2026-01・02</code>), <code>2026 No.42</code> or <code>#141</code>.
+            Year and number: a line without the <code>year</code> group reads issues numbered without a year (<code>#141</code>), like older issues before the yearly numbering.
+          </div>
+          {% include "viewer/include/release_series_field.html" with field=form.schedule %}
+          <div class="form-text mb-3 mt-n2">
+            One period per line: <code>&lt;first issue&gt; &lt;rule&gt;</code>, until the next line's first issue.
+            Year and month: <code>monthly</code>, <code>even</code>, <code>odd</code>, <code>quarterly</code> or months (<code>2,5,8,11</code>).
+            Year and number: issues per year (<code>48</code>) or <code>auto</code>, and <code>#1 all</code> for issues numbered without a year, which come first. Number: <code>all</code>. Any: <code>none</code> (ended or paused).
+            Empty: the series page suggests one from the issues found.
+          </div>
+          {% include "viewer/include/release_series_field.html" with field=form.lead_days %}
+          {% include "viewer/include/release_series_field.html" with field=form.backlog_query %}
+          <div class="form-text mb-3 mt-n2">
+            For backlog sources that are <code>es-gallery-json</code> endpoints. Empty: <code>{{ default_backlog_query }}</code>.
+            Elasticsearch query string syntax, on the title, Japanese title and <code>tags.full</code> of the backlog source.
+            <code>{title}</code> is the title searched: the name and the issue, unless changed in the backlog search dialog
+            (a query without it uses the default one then).
+          </div>
+          {% include "viewer/include/release_series_field.html" with field=form.backlog_page_query %}
+          <div class="form-text mb-3 mt-n2">
+            For backlog sources that are a provider's search page (panda). Empty: <code>{{ default_backlog_page_query }}</code>.
+            The provider's search syntax.
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="dm-actionbar d-flex flex-wrap gap-2 p-2 border-top" style="border-color: var(--pg-border) !important;">
+      <button type="submit" class="btn btn-sm btn-info"><i class="fas fa-save me-1"></i>{% if series %}Save{% else %}Create{% endif %}</button>
+      {% if series %}
+        <button type="submit" name="action" value="delete" class="btn btn-sm btn-outline-danger ms-auto" formnovalidate
+                onclick="return confirm('Delete the series {{ series.name|escapejs }} and its dismissed issues?');"><i class="fas fa-trash-alt me-1"></i>Delete</button>
+      {% endif %}
+    </div>
+  </form>
+</div>
+{% endblock %}

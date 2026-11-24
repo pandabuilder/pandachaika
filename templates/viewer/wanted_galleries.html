@@ -84,48 +84,41 @@
   </div>
 
   <!-- Summary tiles -->
-  <div class="row g-2 mb-3">
-    <div class="col-6 col-md-3">
-      <a class="dm-stat{% if not request.GET %} active{% endif %}" href="{% url 'viewer:wanted-galleries' %}">
-        <div class="dm-lbl">Total wanted</div>
-        <div class="dm-val text-info">{{ stats.total }}</div>
-        <div class="dm-stat-sub">{{ results.paginator.count }} matching filter</div>
-      </a>
-    </div>
-    <div class="col-6 col-md-3">
-      <a class="dm-stat{% if 'wanted-should-search' in request.GET and 'wanted-not-found' in request.GET %} active{% endif %}"
-         href="{% url 'viewer:wanted-galleries' %}?wanted-should-search=1&wanted-not-found=1">
-        <div class="dm-lbl">Actively searching</div>
-        <div class="dm-val text-warning">{{ stats.searching }}</div>
-        <div class="dm-stat-sub">unfound &amp; enabled</div>
-      </a>
-    </div>
-    <div class="col-6 col-md-3">
-      <a class="dm-stat{% if 'wanted-found' in request.GET %} active{% endif %}"
-         href="{% url 'viewer:wanted-galleries' %}?wanted-found=1">
-        <div class="dm-lbl">Found</div>
-        <div class="dm-val text-success">{{ stats.found }}</div>
-        <div class="dm-stat-sub">matched releases</div>
-      </a>
-    </div>
-    <div class="col-6 col-md-3">
-      {% if can_view_internal %}
+  {% if can_view_internal %}
+    <div class="row g-2 mb-3">
+      <div class="col-6 col-md-3">
+        <a class="dm-stat{% if not request.GET %} active{% endif %}" href="{% url 'viewer:wanted-galleries' %}">
+          <div class="dm-lbl">Total wanted</div>
+          <div class="dm-val text-info">{{ stats.total }}</div>
+          <div class="dm-stat-sub">{{ results.paginator.count }} matching filter</div>
+        </a>
+      </div>
+      <div class="col-6 col-md-3">
+        <a class="dm-stat{% if 'wanted-should-search' in request.GET and 'wanted-not-found' in request.GET %} active{% endif %}"
+           href="{% url 'viewer:wanted-galleries' %}?wanted-should-search=1&wanted-not-found=1">
+          <div class="dm-lbl">Actively searching</div>
+          <div class="dm-val text-warning">{{ stats.searching }}</div>
+          <div class="dm-stat-sub">unfound &amp; enabled</div>
+        </a>
+      </div>
+      <div class="col-6 col-md-3">
+        <a class="dm-stat{% if 'wanted-found' in request.GET %} active{% endif %}"
+           href="{% url 'viewer:wanted-galleries' %}?wanted-found=1">
+          <div class="dm-lbl">Found</div>
+          <div class="dm-val text-success">{{ stats.found }}</div>
+          <div class="dm-stat-sub">matched releases</div>
+        </a>
+      </div>
+      <div class="col-6 col-md-3">
         <a class="dm-stat{% if 'with-possible-matches' in request.GET %} active{% endif %}"
            href="{% url 'viewer:wanted-galleries' %}?with-possible-matches=1">
           <div class="dm-lbl">With possible matches</div>
           <div class="dm-val text-info">{{ stats.with_matches }}</div>
           <div class="dm-stat-sub">ready to review</div>
         </a>
-      {% else %}
-        <a class="dm-stat{% if 'wanted-not-found' in request.GET and 'wanted-should-search' not in request.GET %} active{% endif %}"
-           href="{% url 'viewer:wanted-galleries' %}?wanted-not-found=1">
-          <div class="dm-lbl">Still wanted</div>
-          <div class="dm-val text-info">{{ stats.unfound }}</div>
-          <div class="dm-stat-sub">not yet found</div>
-        </a>
-      {% endif %}
+      </div>
     </div>
-  </div>
+  {% endif %}
 
   <!-- Collapsible Add Form -->
   {% if can_add and edit_form %}
@@ -143,6 +136,25 @@
   {% endif %}
 
   <!-- Filters -->
+  {% if not can_view_internal %}
+  <form action="{% url 'viewer:wanted-galleries' %}" method="GET" class="dm-card" id="filter-form">
+    <div class="p-3">
+      <div class="row g-2 align-items-end">
+        <div class="col-lg-6">
+          <label class="form-label dm-lbl" for="{{ form.title.id_for_label }}">Title / Japanese title</label>
+          {{ form.title.errors }}
+          {{ form.title }}
+        </div>
+        <div class="col-lg-3 d-flex flex-wrap gap-2">
+          <button type="submit" class="btn btn-info btn-sm"><i class="fas fa-search me-1"></i>Search</button>
+          {% if request.GET.title %}
+            <a class="btn btn-outline-light btn-sm" href="{% url 'viewer:wanted-galleries' %}" title="Clear search"><i class="fas fa-times me-1"></i>Clear</a>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </form>
+  {% else %}
   <form action="{% url 'viewer:wanted-galleries' %}" method="GET" class="dm-card" id="filter-form">
     <div class="p-3">
       <div class="row g-2 align-items-end">
@@ -239,6 +251,7 @@
       </div>
     </div>
   </form>
+  {% endif %}
 
   <!-- Results & Staff Batch Actions -->
   <form id="wanted-action-form" method="POST" class="d-none">{% csrf_token %}</form>
@@ -265,12 +278,17 @@
                 {% if user.is_staff %}
                   <input id="sel-{{ gallery.id }}" class="form-check-input wg-checkbox mt-0 flex-shrink-0" type="checkbox" name="sel-{{ gallery.id }}" value="{{ gallery.pk }}" aria-label="Select wanted gallery {{ gallery.pk }}">
                 {% endif %}
-                <a href="{{ gallery.get_absolute_url }}" class="badge bg-secondary text-decoration-none">#{{ gallery.id }}</a>
-                <a href="{{ gallery.get_absolute_url }}" class="wg-title text-decoration-none">{{ gallery.title }}</a>
+                {% if user.is_authenticated %}
+                  <a href="{{ gallery.get_absolute_url }}" class="badge bg-secondary text-decoration-none">#{{ gallery.id }}</a>
+                  <a href="{{ gallery.get_absolute_url }}" class="wg-title text-decoration-none">{{ gallery.title }}</a>
+                {% else %}
+                  <span class="wg-title">{{ gallery.title }}</span>
+                {% endif %}
                 {% if gallery.title_jpn %}
                   <span class="wg-jpn fst-italic">({{ gallery.title_jpn }})</span>
                 {% endif %}
               </div>
+              {% if can_view_internal %}
               <div class="d-flex flex-wrap gap-1 align-items-center">
                 {% if gallery.found %}
                   <span class="badge bg-success">Found</span>
@@ -294,6 +312,7 @@
                   <span class="badge dm-badge-outline text-warning">Restricted to links</span>
                 {% endif %}
               </div>
+              {% endif %}
             </div>
 
             <div class="wg-meta d-flex flex-wrap align-items-center gap-3 mt-2">
@@ -428,7 +447,7 @@
           {% endwith %}
         </div>
       {% empty %}
-        <div class="dm-empty"><i class="fas fa-binoculars"></i>No wanted galleries match these filters.</div>
+        <div class="dm-empty"><i class="fas fa-binoculars"></i>No wanted galleries {% if can_view_internal %}match these filters{% else %}found{% endif %}.</div>
       {% endfor %}
     </div>
 
@@ -503,15 +522,17 @@
         });
       {% endif %}
 
-      DM.filterChips(document.getElementById('filter-form'), document.getElementById('filter-chips'), {
-        ignore: ['limit'],
-        defaults: { sort: 'release_date', asc_desc: 'desc' },
-      });
+      {% if can_view_internal %}
+        DM.filterChips(document.getElementById('filter-form'), document.getElementById('filter-chips'), {
+          ignore: ['limit'],
+          defaults: { sort: 'release_date', asc_desc: 'desc' },
+        });
 
-      const more = document.getElementById('more-filters');
-      if (Array.from(more.querySelectorAll('input, select')).some(function (el) { return el.value; })) {
-        more.classList.add('show');
-      }
+        const more = document.getElementById('more-filters');
+        if (Array.from(more.querySelectorAll('input, select')).some(function (el) { return el.value; })) {
+          more.classList.add('show');
+        }
+      {% endif %}
     });
   </script>
 {% endblock %}

@@ -2,7 +2,7 @@ import copy
 import json
 import sys
 import typing
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import time
 
 import django.utils.timezone as django_tz
@@ -22,13 +22,13 @@ from core.base.cancellation import TaskCancelledError, ping_activity
 from core.base.utilities import send_pushover_notification, chunks, provider_web_request
 from core.base.types import GalleryData, ProviderSettings
 from viewer.signals import wanted_gallery_found
-from viewer.models import Gallery, WantedGallery, FoundGallery
+from viewer.models import Gallery, WantedGallery, FoundGallery, MonitoredLinkRun
 
 if typing.TYPE_CHECKING:
     import requests
     from core.downloaders.handlers import BaseDownloader
     from core.base.setup import Settings
-    from viewer.models import Archive
+    from viewer.models import Archive, Provider
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +68,8 @@ class BaseParser[T_ProviderSettings: ProviderSettings]:
         self.last_used_downloader: "BaseDownloader" | None = None
         self.time_taken_wanted: float = 0
         self.wanted_matches_count: int = 0
+        # Stats of the monitored link run being crawled, None when not crawling a monitored link's URL.
+        self.link_run: MonitoredLinkRun | None = None
         self.archive_callback: Callable[["Archive" | None, str | None, str], None] | None = None
         self.gallery_callback: Callable[["Gallery" | None, str | None, str], None] | None = None
 
@@ -172,6 +174,16 @@ class BaseParser[T_ProviderSettings: ProviderSettings]:
 
     def filter_accepted_urls(self, urls: Iterable[str]) -> list[str]:
         return [x for x in urls if any(word in x for word in self.accepted_urls)]
+
+    def links_from_search_page(self, url: str) -> list[str]:
+        """Gallery links on the first page of a search URL, without recording or crawling them.
+
+        Empty when the provider has no search pages. Used to preview backlog searches."""
+        return []
+
+    @classmethod
+    def search_page_implemented(cls) -> bool:
+        return cls.links_from_search_page is not BaseParser.links_from_search_page
 
     # Hooks for core.web.gallery_updater.GalleryMetadataUpdater, which refreshes the metadata of already known
     # galleries by link, without going through crawl_urls (no feeds, wanted filters or downloaders involved).
@@ -519,6 +531,8 @@ class BaseParser[T_ProviderSettings: ProviderSettings]:
         preselected_wanted_matches: dict[str, list["WantedGallery"]] | None = None,
     ):
         self.wanted_matches_count = 0
+        self.link_run = self._start_link_run(urls)
+        error = ""
         try:
             self.crawl_urls(
                 urls,
@@ -527,8 +541,200 @@ class BaseParser[T_ProviderSettings: ProviderSettings]:
                 preselected_wanted_matches=preselected_wanted_matches,
             )
         except BaseException:
-            logger.critical(traceback.format_exc())
+            error = traceback.format_exc()
+            logger.critical(error)
+        self._finish_link_run(error)
         close_old_connections()
+
+    def current_monitored_link(self) -> typing.Any | None:
+        return getattr(self.own_settings, "monitored_link", None) or getattr(self.settings, "monitored_link", None)
+
+    def _start_link_run(self, urls: list[str]) -> MonitoredLinkRun | None:
+        """Start recording the stats of a monitored link run. Only for the crawl of the monitored link's own URL:
+        tasks chained from it (e.g. newer versions of a gallery) carry its settings, but aren't runs."""
+        monitored_link = self.current_monitored_link()
+        if monitored_link is None or not getattr(monitored_link, "pk", None) or monitored_link.url not in urls:
+            return None
+        if self.supports_link_capture and getattr(self.settings, "capture_links_only", False):
+            kind = MonitoredLinkRun.Kind.CAPTURE
+        elif self.supports_link_capture and getattr(self.settings, "skip_link_capture", False):
+            kind = MonitoredLinkRun.Kind.PROCESS
+        else:
+            kind = MonitoredLinkRun.Kind.FULL
+        try:
+            from viewer.models import Provider
+
+            return MonitoredLinkRun.objects.create(
+                monitored_link_id=monitored_link.pk,
+                provider=Provider.objects.filter(slug=self.name).first(),
+                kind=kind,
+            )
+        except Exception as e:
+            logger.warning("Could not record the run of monitored link %s: %s", monitored_link.pk, e)
+            return None
+
+    def _finish_link_run(self, error: str = "") -> None:
+        link_run = self.link_run
+        self.link_run = None
+        if link_run is None:
+            return
+        link_run.finished = django_tz.now()
+        link_run.wanted_matches = self.wanted_matches_count
+        link_run.error = error[-2000:]
+        try:
+            link_run.save()
+        except Exception as e:
+            logger.warning("Could not save the run of monitored link %s: %s", link_run.monitored_link_id, e)
+
+    def _note_run_stop(self, reason: str) -> None:
+        """Why the monitored link run stopped reading the index/feed pages."""
+        if self.link_run is not None:
+            self.link_run.stop_reason = reason
+
+    def _get_provider(self) -> "Provider":
+        from viewer.models import Provider
+
+        provider = Provider.objects.filter(slug=self.name).first()
+        if not provider:
+            provider, _ = Provider.objects.get_or_create(slug=self.name, defaults={"name": self.name.capitalize()})
+        return provider
+
+    def _stop_on_seen_enabled(self, monitored_link: typing.Any) -> bool:
+        stop_on_seen_val = getattr(monitored_link, "stop_on_seen_link", None)
+        if stop_on_seen_val in ("on", "ON", True):
+            return True
+        if stop_on_seen_val in ("off", "OFF", False):
+            return False
+        return bool(
+            getattr(self.own_settings, "stop_on_seen_links", False)
+            or getattr(self.own_settings, "stop_on_seen_link", False)
+            or getattr(self.settings, "stop_on_seen_links", False)
+            or getattr(self.settings, "stop_on_seen_link", False)
+        )
+
+    def _capturing_links_only(self) -> bool:
+        """Separate frequencies capture run: found links are stored as pending for the process run. Parsers that
+        can't capture separately crawl and process in a single run, even if asked to only capture."""
+        return self.supports_link_capture and bool(getattr(self.settings, "capture_links_only", False))
+
+    def _record_seen_links(self, links: Iterable[tuple[str, str]]) -> tuple[list[tuple[str, str]], bool]:
+        """Record the (source id, url) links read from an index/feed page, in page order, as seen by the current
+        monitored link, and count them in its run as new or already known.
+
+        Returns the links to process and whether to stop reading more pages: with stop on seen links, the links
+        from the first one seen by an earlier run onwards are left out. Crawls that aren't of a monitored link
+        (on-demand) don't record anything nor stop."""
+        link_list = list(links)
+        monitored_link = self.current_monitored_link()
+        if monitored_link is None:
+            return link_list, False
+
+        stop_on_seen = self._stop_on_seen_enabled(monitored_link)
+        capture_only = self._capturing_links_only()
+
+        try:
+            from viewer.models import ProcessedLinks
+
+            provider = self._get_provider()
+        except Exception as e:
+            logger.warning("Could not access Provider or ProcessedLinks: %s", e)
+            return link_list, False
+
+        seen_source_ids = set(
+            ProcessedLinks.objects.filter(
+                provider=provider,
+                source_id__in=[source_id for source_id, _ in link_list],
+                monitored_link=monitored_link,
+            ).values_list("source_id", flat=True)
+        )
+
+        to_process: list[tuple[str, str]] = []
+        to_create: list[ProcessedLinks] = []
+        should_stop = False
+        known_count = 0
+
+        for source_id, url in link_list:
+            if source_id in seen_source_ids:
+                known_count += 1
+                if stop_on_seen:
+                    logger.info(
+                        "Encountered previously processed link %s (source_id: %s) for monitored link %s, stopping (setting: stop_on_seen_links).",
+                        url,
+                        source_id,
+                        getattr(monitored_link, "name", monitored_link),
+                    )
+                    should_stop = True
+                    break
+                to_process.append((source_id, url))
+            else:
+                to_process.append((source_id, url))
+                to_create.append(
+                    ProcessedLinks(
+                        provider=provider,
+                        monitored_link=monitored_link,
+                        source_id=source_id,
+                        url=url,
+                        # Captured links wait for the process run, otherwise they are processed in this run.
+                        status=ProcessedLinks.Status.PENDING if capture_only else ProcessedLinks.Status.PROCESSED,
+                    )
+                )
+                seen_source_ids.add(source_id)
+
+        if to_create:
+            try:
+                ProcessedLinks.objects.bulk_create(to_create, ignore_conflicts=True)
+            except Exception as e:
+                logger.warning("Could not bulk create ProcessedLinks: %s", e)
+
+        if self.link_run is not None:
+            self.link_run.links_found += known_count + len(to_create)
+            self.link_run.links_new += len(to_create)
+            self.link_run.links_known += known_count
+            if should_stop:
+                self.link_run.stop_reason = MonitoredLinkRun.StopReason.SEEN_LINK
+
+        return to_process, should_stop
+
+    def _recent_seen_links(self, monitored_link: typing.Any, provider: "Provider") -> dict[str, str]:
+        """Links (source id -> url) seen within the monitored link's "how long after already seen" window, if it's
+        configured to use them."""
+        from viewer.models import ProcessedLinks
+        from viewer.models.events import MonitoredLink as MLModel
+
+        already_seen_mode = (
+            getattr(monitored_link, "already_seen_links_mode", None)
+            or getattr(self.own_settings, "already_seen_links_mode", None)
+            or getattr(self.settings, "already_seen_links_mode", None)
+            or "dont_use"
+        )
+        if already_seen_mode not in (MLModel.AlreadySeenLinksMode.USE_BEFORE_NOW, "use_before_now", "use_x_time_before"):
+            return {}
+        window_duration = (
+            getattr(monitored_link, "how_long_after_already_seen", None)
+            or getattr(self.own_settings, "how_long_after_already_seen", None)
+            or getattr(self.settings, "how_long_after_already_seen", None)
+        )
+        if isinstance(window_duration, (int, float)):
+            window_duration = timedelta(seconds=window_duration)
+        if not window_duration or window_duration.total_seconds() <= 0:
+            return {}
+        cutoff = django_tz.now() - window_duration
+        recent_links = {
+            source_id: url
+            for source_id, url in ProcessedLinks.objects.filter(
+                provider=provider,
+                monitored_link=monitored_link,
+                create_date__gte=cutoff,
+            ).values_list("source_id", "url")
+            if url
+        }
+        logger.info(
+            "Found %d links seen within the last %s for monitored link %s.",
+            len(recent_links),
+            window_duration,
+            getattr(monitored_link, "name", monitored_link),
+        )
+        return recent_links
 
     def crawl_urls(
         self,
@@ -555,6 +761,9 @@ class BaseParser[T_ProviderSettings: ProviderSettings]:
     ) -> None:
         if total == 0:
             return
+        link_run = getattr(self, "link_run", None)
+        if link_run is not None:
+            link_run.links_in_database += existing
         collector = getattr(self.settings, "crawl_batch_collector", None)
         if collector is not None:
             collector.record_db_check(
@@ -597,6 +806,12 @@ class BaseParser[T_ProviderSettings: ProviderSettings]:
     ) -> None:
         if total_evaluated == 0:
             return
+        link_run = getattr(self, "link_run", None)
+        if link_run is not None:
+            link_run.links_evaluated += total_evaluated
+            link_run.links_accepted += accepted
+            link_run.links_banned += banned
+            link_run.api_errors += errors
         collector = getattr(self.settings, "crawl_batch_collector", None)
         if collector is not None:
             collector.record_metadata_check(

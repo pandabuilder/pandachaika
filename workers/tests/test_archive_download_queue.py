@@ -224,6 +224,71 @@ class ArchiveDownloadQueueTests(TestCase):
         if os.path.exists(target_path):
             os.remove(target_path)
 
+    def test_archive_download_worker_logs_success_with_gallery_link(self):
+        import io
+        import os
+        import uuid
+        import zipfile
+        from PIL import Image
+        from unittest.mock import MagicMock, patch
+        from core.workers.archive_download_queue import ArchiveDownloadQueue
+        from viewer.models import Archive, DownloadEvent, EventLog, Gallery
+
+        img = Image.new("RGB", (10, 10), color="red")
+        img_byte_arr = io.BytesIO()
+        img.save(img_byte_arr, format="JPEG")
+        zip_buf = io.BytesIO()
+        with zipfile.ZipFile(zip_buf, "w") as zf:
+            zf.writestr("001.jpg", img_byte_arr.getvalue())
+        zip_bytes = zip_buf.getvalue()
+
+        gallery = Gallery.objects.create(title="Test Gallery", gid="2894006", token="915710df19", provider="panda")
+        archive = Archive.objects.create(
+            title="Test Gallery",
+            zipped=f"test_download_{uuid.uuid4().hex[:8]}.zip",
+            crc32="",
+            user=self.user,
+            gallery=gallery,
+        )
+        target_path = archive.zipped.path
+        event = DownloadEvent.objects.create(
+            name="Test Gallery Event",
+            method="archive",
+            provider="chaika",
+            download_id=target_path,
+            download_url="http://example.hath.network/archive/2894006/key/0?start=1",
+            archive=archive,
+            gallery=gallery,
+            status=DownloadEvent.Status.IN_PROGRESS,
+            request_options={
+                "rate_limit_name": "chaika_web",
+                "rate_limit_calls": 1,
+                "rate_limit_period": 0.01,
+                "archive_user_id": self.user.pk,
+                "event_action": "ADD_ARCHIVE",
+            },
+        )
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.headers = {"Content-Length": str(len(zip_bytes))}
+        mock_resp.iter_content.return_value = [zip_bytes]
+
+        adq = ArchiveDownloadQueue(self.settings)
+        with patch("core.workers.archive_download_queue.request_by_provider") as mock_req_prov:
+            mock_req_prov.return_value = MagicMock(return_value=mock_resp)
+            adq._download_worker(event.id)
+
+        log = EventLog.objects.get(action="ADD_ARCHIVE")
+        self.assertEqual(log.result, "success")
+        self.assertEqual(log.data, gallery.get_link())
+
+        archive.refresh_from_db()
+        if archive.thumbnail and os.path.exists(archive.thumbnail.path):
+            os.remove(archive.thumbnail.path)
+        if os.path.exists(target_path):
+            os.remove(target_path)
+
     def test_archive_download_worker_retry_then_fail(self):
         from unittest.mock import MagicMock, patch
         import requests

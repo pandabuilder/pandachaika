@@ -112,6 +112,17 @@ class PostDownloader(object):
                 temp_settings.archive_reason = archive.reason
             self.web_queue.enqueue_args_list((archive.gallery.get_link(),), override_options=temp_settings)
 
+    def _requeue_archive_safely(self, archive: Archive, downloader: str | list[str]) -> None:
+        """Requeue after a failed check without letting an enqueue error skip the rest of the failure handling.
+
+        An exception here would otherwise skip recycling the archive and settling its DownloadEvent, and the
+        transfer would be retried (and requeued again) every few minutes.
+        """
+        try:
+            self._requeue_archive(archive, downloader)
+        except Exception as e:
+            logger.error("For archive: %s, could not requeue the download: %s", archive, e)
+
     def _get_chaika_archive_link(self, archive: Archive) -> str:
         download_event = None
         if hasattr(archive, "downloadevent_set"):
@@ -200,7 +211,7 @@ class PostDownloader(object):
                     archive.save()
                 except Exception as e:
                     logger.error("Error saving archive %s after failed zip check: %s", archive, e)
-                self._requeue_archive(archive, requeue_dl)
+                self._requeue_archive_safely(archive, requeue_dl)
             else:
                 logger.warning(
                     "For archive: {}, file check on downloaded zipfile failed ({}): {}. "
@@ -274,7 +285,7 @@ class PostDownloader(object):
                     "For archive: {} size does not match gallery, "
                     "downloading again from {}.".format(archive, dl_name)
                 )
-                self._requeue_archive(archive, requeue_dl)
+                self._requeue_archive_safely(archive, requeue_dl)
             else:
                 logger.warning(
                     "For archive: {} size does not match gallery. Check the file manually.".format(archive)
@@ -343,7 +354,7 @@ class PostDownloader(object):
                                 archive.save()
                             except Exception as e:
                                 logger.error("Error saving archive %s after failed SHA1 check: %s", archive, e)
-                            self._requeue_archive(archive, requeue_dl)
+                            self._requeue_archive_safely(archive, requeue_dl)
                         else:
                             logger.warning(
                                 "For archive: {}, SHA1 mismatch on downloaded zipfile: {}. "

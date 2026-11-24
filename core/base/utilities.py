@@ -1142,7 +1142,7 @@ def sleep_log_and_retry(func):
                 return func(*args, **kwargs)
             except RateLimitException as exception:
                 url = args[0] if args else ""
-                logger.info("Request limited for URL: {}, sleeping for {} seconds".format(url, exception.period_remaining))
+                logger.info("Request limited for URL: {}, sleeping for {:.2f} seconds".format(url, exception.period_remaining))
                 time.sleep(exception.period_remaining)
 
     return wrapper
@@ -1209,7 +1209,7 @@ def acquire_provider_rate_limit_slot(
                             rl_obj.call_timestamps = valid_ts
                             rl_obj.save(update_fields=["call_timestamps", "updated_at"])
 
-            logger.info("Request limited for URL: {}, sleeping for {} seconds".format(url, wait_time))
+            logger.info("Request limited for URL: {}, sleeping for {:.2f} seconds".format(url, wait_time))
             interruptible_sleep(wait_time)
     except (ProviderBannedError, TaskCancelledError):
         raise
@@ -1261,7 +1261,7 @@ def request_by_provider(provider_name: str, provider_calls: int, provider_limit:
                         wait_time = max(0.01, mem_cooldown - now)
                         if wait_time > MAX_INLINE_BAN_WAIT:
                             raise ProviderBannedError(provider_name, wait_time, url)
-                        logger.info("Request limited for URL: {}, sleeping for {} seconds".format(url, wait_time))
+                        logger.info("Request limited for URL: {}, sleeping for {:.2f} seconds".format(url, wait_time))
                         interruptible_sleep(wait_time)
 
                     if acquire_provider_rate_limit_slot(provider_name, calls, limit, url=url):
@@ -1288,7 +1288,7 @@ def request_by_provider(provider_name: str, provider_calls: int, provider_limit:
                             set_provider_cooldown(provider_name, cooldown_wait, url=url)
                             if attempt < max_ban_retries and ban_duration <= MAX_INLINE_BAN_WAIT:
                                 logger.info(
-                                    "Sleeping for {} seconds before retrying request for URL: {}".format(
+                                    "Sleeping for {:.2f} seconds before retrying request for URL: {}".format(
                                         cooldown_wait, url
                                     )
                                 )
@@ -1374,5 +1374,9 @@ def construct_request_dict(
 
     if own_settings.headers:
         request_dict["headers"] = settings.requests_headers | own_settings.headers
+
+    ssl_verify = getattr(own_settings, "ssl_verify", True)
+    if ssl_verify is not True:
+        request_dict["verify"] = ssl_verify
 
     return request_dict

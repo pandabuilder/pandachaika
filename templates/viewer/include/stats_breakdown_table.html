@@ -1,0 +1,58 @@
+{% load dict_key %}{% comment %}
+Breakdown table of the stats pages (needs css/dm-pages.css and js/dm-pages.js).
+  rows        {name: {count_key: n, agg_key: {filesize__sum, filesize__avg, ...}}}
+  count_key   "n_galleries" or "n_archives"
+  agg_key     "gallery" or "archive"
+  label       first column header ("Category")
+  noun        what is counted ("Galleries")
+  table_id    id of the table, also the share bar group
+  title       card title, icon: card icon
+{% endcomment %}
+<div class="dm-card" data-dm-filter-section>
+  <div class="dm-card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+    <a class="dm-collapse-toggle text-decoration-none" data-bs-toggle="collapse" href="#{{ table_id }}-body" role="button" aria-expanded="true" aria-controls="{{ table_id }}-body">
+      <i class="fas fa-chevron-down me-1"></i><i class="fas {{ icon }} text-info me-1"></i>{{ title }}
+    </a>
+    <span class="badge dm-badge-outline text-info">{{ rows|length }} row{{ rows|length|pluralize }}</span>
+  </div>
+  <div class="collapse show" id="{{ table_id }}-body">
+    <div class="table-responsive">
+      <table class="table table-dm table-hover table-sm dm-sortable mb-0" id="{{ table_id }}">
+        <thead>
+          <tr>
+            <th data-dm-sort="text">{{ label }}</th>
+            <th data-dm-sort="num" class="text-end">{{ noun }}</th>
+            <th data-dm-sort="num" style="min-width: 10rem;">Share</th>
+            <th data-dm-sort="num" class="text-end">Total size</th>
+            <th data-dm-sort="num" class="text-end">Average size</th>
+            <th data-dm-sort="num" class="text-end">Max size</th>
+            <th data-dm-sort="num" class="text-end">Min size</th>
+            <th data-dm-sort="num" class="text-end">Avg pages</th>
+            <th data-dm-sort="num" class="text-end">Total pages</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for name, row in rows.items %}
+            {% with count=row|dict_key:count_key agg=row|dict_key:agg_key %}
+              <tr data-dm-filter-row>
+                <td class="dm-wrap">{% if name %}{{ name }}{% else %}<span class="dm-dim fst-italic">(none)</span>{% endif %}</td>
+                <td class="text-end font-monospace" data-dm-value="{{ count|default:0 }}">{{ count|default:0 }}</td>
+                <td data-dm-value="{{ count|default:0 }}">
+                  <div class="dm-bar-wrap"><div class="dm-bar-track"><span class="dm-bar" data-dm-bar="{{ count|default:0 }}" data-dm-bar-group="{{ table_id }}"></span></div></div>
+                </td>
+                <td class="text-end text-nowrap small" data-dm-value="{{ agg.filesize__sum|default:0 }}" title="{{ agg.filesize__sum|default:0 }} bytes">{{ agg.filesize__sum|default:0|filesizeformat }}</td>
+                <td class="text-end text-nowrap small" data-dm-value="{{ agg.filesize__avg|default:0|floatformat:'0' }}" title="{{ agg.filesize__avg|default:0|floatformat:'0' }} bytes">{{ agg.filesize__avg|default:0|filesizeformat }}</td>
+                <td class="text-end text-nowrap small" data-dm-value="{{ agg.filesize__max|default:0 }}" title="{{ agg.filesize__max|default:0 }} bytes">{{ agg.filesize__max|default:0|filesizeformat }}</td>
+                <td class="text-end text-nowrap small" data-dm-value="{{ agg.filesize__min|default:0 }}" title="{{ agg.filesize__min|default:0 }} bytes">{{ agg.filesize__min|default:0|filesizeformat }}</td>
+                <td class="text-end font-monospace small" data-dm-value="{{ agg.filecount__avg|default:0|floatformat:'0' }}">{{ agg.filecount__avg|default:0|floatformat:"0" }}</td>
+                <td class="text-end font-monospace small" data-dm-value="{{ agg.filecount__sum|default:0 }}">{{ agg.filecount__sum|default:0 }}</td>
+              </tr>
+            {% endwith %}
+          {% empty %}
+            <tr class="dm-sort-fixed"><td colspan="9" class="dm-empty"><i class="fas fa-chart-bar"></i>Nothing to show yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>

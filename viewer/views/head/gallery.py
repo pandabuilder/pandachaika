@@ -135,7 +135,7 @@ def process_gallery_page(
 
             logger.info(
                 "Queueing gallery: {} thumbnail refetch from url: {}".format(
-                    gallery.get_absolute_url(), gallery.thumbnail_url
+                    gallery.get_absolute_url(), gallery.get_thumbnail_url()
                 )
             )
             return task_action_response(request, task, target_url, "Queued gallery thumbnail refetch.")
@@ -358,7 +358,7 @@ def gallery_enter_reason(request: HttpRequest, pk: int, tool: str | None = None)
 
                     logger.info(
                         "Queueing gallery: {} thumbnail refetch from url: {}".format(
-                            gallery.get_absolute_url(), gallery.thumbnail_url
+                            gallery.get_absolute_url(), gallery.get_thumbnail_url()
                         )
                     )
                     messages.success(request, "Queued gallery thumbnail refetch.")

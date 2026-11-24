@@ -25,12 +25,12 @@ if typing.TYPE_CHECKING:
     from core.base.types import ProviderSettings
 
     from core.providers.chaika.settings import OwnSettings as ChaikaSettings
+    from core.providers.doujinshi_mirror.settings import OwnSettings as DoujinshiMirrorSettings
     from core.providers.fakku.settings import OwnSettings as FakkuSettings
     from core.providers.generic.settings import OwnSettings as GenericSettings
     from core.providers.irodori.settings import OwnSettings as IrodoriSettings
     from core.providers.j18.settings import OwnSettings as J18Settings
     from core.providers.mega.settings import OwnSettings as MegaSettings
-    from core.providers.mugimugi.settings import OwnSettings as MugimugiSettings
     from core.providers.nexus.settings import OwnSettings as NexusSettings
     from core.providers.nhentai.settings import OwnSettings as NhentaiSettings
     from core.providers.nyaa.settings import OwnSettings as NyaaSettings
@@ -42,6 +42,8 @@ if typing.TYPE_CHECKING:
         @typing.overload
         def __getitem__(self, key: typing.Literal["chaika"]) -> ChaikaSettings: ...
         @typing.overload
+        def __getitem__(self, key: typing.Literal["doujinshi_mirror"]) -> DoujinshiMirrorSettings: ...
+        @typing.overload
         def __getitem__(self, key: typing.Literal["fakku"]) -> FakkuSettings: ...
         @typing.overload
         def __getitem__(self, key: typing.Literal["generic"]) -> GenericSettings: ...
@@ -51,8 +53,6 @@ if typing.TYPE_CHECKING:
         def __getitem__(self, key: typing.Literal["j18"]) -> J18Settings: ...
         @typing.overload
         def __getitem__(self, key: typing.Literal["mega"]) -> MegaSettings: ...
-        @typing.overload
-        def __getitem__(self, key: typing.Literal["mugimugi"]) -> MugimugiSettings: ...
         @typing.overload
         def __getitem__(self, key: typing.Literal["nexus"]) -> NexusSettings: ...
         @typing.overload
@@ -94,6 +94,7 @@ class GlobalInfo:
         ),
         ("archive_download_queue", "Downloads queued archives in background", "scheduler"),
         ("auto_wanted", "Parses providers for new galleries to create wanted galleries entries", "scheduler"),
+        ("auto_updater", "Queues metadata updates of galleries, on each provider's auto updater schedule", "scheduler"),
         ("timed_admin_reporter", "Emails the admin report to the staff users who enabled it", "scheduler"),
     ]
 
@@ -109,6 +110,7 @@ from core.base.config_models import (
     AutoWantedSettings,
     BacklogSearchSettings,
     CloningImageToolSettings,
+    ColdStorageSettings,
     DatabaseSettings,
     ElasticSearchSettings,
     FtpsSettings,
@@ -317,6 +319,7 @@ class Settings:
         self.retention = RetentionSettings()
         self.admin_report = AdminReportSettings()
         self.manga_extractor = MangaExtractorSettings()
+        self.cold_storage = ColdStorageSettings()
         self.cloning_image_tool = CloningImageToolSettings()
         self.webserver = WebServerSettings()
         self.urls = UrlSettings()
@@ -494,6 +497,17 @@ class Settings:
                 self.elasticsearch.timeout = int(os.environ['ELASTICSEARCH_TIMEOUT'])
             except ValueError:
                 pass
+
+        if 'COLD_STORAGE_ENABLE' in os.environ and os.environ['COLD_STORAGE_ENABLE'] != '':
+            self.cold_storage.enable = os.environ['COLD_STORAGE_ENABLE'].lower() in ('true', '1', 't', 'yes')
+        for env_var, attr in (
+            ('COLD_STORAGE_ACCESS_KEY_ID', 'access_key_id'),
+            ('COLD_STORAGE_SECRET_ACCESS_KEY', 'secret_access_key'),
+            ('COLD_STORAGE_ENDPOINT_URL', 'endpoint_url'),
+            ('COLD_STORAGE_BUCKET', 'bucket'),
+        ):
+            if os.environ.get(env_var, '').strip():
+                setattr(self.cold_storage, attr, os.environ[env_var].strip())
 
         if 'MANGA_EXTRACTOR_ENABLE' in os.environ and os.environ['MANGA_EXTRACTOR_ENABLE'] != '':
             self.manga_extractor.enable = os.environ['MANGA_EXTRACTOR_ENABLE'].lower() in ('true', '1', 't', 'yes')
@@ -783,6 +797,7 @@ class Settings:
             ("gallery_dl", self.gallery_dl),
             ("autoupdater", self.autoupdater),
             ("manga_extractor", self.manga_extractor),
+            ("cold_storage", self.cold_storage),
             ("webserver", self.webserver),
             ("urls", self.urls),
             ("monitored_links", self.monitored_links),

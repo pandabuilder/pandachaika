@@ -73,8 +73,13 @@ class ProviderContext:
     matchers: list[type["Matcher"]] = []
     downloaders: list[type["BaseDownloader"]] = []
     resolvers: list[tuple[str, Callable[["setup.Settings"], ProviderSettings]]] = []
+    # Optional utilities.resolve_thumbnail_url of each provider: the URL to fetch a gallery's stored thumbnail_url from,
+    # for providers that store a URL independent of a configurable server address.
+    thumbnail_resolvers: dict[str, Callable[["models.Gallery"], str]] = {}
     settings_parsers: list[tuple[str, Callable]] = []
     wanted_generators: list[tuple[str, Callable]] = []
+    # Query parameters of each provider's auto wanted sources (WANTED_PARAMS of its wanted submodule).
+    wanted_params: dict[str, list] = {}
     constants: list[tuple[str, ModuleType]] = []
     names: list[str] = []
 
@@ -107,6 +112,9 @@ class ProviderContext:
         if resolver and (provider_name, resolver) not in self.resolvers:
             # logger.debug("For provider: {}, registering resolver".format(provider_name))
             self.register_resolver(provider_name, resolver)
+        thumbnail_resolver = _get_provider_submodule_method(module_name, "utilities", "resolve_thumbnail_url")
+        if thumbnail_resolver:
+            self.thumbnail_resolvers[provider_name] = thumbnail_resolver
         settings_parser = _get_provider_submodule_method(module_name, "settings", "parse_config")
         if settings_parser and (provider_name, settings_parser) not in self.settings_parsers:
             # logger.debug("For provider: {}, registering settings parser".format(provider_name))
@@ -115,6 +123,8 @@ class ProviderContext:
         if wanted_generator and (provider_name, wanted_generator) not in self.wanted_generators:
             # logger.debug("For provider: {}, registering wanted generator".format(provider_name))
             self.register_wanted_generator(provider_name, wanted_generator)
+            wanted_module = _get_provider_submodule(module_name, "wanted")
+            self.wanted_params[provider_name] = list(getattr(wanted_module, "WANTED_PARAMS", []) or [])
         constants_module = _get_provider_submodule(module_name, "constants")
         if constants_module and (provider_name, constants_module) not in self.constants:
             # logger.debug("For provider: {}, registering constants".format(provider_name))
@@ -343,6 +353,14 @@ class ProviderContext:
             return method(gallery)
         return "Can't reconstruct URL"
 
+    def resolve_thumbnail_url(self, gallery: "models.Gallery") -> str:
+        """The URL to fetch the gallery's thumbnail from: its thumbnail_url, resolved by its provider if needed."""
+        thumbnail_url = gallery.thumbnail_url or ""
+        resolver = self.thumbnail_resolvers.get(gallery.provider or "")
+        if resolver is None or not thumbnail_url:
+            return thumbnail_url
+        return resolver(gallery) or thumbnail_url
+
     def get_resolve_methods(self, filter_name: str | None = None) -> list[Callable]:
         method_list = list()
         for method_tuple in self.resolvers:
@@ -366,6 +384,21 @@ class ProviderContext:
                 method_list.append(method_tuple[1])
 
         return method_list
+
+    def get_wanted_generator(self, provider_name: str) -> Callable | None:
+        """The wanted generator of a provider (exact name), if it has one."""
+        for name, method in self.wanted_generators:
+            if name == provider_name:
+                return method
+        return None
+
+    def get_wanted_params(self, provider_name: str) -> list:
+        """The query parameters (WantedParam) of a provider's auto wanted sources."""
+        return self.wanted_params.get(provider_name, [])
+
+    def wanted_provider_names(self) -> list[str]:
+        """The providers with a wanted generator, in registration order."""
+        return list(dict.fromkeys(name for name, _ in self.wanted_generators))
 
     def get_constants(self, filter_name: str | None = None) -> list[ModuleType]:
         constants_list = list()

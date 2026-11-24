@@ -31,6 +31,7 @@ class GalleryIngestionService:
         from viewer.models.gallery import Gallery
 
         if gallery.thumbnail_url and (not gallery.thumbnail or force_redownload):
+            thumbnail_url = gallery.get_thumbnail_url()
             request_dict: dict[str, typing.Any] = {
                 "stream": True,
                 "headers": settings.CRAWLER_SETTINGS.requests_headers,
@@ -46,13 +47,16 @@ class GalleryIngestionService:
                     request_dict["proxies"] = settings.CRAWLER_SETTINGS.providers[provider_to_use].proxies
                 if settings.CRAWLER_SETTINGS.providers[provider_to_use].timeout_timer:
                     request_dict["timeout"] = settings.CRAWLER_SETTINGS.providers[provider_to_use].timeout_timer
+                ssl_verify = getattr(settings.CRAWLER_SETTINGS.providers[provider_to_use], "ssl_verify", True)
+                if ssl_verify is not True:
+                    request_dict["verify"] = ssl_verify
             response = request_with_retries(
-                gallery.thumbnail_url,
+                thumbnail_url,
                 request_dict,
                 post=False,
             )
             if response:
-                disassembled = urlparse(gallery.thumbnail_url)
+                disassembled = urlparse(thumbnail_url)
                 file_name = basename(disassembled.path)
                 if not file_name:
                     file_name = "g_thumbnail"

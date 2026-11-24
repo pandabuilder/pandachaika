@@ -170,6 +170,10 @@
             {{ search_form.reason }}
           </div>
           <div class="col-sm-6 col-lg-2">
+            <label class="form-label dm-lbl" for="{{ search_form.dl_type.id_for_label }}">DL Type</label>
+            {{ search_form.dl_type }}
+          </div>
+          <div class="col-sm-6 col-lg-2">
             <label class="form-label dm-lbl" for="{{ search_form.status.id_for_label }}">Status</label>
             {{ search_form.status }}
           </div>

@@ -130,8 +130,25 @@ class LinkMonitor(BaseScheduler):
             priority=monitored_link.priority,
         )
 
-    def _record_phase_runs(self, now: datetime, capture: bool, process: bool) -> None:
+    def _seed_missing_phase_runs(self) -> dict[str, datetime]:
+        """Anchor a phase that never ran on its own (the link was just switched from combined mode) to the last
+        combined run, which did both phases. The anchor must be stored: falling back to last_run on every cycle
+        would push the idle phase back each time the other phase runs, so it would never come due."""
         fields: dict[str, datetime] = {}
+        if self.last_run is None:
+            return fields
+        if self.last_capture_run is None:
+            self.last_capture_run = self.last_run
+            fields["last_capture_run"] = self.last_run
+        if self.last_process_run is None:
+            self.last_process_run = self.last_run
+            fields["last_process_run"] = self.last_run
+        return fields
+
+    def _record_phase_runs(
+        self, now: datetime, capture: bool, process: bool, seeded: dict[str, datetime] | None = None
+    ) -> None:
+        fields: dict[str, datetime] = dict(seeded or {})
         if capture:
             self.last_capture_run = now
             fields["last_capture_run"] = now
@@ -162,6 +179,7 @@ class LinkMonitor(BaseScheduler):
                 return
             now = django_tz.now()
             if monitored_link.uses_separate_frequencies:
+                seeded = self._seed_missing_phase_runs()
                 # Capture first, so a process run due at the same time already sees the new links.
                 run_capture = forced or self.seconds_until_capture() < 1
                 run_process = forced or self.seconds_until_process() < 1
@@ -171,7 +189,7 @@ class LinkMonitor(BaseScheduler):
                 if run_process:
                     logger.info("Starting captured links processing for URL: {}".format(monitored_link.url))
                     self._enqueue_crawl(monitored_link, ["--skip-link-capture"])
-                self._record_phase_runs(now, run_capture, run_process)
+                self._record_phase_runs(now, run_capture, run_process, seeded)
                 self.timer = monitored_link.shortest_interval.total_seconds()
             else:
                 logger.info("Starting link monitor for URL: {}".format(monitored_link.url))

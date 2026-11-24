@@ -19,6 +19,7 @@ EXCLUDED_SETTINGS_ATTRIBUTES = {
     "ftps",
     "ftp_configs",
     "torrent",
+    "cold_storage",
     # System / environment / paths
     "db_engine",
     "MEDIA_ROOT",

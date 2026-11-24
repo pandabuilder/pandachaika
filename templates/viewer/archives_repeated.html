@@ -1,192 +1,25 @@
 {% extends "viewer/base.html" %}
-{% block title %}Repeated archives | {{ block.super }}{% endblock %}
-{% block sidebar %}{% endblock %}
 {% load static %}
+{% block title %}Repeated Archives | {{ block.super }}{% endblock %}
+{% block sidebar %}{% endblock %}
 
-{% block content %}
-  {% load viewer_extras %}
-  {% if messages %}
-    {% for message in messages %}
-      <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
-    {% endfor %}
-  {% endif %}
-    <!-- Repeated archives  -->
-    <div class="page-header">
-      <h2>Galleries with more than one archive</h2>
-      <p class="lead">Number of galleries (in page, total): {{ results|length }}, {{ results.paginator.count }}</p>
-    </div>
-  <form action="{% url 'viewer:repeated-archives' %}" method="GET">
-    {% for field in form %}
-      <div class="page-line">
-        {{ field.errors }}
-        {{ field }}
-      </div>
-    {% endfor %}
-    <div class="page-line g-1">
-        <div class="btn-group">
-          <button type="submit" name="apply" class="btn btn-info">Search</button>
-          <a class="btn btn-light" href="{% url 'viewer:repeated-archives' %}">Clear</a>
-        </div>
-        <div class="form-check form-check-inline">
-          <input id="checkbox-f1" class="form-check-input" type="checkbox" name="no-custom-tags" value="1" {% if "no-custom-tags" in request.GET %}checked{% endif %}><label for="checkbox-f1">No custom tags</label>
-        </div>
-        <div class="form-check form-check-inline">
-          <input id="checkbox-f2" class="form-check-input" type="checkbox" name="with-possible-matches" value="1" {% if "with-possible-matches" in request.GET %}checked{% endif %}><label for="checkbox-f2">With possible matches</label>
-        </div>
-    </div>
-  </form>
-    <!-- Next/Prev page links  -->
-    {% if results.object_list and results.paginator.num_pages > 1 %}
-      <div>
-        <nav aria-label="Middle navigation">
-          <ul class="pagination justify-content-center my-0">
-            <li class="page-item{% if results.number == 1 %} disabled{% endif %}">
-              <a class="page-link" href="?{% url_replace 'page' '1' %}" aria-label="First">
-                <span aria-hidden="true">&laquo;</span>
-              </a>
-            </li>
-            {% if results.has_previous %}
-              <li class="page-item"><a class="page-link" href="?{% url_replace 'page' results.previous_page_number %}">Previous</a></li>
-            {% else %}
-              <li class="page-item disabled"><a class="page-link" href="#">Previous</a></li>
-            {% endif %}
-            <li class="page-item">
-              <div class="mid-item">Page {{ results.number }} of {{ results.paginator.num_pages }}</div>
-            </li>
-            {% if results.has_next %}
-              <li class="page-item"><a class="page-link" href="?{% url_replace 'page' results.next_page_number %}">Next</a></li>
-            {% else %}
-              <li class="page-item disabled"><a class="page-link" href="#">Next</a></li>
-            {% endif %}
-            <li class="page-item{% if results.number == results.paginator.num_pages %} disabled{% endif %}">
-              <a class="page-link" href="?{% url_replace 'page' results.paginator.num_pages %}" aria-label="Last">
-                <span aria-hidden="true">&raquo;</span>
-              </a>
-            </li>
-          </ul>
-        </nav>
-      </div>
-    {% endif %}
-    <form action="{% url 'viewer:repeated-archives' %}" method="POST">{% csrf_token %}
-      <table class="table table-bordered table-sm generic-table">
-        <thead>
-        <tr>
-          <th>Select</th><th>Size</th><th>Images</th><th>Match</th><th>Source</th><th>Path (URL)</th><th>Reason</th><th>Created on</th><th>Public</th>
-        </tr>
-        </thead>
-        <tbody>
-        {% for gallery in results %}
-          <tr class="special-tr">
-            <td>
-
-            </td>
-            <td>
-              {{ gallery.filesize }} ({{ gallery.filesize|filesizeformat }})
-            </td>
-            <td>
-              {{ gallery.filecount }}
-            </td>
-            <td colspan="2">
-              {% if gallery.thumbnail.name %}
-                <a href="{{ gallery.get_link }}" class="img-preview" data-image-url="{{ gallery.thumbnail.url }}" rel="popover noopener noreferrer nofollow">{{ gallery.get_link }}</a>
-              {% else %}
-                {{ gallery.get_link|urlize_all_rel }}
-              {% endif %}
-            </td>
-            <td>
-              <a href="{% url 'viewer:gallery' gallery.pk %}">{{ gallery.title }}</a>
-            </td>
-            <td>
-              {{ gallery.reason }}
-            </td>
-            <td>
-              {{ gallery.create_date|date:"DATETIME_FORMAT" }}
-            </td>
-            <td>
-              {{ gallery.public|yesno }}
-            </td>
-          </tr>
-          {% with archives=gallery.archive_set %}
-            {% for archive in archives.all %}
-              <tr {% if archive.filesize == gallery.filesize %}class="highlight-row"{% endif %}>
-                <td class="text-center">
-                  <input id="checkbox-{{ archive.id }}" class="toggle-list form-check-input" type="checkbox" name="del-{{ archive.id }}" value="{{ archive.id }}"><label for="checkbox-{{ archive.id }}"></label>
-                </td>
-                <td>
-                  {{ archive.filesize }} ({{ archive.filesize|filesizeformat }})
-                </td>
-                <td>
-                  {{ archive.filecount }}
-                </td>
-                <td>
-                  {{ archive.match_type }}
-                </td>
-                <td>
-                  {{ archive.source_type }}
-                </td>
-                <td>
-                  <a href="{% url 'viewer:archive' archive.pk %}">{{ archive.zipped }}</a>
-                </td>
-                <td>
-                  {{ archive.reason }}
-                </td>
-                <td>
-                  {{ archive.create_date|date:"DATETIME_FORMAT" }}
-                </td>
-                <td>
-                  {{ archive.public|yesno }}
-                </td>
-              </tr>
-            {% endfor %}
-          {% endwith %}
-              <tr>
-                <td colspan="12"><hr /></td>
-              </tr>
-        {% endfor %}
-        </tbody>
-      </table>
-    <button type="submit" name="delete_archives" class="btn btn-light">Delete selected archives</button>
-    <button type="submit" name="delete_archives_and_files" class="btn btn-light">Delete (WARNING!) selected archives and files</button>
-  </form>
-  <!-- Next/Prev page links  -->
-  {% if results.object_list and results.paginator.num_pages > 1 %}
-    <div>
-      <nav aria-label="Middle navigation">
-        <ul class="pagination justify-content-center">
-          <li class="page-item{% if results.number == 1 %} disabled{% endif %}">
-            <a class="page-link" href="?{% url_replace 'page' '1' %}" aria-label="First">
-              <span aria-hidden="true">&laquo;</span>
-            </a>
-          </li>
-          {% if results.has_previous %}
-            <li class="page-item"><a class="page-link" href="?{% url_replace 'page' results.previous_page_number %}">Previous</a></li>
-          {% else %}
-            <li class="page-item disabled"><a class="page-link" href="#">Previous</a></li>
-          {% endif %}
-          <li class="page-item">
-            <div class="mid-item">Page {{ results.number }} of {{ results.paginator.num_pages }}</div>
-          </li>
-          {% if results.has_next %}
-            <li class="page-item"><a class="page-link" href="?{% url_replace 'page' results.next_page_number %}">Next</a></li>
-          {% else %}
-            <li class="page-item disabled"><a class="page-link" href="#">Next</a></li>
-          {% endif %}
-          <li class="page-item{% if results.number == results.paginator.num_pages %} disabled{% endif %}">
-            <a class="page-link" href="?{% url_replace 'page' results.paginator.num_pages %}" aria-label="Last">
-              <span aria-hidden="true">&raquo;</span>
-            </a>
-          </li>
-        </ul>
-      </nav>
-    </div>
-  {% endif %}
-{% endblock %}
-{% block afterJQ %}
+{% block extra_head %}
   {% load compress %}
   {% compress css %}
     <link href="{% static 'css/vendor/jal/style.css' %}" type="text/css" media="all" rel="stylesheet" />
+    <link href="{% static 'css/dm-pages.css' %}" type="text/css" rel="stylesheet" />
   {% endcompress %}
+{% endblock %}
+
+{% block content %}
+  {% include "viewer/include/gallery_archives_page.html" with page_url="repeated" heading="Galleries with Several Archives" icon="fa-copy" description="Galleries linked to more than one archive. Archives in green have the gallery's size: keep one, delete the others (only the records, or the files too)." empty_text="No gallery has more than one archive." tile_label="Galleries with several archives" tile_sub="click to clear the provider filter" %}
+{% endblock %}
+
+{% block afterJQ %}
+  {% load compress %}
   {% compress js %}
     <script src="{% static 'js/vendor/jal.js' %}"></script>
+    <script src="{% static 'js/dm-pages.js' %}"></script>
+    <script src="{% static 'js/gallery-archives.js' %}"></script>
   {% endcompress %}
 {% endblock %}

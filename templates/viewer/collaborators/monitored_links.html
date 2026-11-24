@@ -264,6 +264,7 @@
             <th>URL</th>
             <th>Provider</th>
             <th>Frequency</th>
+            <th title="Latest capture run: new links found and links already seen by an earlier run (overlap)">Last capture</th>
             <th class="text-center">Priority</th>
             <th>Config</th>
             <th>Restriction</th>
@@ -286,13 +287,9 @@
                 {% endif %}
               </td>
               <td class="dm-wrap" style="min-width: 11rem;">
-                {% if perms.viewer.change_monitoredlink %}
-                  <a href="{% url 'viewer:col-edit-monitored-link' monitored_link.pk %}" class="ml-name text-decoration-none">
-                    {{ monitored_link.name }}
-                  </a>
-                {% else %}
-                  <span class="ml-name">{{ monitored_link.name }}</span>
-                {% endif %}
+                <a href="{% url 'viewer:col-monitored-link' monitored_link.pk %}" class="ml-name text-decoration-none" title="Details and run stats">
+                  {{ monitored_link.name }}
+                </a>
                 {% if monitored_link.description %}
                   <div class="ml-desc" title="{{ monitored_link.description }}">{{ monitored_link.description|truncatechars:60 }}</div>
                 {% endif %}
@@ -314,6 +311,31 @@
                 {% else %}
                   <code>{{ monitored_link.frequency }}</code>
                 {% endif %}
+              </td>
+              <td class="small text-nowrap">
+                {% with last_capture=last_captures|dict_key:monitored_link.pk pending=pending_counts|dict_key:monitored_link.pk %}
+                  {% if last_capture %}
+                    <a href="{% url 'viewer:col-monitored-link' monitored_link.pk %}" class="text-decoration-none" title="{{ last_capture.started|date:'Y-m-d H:i' }}: {{ last_capture.links_found }} links found, {{ last_capture.get_stop_reason_display|default:'no stop reason' }}">
+                      {% if last_capture.stop_reason == "no_response" %}
+                        <span class="text-warning">no response</span>
+                      {% else %}
+                        <span class="text-success">+{{ last_capture.links_new }} new</span>
+                        <span class="dm-muted">· {{ last_capture.links_known }} seen</span>
+                      {% endif %}
+                    </a>
+                    {% if last_capture.gap %}
+                      <i class="fas fa-exclamation-triangle text-warning ms-1" title="Only new links and it stopped before reaching the ones seen by the previous run: links were likely missed"></i>
+                    {% endif %}
+                    {% if last_capture.error %}
+                      <i class="fas fa-times-circle text-danger ms-1" title="The run failed"></i>
+                    {% endif %}
+                  {% else %}
+                    <span class="dm-dim">-</span>
+                  {% endif %}
+                  {% if pending %}
+                    <div><span class="badge dm-badge-outline text-warning" title="Captured links waiting for the process run">{{ pending }} pending</span></div>
+                  {% endif %}
+                {% endwith %}
               </td>
               <td class="text-center">
                 <span class="badge dm-badge-outline text-info">{{ monitored_link.priority }}</span>
@@ -385,6 +407,9 @@
                     <button type="submit" form="monitored-link-actions-{{ monitored_link.pk }}" formaction="{% url 'viewer:col-monitored-link-action' monitored_link.pk 'force_run' %}" class="btn btn-outline-info" title="Force immediate run" aria-label="Force immediate run">
                       <i class="fas fa-bolt"></i>
                     </button>
+                    <a href="{% url 'viewer:col-monitored-link' monitored_link.pk %}" class="btn btn-outline-light" title="Details and run stats" aria-label="Details">
+                      <i class="fas fa-chart-bar"></i>
+                    </a>
                     <a href="{% url 'viewer:col-edit-monitored-link' monitored_link.pk %}" class="btn btn-outline-light" title="Edit" aria-label="Edit">
                       <i class="fas fa-edit"></i>
                     </a>
@@ -403,7 +428,7 @@
             {% endwith %}
           {% empty %}
             <tr>
-              <td colspan="13" class="dm-empty">
+              <td colspan="14" class="dm-empty">
                 <i class="fas fa-satellite-dish"></i>No monitored links found matching your filters.
               </td>
             </tr>

@@ -298,8 +298,10 @@ class GeneralPagesTest(TestCase):
         response = c.post(
             reverse("viewer:repeated-archives"), {"del-{}".format(self.test_gallery1.pk): [self.test_book1b.pk]}
         )
-        self.assertEqual(response.status_code, 200)
+        # Bulk actions redirect back to the listing (post/redirect/get).
+        self.assertRedirects(response, reverse("viewer:repeated-archives"), fetch_redirect_response=False)
         self.assertEqual(Archive.objects.count(), 5)
+        response = c.get(reverse("viewer:repeated-archives"), {"title": "gallery"})
         self.assertEqual(len(response.context["results"]), 1)
 
         # Tools page
@@ -1313,12 +1315,8 @@ class OperationalFixesTest(TestCase):
         c_staff = Client()
         c_staff.login(username="admin_op", password="password")
 
-        for url in (
-            reverse("viewer:stats-settings"),
-            reverse("viewer:tools-id", args=["modify_settings_editor"]),
-        ):
-            resp = c_staff.get(url, follow=True)
-            self.assertIn(b"superuser", resp.content)
+        resp = c_staff.get(reverse("viewer:tools-id", args=["modify_settings_editor"]), follow=True)
+        self.assertIn(b"superuser", resp.content)
 
         resp = c_staff.post(reverse("viewer:tools-id", args=["reload_settings"]), follow=True)
         self.assertIn(b"superuser", resp.content)

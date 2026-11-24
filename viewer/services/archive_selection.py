@@ -12,6 +12,7 @@ from collections.abc import Mapping
 from django.db.models import Count, Exists, F, OuterRef, Q, QuerySet
 
 from viewer.models import Archive, ArchiveManageEntry, ArchiveTag, UserArchivePrefs
+from viewer.services import cold_storage
 from viewer.views.head import archive_filter_keys, archive_order_fields, filter_archives_simple
 
 if typing.TYPE_CHECKING:
@@ -34,6 +35,7 @@ TEXT_FILTERS = [
     "mark_comment",
     "mark_extra",
     "origin",
+    "storage",
 ]
 NUMBER_FILTERS = [
     "filecount_from",
@@ -75,7 +77,9 @@ MARK_FILTERS = {
     "priority_to",
     "and-mark-conditions",
 }
-ADMIN_FILTERS = {"recycled", "file_deleted"}
+ADMIN_FILTERS = {"recycled", "file_deleted", "storage"}
+# "storage": where the archive file is, "local" or "cold" (offloaded to the cold storage bucket).
+STORAGE_CHOICES = ("local", "cold")
 # Three-way filters: "1" (only these archives), "any" (ignore the filter); anything else excludes them (the default).
 TRISTATE_FILTERS = {"recycled", "file_deleted"}
 TRISTATE_ANY = "any"
@@ -141,6 +145,9 @@ def clean_filter(params: Mapping[str, typing.Any], user: "User | AnonymousUser |
         elif key == "origin":
             if value not in {str(choice) for choice, _ in ArchiveManageEntry.ORIGIN_CHOICES}:
                 raise ValueError(f"Filter 'origin' must be one of the mark origins, got '{value}'.")
+        elif key == "storage":
+            if value not in STORAGE_CHOICES:
+                raise ValueError(f"Filter 'storage' must be one of {', '.join(STORAGE_CHOICES)}, got '{value}'.")
         elif key in DATE_FILTERS:
             try:
                 datetime.date.fromisoformat(value)
@@ -284,7 +291,8 @@ def filter_archives(
     Binned and file deleted archives are excluded unless ``can_view_recycled``. Users who can view them choose with
     "recycled" and "file_deleted": "1" for only those archives, "any" to ignore the filter, absent or "0" to exclude
     them. ``flags`` receives whether mark and extra file filters were used. "only_favorites" keeps the archives that
-    ``favorites_user_id`` marked as favorite, and is ignored without it.
+    ``favorites_user_id`` marked as favorite, and is ignored without it. "storage" keeps the "local" or the "cold"
+    (offloaded) archives; it doesn't check who asks, callers drop it for users who can't use the cold storage.
     """
     query: dict[str, typing.Any] = {"sort": "create_date", "asc_desc": "desc"}
     for key, value in params.items():
@@ -314,6 +322,7 @@ def filter_archives(
         results = results.filter(gallery__isnull=False).filter(Exists(other_archives))
 
     results = filter_recycled_and_file_deleted(results, params, can_view_recycled)
+    results = cold_storage.filter_by_storage(results, params.get("storage"))
 
     if params.get("only_favorites") and favorites_user_id is not None:
         favorites = UserArchivePrefs.objects.filter(user_id=favorites_user_id, favorite_group__gt=0).values("archive")

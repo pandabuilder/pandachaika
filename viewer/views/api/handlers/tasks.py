@@ -33,13 +33,17 @@ SUMMARY_OPTION_KEYS = (
 )
 
 
-def task_status_url(request: HttpRequest | None, task_ids: list[int]) -> str | None:
-    """URL an API client polls for these tasks, on the API surface the request came in on."""
+def task_status_url(request: HttpRequest | None, task_ids: list[int], batch: bool = False) -> str | None:
+    """URL an API client polls for these tasks, on the API surface the request came in on.
+
+    A single task gets ``?task=`` (one task object) unless ``batch`` is set: responses that carry ``task_ids``
+    always point at ``?tasks=`` (the batch summary), so their shape doesn't change with how many tasks were queued.
+    """
     if not task_ids:
         return None
     surface = getattr(getattr(request, "api", None), "surface", ApiSurface.V1)
     base = reverse("viewer:api-v1") if surface == ApiSurface.V1 else reverse("viewer:api")
-    if len(task_ids) == 1:
+    if len(task_ids) == 1 and not batch:
         return f"{base}?task={task_ids[0]}"
     return f"{base}?tasks={','.join(str(task_id) for task_id in task_ids)}"
 
@@ -51,7 +55,7 @@ def task_reference(request: HttpRequest | None, task: TaskQueue) -> dict[str, An
 
 def tasks_reference(request: HttpRequest | None, task_ids: list[int]) -> dict[str, Any]:
     """The ``task_ids``/``status_url`` pair for commands that queue several tasks (``status_url`` is null if none)."""
-    return {"task_ids": task_ids, "status_url": task_status_url(request, task_ids)}
+    return {"task_ids": task_ids, "status_url": task_status_url(request, task_ids, batch=True)}
 
 
 def _timestamp(value: datetime | None) -> int | None:
@@ -178,7 +182,7 @@ def handle_get_tasks(request: HttpRequest, data: QueryDict, user_is_authenticate
             "worker_running": client.is_worker_running() if active else True,
             "poll_delay_ms": min(item["poll_delay_ms"] for item in active_items) if active_items else 0,
             "tasks": items,
-            "status_url": task_status_url(request, task_ids),
+            "status_url": task_status_url(request, task_ids, batch=True),
         },
         sort_keys=True,
     )

@@ -225,6 +225,9 @@ class FolderCrawler(object):
             if found_archives:
                 logger.info("Checking {} archives for existence in filesystem".format(found_archives.count()))
                 for archive in found_archives:
+                    # Offloaded archives are in the cold storage bucket, which might just not be mounted.
+                    if archive.is_cold_stored:
+                        continue
                     if not os.path.isfile(archive.zipped.path):
                         Archive.objects.delete_by_filter(pk=archive.pk)
 
@@ -236,6 +239,8 @@ class FolderCrawler(object):
             if found_archives:
                 logger.info("Checking {} archives for existence in filesystem".format(found_archives.count()))
                 for archive in found_archives:
+                    if archive.is_cold_stored:
+                        continue
                     if not os.path.isfile(archive.zipped.path):
                         logger.info("Filename: {} doesn't exist".format(archive.zipped.path))
             return

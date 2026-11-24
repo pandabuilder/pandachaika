@@ -1,185 +1,104 @@
 {% extends "viewer/base.html" %}
+{% load static %}
 {% block title %}Stats | {{ block.super }}{% endblock %}
 {% block sidebar %}{% endblock %}
 
+{% block extra_head %}
+  {% load compress %}
+  {% compress css %}
+    <link href="{% static 'css/dm-pages.css' %}" type="text/css" rel="stylesheet" />
+  {% endcompress %}
+{% endblock %}
+
 {% block content %}
-  {% if messages %}
-    {% for message in messages %}
-      <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
-    {% endfor %}
-  {% endif %}
+<div class="container-fluid py-3">
+  {% include "viewer/include/dm_messages.html" %}
 
-  <!-- Stats  -->
-  <div class="page-header">
-    <h2>Stats</h2>
-    <p class="lead">Aggregated information</p>
-  </div>
-  <table class="table table-striped">
-    <thead>
-    <tr>
-      <th>Archives (downloaded files)</th>
-      <th>Galleries (metadata)</th>
-      <th>Tags</th>
-    </tr>
-    </thead>
-    <tbody>
-    <tr>
-      <td>
-        <table class="table table-striped table-bordered table-sm">
-          <tr>
-            <td class="label-extended">Number of archives</td>
-            <td>{{ stats.n_archives }}</td>
-          </tr>
-          <tr>
-            <td class="label-extended">Sum of unpacked filesize</td>
-            <td>{{ stats.archive.filesize__sum|default:"0" }} bytes ({{ stats.archive.filesize__sum|filesizeformat }})</td>
-          </tr>
-          <tr>
-            <td class="label-extended">Average unpacked filesize</td>
-            <td>{{ stats.archive.filesize__avg|floatformat:"0"|default:"0" }} bytes ({{ stats.archive.filesize__avg|filesizeformat }})</td>
-          </tr>
-          <tr>
-            <td class="label-extended">Maximum unpacked filesize</td>
-            <td>{{ stats.archive.filesize__max|default:"0" }} bytes ({{ stats.archive.filesize__max|filesizeformat }})</td>
-          </tr>
-          <tr>
-            <td class="label-extended">Minimum unpacked filesize</td>
-            <td>{{ stats.archive.filesize__min|default:"0" }} bytes ({{ stats.archive.filesize__min|filesizeformat }})</td>
-          </tr>
-          <tr>
-            <td class="label-extended">Average page number</td>
-            <td>{{ stats.archive.filecount__avg|floatformat:"0"|default:"0" }}</td>
-          </tr>
-          <tr>
-            <td class="label-extended">Total number of pages</td>
-            <td>{{ stats.archive.filecount__sum|default:"0" }}</td>
-          </tr>
-        </table>
-      </td>
-      <td>
-        <table class="table table-striped table-bordered table-sm">
-          <tr>
-            <td class="label-extended">Number of galleries</td>
-            <td>{{ stats.n_galleries }}</td>
-          </tr>
-          <tr>
-            <td class="label-extended">Sum of unpacked filesize</td>
-            <td>{{ stats.gallery.filesize__sum|default:"0" }} bytes ({{ stats.gallery.filesize__sum|filesizeformat }})</td>
-          </tr>
-          <tr>
-            <td class="label-extended">Average unpacked filesize</td>
-            <td>{{ stats.gallery.filesize__avg|floatformat:"0"|default:"0" }} bytes ({{ stats.gallery.filesize__avg|filesizeformat }})</td>
-          </tr>
-          <tr>
-            <td class="label-extended">Maximum unpacked filesize</td>
-            <td>{{ stats.gallery.filesize__max|default:"0" }} bytes ({{ stats.gallery.filesize__max|filesizeformat }})</td>
-          </tr>
-          <tr>
-            <td class="label-extended">Minimum unpacked filesize</td>
-            <td>{{ stats.gallery.filesize__min|default:"0" }} bytes ({{ stats.gallery.filesize__min|filesizeformat }})</td>
-          </tr>
-          <tr>
-            <td class="label-extended">Average page number</td>
-            <td>{{ stats.gallery.filecount__avg|floatformat:"0"|default:"0" }}</td>
-          </tr>
-          <tr>
-            <td class="label-extended">Total number of pages</td>
-            <td>{{ stats.gallery.filecount__sum|default:"0" }}</td>
-          </tr>
-        </table>
-      </td>
-      <td>
-        <table class="table table-striped table-bordered table-sm">
-          <tr>
-            <td class="label-extended">Number of tags</td>
-            <td>{{ stats.n_tags }}</td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-    </tbody>
-  </table>
-  <h3>Breakdown by Categories (for Galleries)</h3>
-  <table class="table table-striped">
-    <thead>
-    <tr>
-      <th>Category</th><th>Galleries</th><th>Total size</th><th>Average size</th><th>Maximum size</th><th>Minimum size</th><th>Average pages</th><th>Total pages</th>
-    </tr>
-    </thead>
-    <tbody>
-    {% for category, category_stats in gallery_categories.items %}
-    <tr>
-      <td>
-        {{ category }}
-      </td>
-      <td>
-        {{ category_stats.n_galleries }}
-      </td>
-      <td>
-        {{ category_stats.gallery.filesize__sum|default:"0" }} bytes ({{ category_stats.gallery.filesize__sum|filesizeformat }})
-      </td>
-      <td>
-        {{ category_stats.gallery.filesize__avg|floatformat:"0"|default:"0" }} bytes ({{ category_stats.gallery.filesize__avg|filesizeformat }})
-      </td>
-      <td>{{ category_stats.gallery.filesize__max|default:"0" }} bytes ({{ category_stats.gallery.filesize__max|filesizeformat }})</td>
-      <td>{{ category_stats.gallery.filesize__min|default:"0" }} bytes ({{ category_stats.gallery.filesize__min|filesizeformat }})</td>
-      <td>{{ category_stats.gallery.filecount__avg|floatformat:"0"|default:"0" }}</td>
-      <td>{{ category_stats.gallery.filecount__sum|default:"0" }}</td>
-    </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-
-  <h3>Breakdown by Language (for Galleries)</h3>
-  <table class="table table-striped">
-    <thead>
-    <tr>
-      <th>Language</th><th>Galleries</th><th>Total size</th><th>Average size</th><th>Maximum size</th><th>Minimum size</th><th>Average pages</th><th>Total pages</th>
-    </tr>
-    </thead>
-    <tbody>
-    {% for language, language_stats in gallery_languages.items %}
-    <tr>
-      <td>
-        {{ language }}
-      </td>
-      <td>
-        {{ language_stats.n_galleries }}
-      </td>
-      <td>
-        {{ language_stats.gallery.filesize__sum|default:"0" }} bytes ({{ language_stats.gallery.filesize__sum|filesizeformat }})
-      </td>
-      <td>
-        {{ language_stats.gallery.filesize__avg|floatformat:"0"|default:"0" }} bytes ({{ language_stats.gallery.filesize__avg|filesizeformat }})
-      </td>
-      <td>{{ language_stats.gallery.filesize__max|default:"0" }} bytes ({{ language_stats.gallery.filesize__max|filesizeformat }})</td>
-      <td>{{ language_stats.gallery.filesize__min|default:"0" }} bytes ({{ language_stats.gallery.filesize__min|filesizeformat }})</td>
-      <td>{{ language_stats.gallery.filecount__avg|floatformat:"0"|default:"0" }}</td>
-      <td>{{ language_stats.gallery.filecount__sum|default:"0" }}</td>
-    </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  <div class="row">
-    <div class="card panel col-sm-6 col-md-4">
-      <div class="card-header">10 most used tags</div>
-      <ul class="list-group">
-        {% for tag in stats.top_10_tags %}
-          <li class="list-group-item">
-            <a href="{% url 'viewer:archive-tag-search' 'tag' tag %}">{{ tag }}</a>, used {{ tag.num_archive }} times<br>
-          </li>
-        {% endfor %}
-      </ul>
+  <!-- Header -->
+  <div class="dm-page-header">
+    <div>
+      <h2 class="h3 mb-1"><i class="fas fa-chart-pie text-info me-2"></i>Backup Stats</h2>
+      <p class="mb-0 small">Aggregated information about the public archives (downloaded files) and galleries (metadata).</p>
     </div>
-    <div class="card panel col-sm-6 col-md-4">
-      <div class="card-header">10 most used artist tags</div>
-      <ul class="list-group">
-        {% for tag in stats.top_10_artist_tags %}
-          <li class="list-group-item">
-            <a href="{% url 'viewer:archive-tag-search' 'tag' tag %}">{{ tag }}</a>, used {{ tag.num_archive }} times<br>
-          </li>
-        {% endfor %}
-      </ul>
+    <div class="d-flex flex-wrap gap-2">
+      <a href="{% url 'viewer:main-page' %}" class="btn btn-outline-info btn-sm"><i class="fas fa-archive me-1"></i>Browse archives</a>
+      <a href="{% url 'viewer:found-galleries' %}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-binoculars me-1"></i>Found galleries log</a>
     </div>
   </div>
+
+  <!-- Summary tiles -->
+  <div class="row g-2 mb-3">
+    <div class="col-6 col-md-3">
+      <div class="dm-stat">
+        <div class="dm-lbl">Archives</div>
+        <div class="dm-val text-info">{{ stats.n_archives }}</div>
+        <div class="dm-stat-sub" title="{{ stats.archive.filesize__sum|default:0 }} bytes">{{ stats.archive.filesize__sum|default:0|filesizeformat }} in total</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="dm-stat">
+        <div class="dm-lbl">Galleries</div>
+        <div class="dm-val text-success">{{ stats.n_galleries }}</div>
+        <div class="dm-stat-sub" title="{{ stats.gallery.filesize__sum|default:0 }} bytes">{{ stats.gallery.filesize__sum|default:0|filesizeformat }} in total</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="dm-stat">
+        <div class="dm-lbl">Archived pages</div>
+        <div class="dm-val text-warning">{{ stats.archive.filecount__sum|default:0 }}</div>
+        <div class="dm-stat-sub">{{ stats.archive.filecount__avg|default:0|floatformat:"0" }} per archive on average</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="dm-stat">
+        <div class="dm-lbl">Tags</div>
+        <div class="dm-val text-primary">{{ stats.n_tags }}</div>
+        <div class="dm-stat-sub">used by public archives</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Totals -->
+  <div class="row g-3 mb-3">
+    <div class="col-lg-6">
+      <div class="dm-card h-100 mb-0">
+        <div class="dm-card-header"><i class="fas fa-file-archive text-info me-1"></i>Archives (downloaded files)</div>
+        {% include "viewer/include/stats_size_summary.html" with agg=stats.archive count=stats.n_archives noun="archives" %}
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="dm-card h-100 mb-0">
+        <div class="dm-card-header"><i class="fas fa-images text-info me-1"></i>Galleries (metadata)</div>
+        {% include "viewer/include/stats_size_summary.html" with agg=stats.gallery count=stats.n_galleries noun="galleries" %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Breakdowns -->
+  <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+    <span class="dm-lbl me-1">Breakdowns</span>
+    <input type="search" class="form-control form-control-sm bg-transparent text-light" style="max-width: 18rem;" placeholder="Filter rows (press /)"
+           aria-label="Filter breakdown rows" data-dm-filter="tr[data-dm-filter-row]" data-dm-hotkey="/">
+    <span class="small dm-muted">Click a column header to sort.</span>
+  </div>
+  {% include "viewer/include/stats_breakdown_table.html" with rows=gallery_categories count_key="n_galleries" agg_key="gallery" label="Category" noun="Galleries" table_id="stats-categories" title="Galleries by category" icon="fa-folder-open" %}
+  {% include "viewer/include/stats_breakdown_table.html" with rows=gallery_languages count_key="n_galleries" agg_key="gallery" label="Language" noun="Galleries" table_id="stats-languages" title="Galleries by language" icon="fa-language" %}
+
+  <!-- Top tags -->
+  <div class="row g-3 mb-3">
+    <div class="col-md-6">
+      {% include "viewer/include/stats_top_tags.html" with tags=stats.top_10_tags title="10 most used tags" group="top-tags" %}
+    </div>
+    <div class="col-md-6">
+      {% include "viewer/include/stats_top_tags.html" with tags=stats.top_10_artist_tags title="10 most used artist tags" group="top-artist-tags" %}
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block afterJQ %}
+  {% load compress %}
+  {% compress js %}
+    <script src="{% static 'js/dm-pages.js' %}"></script>
+  {% endcompress %}
 {% endblock %}

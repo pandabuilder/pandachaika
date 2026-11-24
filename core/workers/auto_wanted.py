@@ -1,68 +1,94 @@
-import threading
+import datetime
 import logging
-import traceback
 
 import django.utils.timezone as django_tz
 from django.db import close_old_connections
 
 from core.workers.schedulers import BaseScheduler
-from viewer.models import Attribute
 
 logger = logging.getLogger(__name__)
 
 
-def catch_and_log_error(func):
-    def wrapper_catch_and_log_error(*args, **kwargs):
-        try:
-            func(*args, **kwargs)
-        except BaseException:
-            logger.critical(traceback.format_exc())
-
-    return wrapper_catch_and_log_error
-
-
 class TimedAutoWanted(BaseScheduler):
+    """Runs the active auto wanted sources (``AutoWantedSource``) when they're due, see ``viewer.services.auto_wanted``.
+
+    Each source runs every ``frequency``, or every ``timer`` (``auto_wanted.cycle_timer`` hours) without one. The
+    scheduler wakes up when the next source is due, and at least every ``CHECK_INTERVAL`` to see new or changed
+    sources. A forced run (workers dashboard) runs every active source.
+    """
 
     thread_name = "auto_wanted"
+    CHECK_INTERVAL = 15 * 60
+    # Floor between checks, so a source still running (due until its run ends) doesn't make the loop spin.
+    MIN_WAIT = 60
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._forced_cycle = False
 
     @staticmethod
     def timer_to_seconds(timer: float) -> float:
         return timer * 60 * 60
 
+    def default_period(self) -> datetime.timedelta:
+        return datetime.timedelta(seconds=self.timer)
+
+    def seconds_until_due(self) -> float:
+        """Seconds until the next active source is due, between MIN_WAIT and CHECK_INTERVAL."""
+        if not self.settings.auto_wanted.enable:
+            return self.CHECK_INTERVAL
+        try:
+            from viewer.services.auto_wanted import seconds_until_next_due
+
+            seconds = seconds_until_next_due(self.default_period())
+        except Exception:
+            logger.exception("Could not check when the auto wanted sources are due")
+            seconds = None
+        if seconds is None:
+            return self.CHECK_INTERVAL
+        return min(max(seconds, self.MIN_WAIT), self.CHECK_INTERVAL)
+
+    def wait_until_next_run(self) -> float:
+        if self.force_run_once:
+            self.force_run_once = False
+            self._forced_cycle = True
+            return 0
+        return self.seconds_until_due()
+
+    def update_last_run(self, last_run: datetime.datetime, persist: bool = True) -> None:
+        self.last_run = last_run
+        if not persist:
+            return
+        try:
+            from workers.models import SchedulerState
+
+            next_run = last_run + datetime.timedelta(seconds=self.seconds_until_due())
+            SchedulerState.objects.filter(name=self.thread_name).update(last_run=last_run, next_run=next_run)
+        except Exception:
+            pass
+
     def job(self) -> None:
         while not self.stop.is_set():
             seconds_to_wait = self.wait_until_next_run()
+            forced = self._forced_cycle
+            self._forced_cycle = False
             if self.stop.wait(timeout=seconds_to_wait):
                 return
             if self.settings.auto_wanted.enable:
-                logger.info("Starting timed auto wanted.")
                 close_old_connections()
+                try:
+                    from viewer.services.auto_wanted import run_active_sources_in_threads
 
-                for provider_name in self.settings.auto_wanted.providers:
-
-                    attrs = Attribute.objects.filter(provider__slug=provider_name)
-
-                    for count, wanted_generator in enumerate(
-                        self.settings.provider_context.get_wanted_generators(provider_name)
-                    ):
-                        def _run_wanted_gen(gen=wanted_generator):
-                            try:
-                                catch_and_log_error(gen)(self.settings, attrs)
-                            finally:
-                                try:
-                                    from django.db import connection, connections
-
-                                    if not connection.in_atomic_block:
-                                        connections.close_all()
-                                except Exception:
-                                    pass
-
-                        wanted_generator_thread = threading.Thread(
-                            name="{}-{}-{}".format(self.thread_name, provider_name, count),
-                            target=_run_wanted_gen,
-                        )
-                        wanted_generator_thread.daemon = True
-                        wanted_generator_thread.start()
+                    threads = run_active_sources_in_threads(
+                        self.settings,
+                        default=self.default_period(),
+                        only_due=not forced,
+                        thread_name=self.thread_name,
+                    )
+                    if threads:
+                        logger.info("Timed auto wanted: started the due sources of %d provider(s).", len(threads))
+                except Exception:
+                    logger.exception("Could not start the auto wanted sources")
 
             self.update_last_run(django_tz.now())
             try:

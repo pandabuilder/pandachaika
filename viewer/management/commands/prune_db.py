@@ -7,7 +7,7 @@ crawler_settings = settings.CRAWLER_SETTINGS
 
 
 class Command(BaseCommand):
-    help = "Prune old TaskQueue, DownloadEvent, EventLog, ProcessedLinks, StatusLog, Session, and Gallery/Archive change log entries according to retention policy."
+    help = "Prune old TaskQueue, DownloadEvent, EventLog, ProcessedLinks, MonitoredLinkRun, StatusLog, Session, and Gallery/Archive change log entries according to retention policy."
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -21,7 +21,7 @@ class Command(BaseCommand):
             "--entities",
             type=str,
             default="all",
-            help="Comma-separated list of entities to prune (task_queue, download_event, event_log, processed_links, status_log, sessions, history, or all).",
+            help="Comma-separated list of entities to prune (task_queue, download_event, event_log, processed_links, monitored_link_runs, status_log, sessions, history, or all).",
         )
         parser.add_argument(
             "--task-queue-days",
@@ -51,7 +51,7 @@ class Command(BaseCommand):
             "--processed-links-days",
             type=int,
             default=None,
-            help="Override retention period in days for ProcessedLinks (0 to skip).",
+            help="Override retention period in days for ProcessedLinks and MonitoredLinkRun (0 to skip).",
         )
         parser.add_argument(
             "--history-days",

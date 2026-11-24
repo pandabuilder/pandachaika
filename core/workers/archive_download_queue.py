@@ -837,13 +837,14 @@ class ArchiveDownloadQueue(BaseScheduler):
                 if user:
                     action = req_opts.get("event_action") or "DOWNLOAD_ARCHIVE"
                     reason = req_opts.get("archive_reason") or None
+                    gallery = event.gallery or archive.gallery
                     event_log(
                         user,
                         action,
                         reason=reason,
                         content_object=archive,
-                        result=1,
-                        data=event.download_url,
+                        result="success",
+                        data=gallery.get_link() if gallery else event.download_url,
                     )
             except Exception as e:
                 logger.warning("Failed to log download action for archive #%s: %s", archive.pk, e)

@@ -1,0 +1,154 @@
+{% load viewer_extras %}{% comment %}
+Body of the repeated archives and different filesize pages: galleries listed with their archives, archives deleted in bulk.
+  page_url    url of the page (filters and actions)
+  heading, icon, description, empty_text
+  tile_label, tile_sub
+{% endcomment %}
+<div class="container-fluid py-3">
+  {% include "viewer/include/dm_messages.html" %}
+
+  <!-- Header -->
+  <div class="dm-page-header">
+    <div>
+      <h2 class="h3 mb-1"><i class="fas {{ icon }} text-info me-2"></i>{{ heading }}</h2>
+      <p class="mb-0 small">{{ description }}</p>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      {% if page_url != "repeated" %}<a href="{% url 'viewer:repeated-archives' %}" class="btn btn-outline-info btn-sm"><i class="fas fa-copy me-1"></i>Repeated archives</a>{% endif %}
+      {% if page_url != "filesize" %}<a href="{% url 'viewer:archive-filesize-different' %}" class="btn btn-outline-info btn-sm"><i class="fas fa-not-equal me-1"></i>Different filesize</a>{% endif %}
+      <a href="{% url 'viewer:archives-by-field' %}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-clone me-1"></i>Similar Archives</a>
+    </div>
+  </div>
+
+  <!-- Summary tiles -->
+  <div class="row g-2 mb-3">
+    <div class="col-6 col-md-3">
+      <a class="dm-stat{% if not request.GET.provider %} active{% endif %}" href="?{% url_filter 'provider' '' %}">
+        <div class="dm-lbl">{{ tile_label }}</div>
+        <div class="dm-val text-warning">{{ total }}</div>
+        <div class="dm-stat-sub">{{ tile_sub }}</div>
+      </a>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="dm-stat">
+        <div class="dm-lbl">Matching filter</div>
+        <div class="dm-val text-info">{{ results.paginator.count }}</div>
+        <div class="dm-stat-sub">galleries listed below</div>
+      </div>
+    </div>
+    <div class="col-12 col-md-6">
+      <div class="dm-stat">
+        <div class="dm-lbl mb-1">By provider</div>
+        <div class="dm-chips">
+          {% for row in providers|slice:":10" %}
+            {% if row.provider %}
+              <a class="dm-chip dm-chip-link{% if request.GET.provider == row.provider %} active{% endif %}" href="?{% url_filter 'provider' row.provider %}">
+                {{ row.provider }} <span class="badge bg-secondary">{{ row.count }}</span>
+              </a>
+            {% endif %}
+          {% empty %}
+            <span class="small dm-muted">Nothing to review.</span>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <form action="" method="GET" class="dm-card" id="filter-form">
+    <div class="p-3">
+      <div class="row g-2 align-items-end">
+        <div class="col-lg-5">
+          <label class="form-label dm-lbl" for="{{ form.title.id_for_label }}">Gallery title / GID</label>
+          {{ form.title.errors }}
+          {{ form.title }}
+        </div>
+        <div class="col-lg-3">
+          <label class="form-label dm-lbl" for="{{ form.tags.id_for_label }}">Tags</label>
+          {{ form.tags.errors }}
+          {{ form.tags }}
+        </div>
+        <div class="col-6 col-lg-2">
+          <label class="form-label dm-lbl" for="f-provider">Provider</label>
+          <select id="f-provider" name="provider" class="form-select form-select-sm">
+            <option value="">All providers</option>
+            {% for row in providers %}
+              {% if row.provider %}<option value="{{ row.provider }}"{% if request.GET.provider == row.provider %} selected{% endif %}>{{ row.provider }} ({{ row.count }})</option>{% endif %}
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-6 col-lg-2 d-flex flex-wrap gap-2">
+          <button type="submit" name="apply" class="btn btn-info btn-sm"><i class="fas fa-search me-1"></i>Search</button>
+          <a class="btn btn-outline-light btn-sm" href="?" title="Clear all filters"><i class="fas fa-times me-1"></i>Clear</a>
+        </div>
+      </div>
+      <div class="d-flex flex-wrap align-items-center gap-2 mt-3">
+        <span class="dm-lbl">Gallery</span>
+        <div class="dm-toggles">
+          <input id="f-public" class="btn-check" type="checkbox" name="public" value="1" autocomplete="off"{% if request.GET.public %} checked{% endif %}>
+          <label class="btn btn-outline-secondary" for="f-public">Public</label>
+          <input id="f-not-public" class="btn-check" type="checkbox" name="non_public" value="1" autocomplete="off"{% if request.GET.non_public %} checked{% endif %}>
+          <label class="btn btn-outline-secondary" for="f-not-public">Private</label>
+          <input id="f-expunged" class="btn-check" type="checkbox" name="expunged" value="1" autocomplete="off"{% if request.GET.expunged %} checked{% endif %}>
+          <label class="btn btn-outline-secondary" for="f-expunged">Expunged</label>
+        </div>
+      </div>
+      <div class="mt-3 d-none" data-dm-chips-wrapper>
+        <div class="d-flex flex-wrap align-items-center gap-2">
+          <span class="dm-lbl"><i class="fas fa-filter me-1"></i>Active</span>
+          <div class="dm-chips" id="filter-chips"></div>
+        </div>
+      </div>
+    </div>
+  </form>
+
+  <!-- Results & bulk actions -->
+  <form action="{{ request.get_full_path }}" method="POST" id="archives-form">
+    {% csrf_token %}
+    <div class="dm-card mb-2">
+      <div class="dm-card-header">
+        {% include "viewer/include/dm_pagination.html" with page_obj=results noun="galleries" per_page_options=per_page_options per_page=limit %}
+      </div>
+    </div>
+    <div id="groups-root">
+      {% for gallery in results %}
+        {% include "viewer/include/gallery_archives_group.html" %}
+      {% empty %}
+        <div class="dm-card"><div class="dm-empty"><i class="fas fa-check-circle"></i>{{ empty_text }}</div></div>
+      {% endfor %}
+    </div>
+    {% if results.paginator.num_pages > 1 %}
+      <div class="dm-card p-2">
+        {% include "viewer/include/dm_pagination.html" with page_obj=results noun="galleries" compact=1 %}
+      </div>
+    {% endif %}
+
+    <div class="dm-actionbar">
+      <div class="d-flex flex-wrap align-items-center gap-2">
+        <span class="dm-sel-count" data-dm-sel-count>None selected</span>
+        <span class="dm-lbl dm-actionbar-extra ms-1">Select</span>
+        <button type="button" class="btn btn-sm btn-outline-info dm-actionbar-extra" id="select-different"
+                title="Select, in every gallery, the archives whose size is not the gallery's">
+          <i class="fas fa-not-equal me-1"></i>Different size
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-info dm-actionbar-extra" id="select-extra"
+                title="In every gallery, keep one archive (the first with the gallery's size, or the first one) and select the others">
+          <i class="fas fa-check-double me-1"></i>All but one per gallery
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-light dm-actionbar-extra" id="select-none">
+          <i class="fas fa-times me-1"></i>None
+        </button>
+        <div class="ms-auto d-flex flex-wrap gap-2">
+          <button type="submit" name="delete_archives" class="btn btn-sm btn-outline-warning" data-dm-needs-selection disabled
+                  data-dm-confirm="Delete the records of {n} selected archive(s)? Their files are kept on disk.">
+            <i class="fas fa-unlink me-1"></i>Delete records only
+          </button>
+          <button type="submit" name="delete_archives_and_files" class="btn btn-sm btn-danger" data-dm-needs-selection disabled
+                  data-dm-confirm="PERMANENTLY DELETE {n} selected archive(s) AND their files on disk?">
+            <i class="fas fa-trash-alt me-1"></i>Delete archives &amp; files
+          </button>
+        </div>
+      </div>
+    </div>
+  </form>
+</div>

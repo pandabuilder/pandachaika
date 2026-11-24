@@ -334,7 +334,7 @@ def handle_remote_get(request: HttpRequest) -> HttpResponse:
                     if gallery.thumbnail
                     else ""
                 ),
-                "thumbnail_url": gallery.thumbnail_url,
+                "thumbnail_url": gallery.get_thumbnail_url(),
             }
             for gallery in results
         ],

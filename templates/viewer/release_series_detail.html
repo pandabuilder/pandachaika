@@ -1,0 +1,333 @@
+{% extends "viewer/base.html" %}
+{% block title %}{{ series.name }} | Release Completeness | {{ block.super }}{% endblock %}
+{% block sidebar %}{% endblock %}
+
+{% block extra_head %}
+  {% include "viewer/include/release_series_head.html" %}
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+  {% include "viewer/include/dm_messages.html" %}
+  {% csrf_token %}
+
+  <div class="dm-page-header">
+    <div>
+      <h2 class="h3 mb-1">
+        <i class="fas fa-book-open text-info me-2"></i>{{ series.name }}
+        {% if not series.active %}<span class="badge bg-secondary align-middle fs-6">inactive</span>{% endif %}
+      </h2>
+      <p class="mb-0 small">
+        {{ series.get_key_type_display }}{% if result.first %} · tracked from {{ result.first.label }} to {{ result.last.label }}{% endif %}
+        · {{ result.candidates }} galler{{ result.candidates|pluralize:"y,ies" }} and archives matched
+        {% if series.notes %}<br><span class="dm-dim">{{ series.notes }}</span>{% endif %}
+      </p>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      <a href="{% url 'viewer:release-series' %}" class="btn btn-outline-light btn-sm"><i class="fas fa-arrow-left me-1"></i>All series</a>
+      <a href="{% url 'viewer:release-series-edit' series.pk %}" class="btn btn-outline-info btn-sm"><i class="fas fa-edit me-1"></i>Edit</a>
+      <a href="?format=json" class="btn btn-outline-secondary btn-sm"><i class="fas fa-code me-1"></i>JSON</a>
+    </div>
+  </div>
+
+  {% if result.error %}
+    <div class="alert alert-danger"><i class="fas fa-exclamation-triangle me-1"></i>{{ result.error }} <a href="{% url 'viewer:release-series-edit' series.pk %}" class="alert-link">Edit the series</a>.</div>
+  {% endif %}
+  {% for warning in result.warnings %}
+    <div class="alert alert-warning py-2"><i class="fas fa-exclamation-circle me-1"></i>{{ warning }}</div>
+  {% endfor %}
+
+  {% if not result.error %}
+  <!-- Tiles -->
+  <div class="row g-2 mb-3">
+    <div class="col-6 col-md-4 col-xl-2">
+      <div class="dm-stat">
+        <div class="dm-lbl">Complete</div>
+        <div class="dm-val text-info">{% widthratio result.archive_completeness 1 100 %}%</div>
+        <div class="dm-stat-sub">
+          {{ result.archived|length }} of {{ result.expected_count }} expected issues archived
+          {% if result.gallery_only %}<br><span class="rs-text-gallery-only">+{{ result.gallery_only|length }} gallery only: {% widthratio result.completeness 1 100 %}% with galleries</span>{% endif %}
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+      <a class="dm-stat" href="#missing">
+        <div class="dm-lbl">Missing</div>
+        <div class="dm-val {% if result.missing %}text-danger{% else %}text-success{% endif %}">{{ result.missing|length }}</div>
+        <div class="dm-stat-sub">not found as gallery or archive</div>
+      </a>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+      <a class="dm-stat" href="#dismissed">
+        <div class="dm-lbl">Dismissed</div>
+        <div class="dm-val text-secondary">{{ result.dismissed|length }}</div>
+        <div class="dm-stat-sub">not released, combined...</div>
+      </a>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+      <div class="dm-stat">
+        <div class="dm-lbl">Next issue</div>
+        {% with result.upcoming|last as next %}
+          <div class="dm-val text-warning">{% if next %}{{ next.label }}{% else %}—{% endif %}</div>
+          <div class="dm-stat-sub">{% if next %}{% if next.status == 'due' %}due since{% else %}expected around{% endif %} {{ next.release|date:"Y-m-d" }}{% elif series.key_type == 'year_month' %}needs the lead days{% else %}only for year and month series{% endif %}</div>
+        {% endwith %}
+      </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+      <div class="dm-stat">
+        <div class="dm-lbl">Lead days</div>
+        <div class="dm-val">{% if result.lead_days is not None %}{{ result.lead_days }}{% else %}—{% endif %}</div>
+        <div class="dm-stat-sub">
+          {% if series.key_type != 'year_month' %}only for year and month series{% elif series.lead_days is not None %}set{% if result.measured_lead_days is not None %}, measured {{ result.measured_lead_days }}{% endif %}{% elif result.measured_lead_days is not None %}measured from {{ result.lead_sample }} issues{% else %}no galleries with a posted date{% endif %}
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+      <a class="dm-stat" href="#unparsed">
+        <div class="dm-lbl">Unparsed</div>
+        <div class="dm-val {% if result.unparsed_count %}text-warning{% endif %}">{{ result.unparsed_count }}</div>
+        <div class="dm-stat-sub">matched, but no issue in the title</div>
+      </a>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <!-- Grid -->
+    <div class="col-xl-8">
+      <div class="dm-card">
+        <div class="dm-card-header d-flex justify-content-between align-items-center">
+          <span><i class="fas fa-th me-2"></i>Issues</span>
+          <span class="small dm-muted fw-normal">Click a missing issue to search the backlog</span>
+        </div>
+        <div class="p-3">
+          {% if rows %}
+            <div class="rs-grid">
+              {% if series.key_type == 'year_month' %}
+                <div class="rs-row"><span class="rs-row-label"></span><div class="rs-month-head">{% for m in month_headers %}<span>{{ m }}</span>{% endfor %}</div></div>
+              {% endif %}
+              {% for row in rows %}
+                <div class="rs-row">
+                  <span class="rs-row-label">{{ row.label }}</span>
+                  <div class="rs-cells{% if series.key_type == 'year_month' %} rs-months{% endif %}">
+                    {% for cell in row.cells %}
+                      {% if not cell %}
+                        <span class="rs-cell rs-none"></span>
+                      {% elif cell.status == 'present' or cell.status == 'extra' %}
+                        {% with cell.entries|first as entry %}
+                          <a class="rs-cell rs-{{ cell.status }}{% if cell.gallery_only %} rs-gallery-only{% endif %}" href="{{ entry.url }}"
+                             title="{{ cell.label }}{% if cell.status == 'extra' %} (not expected by the schedule){% endif %}{% if cell.gallery_only %} · gallery only, no archive{% endif %}{% if cell.release %} · released {{ cell.release|date:'Y-m-d' }}{% endif %}&#10;{% for e in cell.entries %}{{ e.kind }} #{{ e.pk }}: {{ e.title }}{% if e.detail %} ({{ e.detail }}){% endif %}&#10;{% endfor %}">{{ cell.key.1 }}</a>
+                        {% endwith %}
+                      {% elif cell.status == 'missing' or cell.status == 'due' %}
+                        <button type="button" class="rs-cell rs-{{ cell.status }}" data-rs-backlog data-series="{{ series.pk }}" data-series-name="{{ series.name }}" data-key="{{ cell.label }}"
+                                title="{{ cell.label }}: {% if cell.status == 'due' %}due, not found yet{% else %}missing{% endif %}{% if cell.release %} · {% if cell.estimated %}estimated release{% else %}released{% endif %} {{ cell.release|date:'Y-m-d' }}{% endif %}">{{ cell.key.1 }}</button>
+                      {% elif cell.status == 'dismissed' %}
+                        <span class="rs-cell rs-dismissed" title="{{ cell.label }}: {{ cell.dismissal.get_reason_display }}{% if cell.dismissal.comment %} · {{ cell.dismissal.comment }}{% endif %}">{{ cell.key.1 }}</span>
+                      {% else %}
+                        <span class="rs-cell rs-upcoming" title="{{ cell.label }}: expected around {{ cell.release|date:'Y-m-d' }}">{{ cell.key.1 }}</span>
+                      {% endif %}
+                    {% endfor %}
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+            <div class="rs-legend mt-3">
+              <span><span class="rs-cell rs-present"></span>Found</span>
+              <span><span class="rs-cell rs-missing"></span>Missing</span>
+              <span><span class="rs-cell rs-due"></span>Due, not found yet</span>
+              <span><span class="rs-cell rs-upcoming"></span>Next</span>
+              <span><span class="rs-cell rs-dismissed"></span>Dismissed</span>
+              <span><span class="rs-cell rs-gallery-only"></span>Found, gallery only (no archive)</span>
+              <span><span class="rs-cell rs-extra"></span>Found, not expected by the schedule</span>
+              <span><span class="rs-cell rs-none"></span>Not expected</span>
+            </div>
+            {% if result.before_start %}
+              <div class="small dm-muted mt-2">{{ result.before_start }} issue{{ result.before_start|pluralize }} found before the schedule's first issue aren't shown.</div>
+            {% endif %}
+          {% else %}
+            <div class="dm-empty"><i class="fas fa-search"></i>No issues found. Check the title texts, tags and title regex.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Schedule -->
+    <div class="col-xl-4">
+      <div class="dm-card">
+        <div class="dm-card-header"><i class="fas fa-calendar-alt me-2"></i>Schedule</div>
+        <div class="p-3">
+          {% if result.using_suggested_schedule %}
+            <div class="alert alert-info py-2 small">No schedule saved, so the page uses the one suggested from the issues found.</div>
+          {% endif %}
+          <div class="dm-lbl mb-1">{% if result.using_suggested_schedule %}Suggested{% else %}Saved{% endif %}</div>
+          <ul class="list-unstyled small mb-3">
+            {% for start, description in result.schedule_rows %}
+              <li><code>{{ start }}</code> onward: {{ description }}</li>
+            {% empty %}
+              <li class="dm-muted">No periods.</li>
+            {% endfor %}
+          </ul>
+          {% if result.suggested_schedule and schedule_differs %}
+            <form method="post" class="mb-3">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="apply_schedule">
+              <label class="dm-lbl mb-1" for="rs-schedule">{% if result.using_suggested_schedule %}Save it, or adjust it first{% else %}Suggested from the issues found{% endif %}</label>
+              <textarea name="schedule" id="rs-schedule" class="form-control form-control-sm font-monospace mb-2" rows="{{ result.periods|length|add:1 }}">{{ result.suggested_schedule }}</textarea>
+              <button type="submit" class="btn btn-sm btn-outline-info"><i class="fas fa-save me-1"></i>Save as schedule</button>
+            </form>
+          {% endif %}
+          {% if series.key_type == 'year_month' and result.measured_lead_days is not None and result.measured_lead_days != series.lead_days %}
+            <form method="post" class="d-flex flex-wrap align-items-center gap-2">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="apply_lead_days">
+              <input type="hidden" name="lead_days" value="{{ result.measured_lead_days }}">
+              <span class="small">Issues come out {{ result.measured_lead_days }} days before their cover month (median of {{ result.lead_sample }}).</span>
+              <button type="submit" class="btn btn-sm btn-outline-info"><i class="fas fa-save me-1"></i>Save lead days</button>
+            </form>
+          {% endif %}
+          <div class="form-text mt-3">
+            Schedule lines: <code>&lt;first issue&gt; &lt;rule&gt;</code>.
+            {% if series.key_type == 'year_month' %}Rules: <code>monthly</code>, <code>even</code>, <code>odd</code>, <code>quarterly</code>, months (<code>2,5,8,11</code>) or <code>none</code>.
+            {% elif series.key_type == 'year_number' %}Rules: issues per year (<code>48</code>), <code>auto</code> (highest number found that year) or <code>none</code>; issues numbered without a year (<code>#1</code>, before the yearly ones): <code>all</code> or <code>none</code>.
+            {% else %}Rules: <code>all</code> or <code>none</code>.{% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Missing -->
+  <div class="dm-card" id="missing">
+    <div class="dm-card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+      <span><i class="fas fa-exclamation-circle text-danger me-2"></i>Missing issues <span class="badge bg-danger">{{ result.missing|length }}</span></span>
+    </div>
+    {% if result.missing %}
+      <form method="post" id="missing-form">
+        {% csrf_token %}
+        <div class="table-responsive">
+          <table class="table table-sm table-dm table-hover mb-0">
+            <thead>
+              <tr>
+                <th style="width: 2rem;"><input type="checkbox" class="form-check-input" id="missing-all" aria-label="Select all"></th>
+                <th>Issue</th>
+                <th>Released</th>
+                <th>Backlog query</th>
+                <th class="text-end"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for issue in result.missing reversed %}
+                <tr>
+                  <td><input type="checkbox" class="form-check-input rs-missing-check" name="key" value="{{ issue.label }}" data-series="{{ series.pk }}" data-series-name="{{ series.name }}" data-key="{{ issue.label }}" aria-label="Select {{ issue.label }}"></td>
+                  <td class="fw-semibold text-nowrap">{{ issue.label }}</td>
+                  <td class="text-nowrap small">{% if issue.release %}{% if issue.estimated %}~{% endif %}{{ issue.release|date:"Y-m-d" }}{% else %}<span class="dm-dim">unknown</span>{% endif %}</td>
+                  <td><code class="rs-query">{{ issue.query }}</code></td>
+                  <td class="text-end text-nowrap">
+                    <button type="button" class="btn btn-sm btn-outline-info" data-rs-backlog data-series="{{ series.pk }}" data-series-name="{{ series.name }}" data-key="{{ issue.label }}"><i class="fas fa-history me-1"></i>Backlog search</button>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="dm-actionbar d-flex flex-wrap align-items-center gap-2 p-2 border-top" style="border-color: var(--pg-border) !important;">
+          <button type="button" class="btn btn-sm btn-info" data-rs-backlog-bulk=".rs-missing-check"><i class="fas fa-history me-1"></i>Backlog search selected</button>
+          <span class="dm-dim mx-1">|</span>
+          <select name="reason" class="form-select form-select-sm" style="max-width: 11rem;" aria-label="Dismiss reason">
+            {% for value, label in dismiss_reasons %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+          </select>
+          <input type="text" name="comment" class="form-control form-control-sm" style="max-width: 18rem;" placeholder="Comment (optional)" aria-label="Comment">
+          <button type="submit" name="action" value="dismiss" class="btn btn-sm btn-outline-secondary"><i class="fas fa-eye-slash me-1"></i>Dismiss selected</button>
+        </div>
+      </form>
+    {% else %}
+      <div class="dm-empty"><i class="fas fa-check-circle text-success"></i>No missing issues.</div>
+    {% endif %}
+  </div>
+
+  {% if result.upcoming %}
+    <div class="dm-card">
+      <div class="dm-card-header"><i class="fas fa-hourglass-half text-warning me-2"></i>Due and next</div>
+      <div class="p-3 d-flex flex-wrap gap-2">
+        {% for issue in result.upcoming %}
+          <span class="rs-gap">
+            <span class="fw-semibold">{{ issue.label }}</span>
+            <span class="rs-gap-date">{% if issue.status == 'due' %}due since{% else %}around{% endif %} {{ issue.release|date:"Y-m-d" }}</span>
+            {% if issue.status == 'due' %}<button type="button" class="btn btn-sm btn-link p-0" data-rs-backlog data-series="{{ series.pk }}" data-series-name="{{ series.name }}" data-key="{{ issue.label }}" title="Backlog search"><i class="fas fa-history"></i></button>{% endif %}
+          </span>
+        {% endfor %}
+      </div>
+    </div>
+  {% endif %}
+
+  <!-- Dismissed -->
+  <div class="dm-card" id="dismissed">
+    <div class="dm-card-header"><i class="fas fa-eye-slash me-2"></i>Dismissed issues <span class="badge bg-secondary">{{ dismissals|length }}</span></div>
+    {% if dismissals %}
+      <div class="table-responsive">
+        <table class="table table-sm table-dm mb-0">
+          <thead><tr><th>Issue</th><th>Reason</th><th>Comment</th><th>By</th><th>Date</th><th></th></tr></thead>
+          <tbody>
+            {% for d in dismissals %}
+              <tr>
+                <td class="fw-semibold">{{ d.key }}</td>
+                <td>{{ d.get_reason_display }}</td>
+                <td class="small">{{ d.comment }}</td>
+                <td class="small">{{ d.user|default:"" }}</td>
+                <td class="small text-nowrap">{{ d.created_at|date:"Y-m-d" }}</td>
+                <td class="text-end">
+                  <form method="post" class="d-inline">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="undismiss">
+                    <input type="hidden" name="key" value="{{ d.key }}">
+                    <button type="submit" class="btn btn-sm btn-outline-light"><i class="fas fa-undo me-1"></i>Restore</button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="p-3 small dm-muted">Dismiss an issue that was never released, or came out as part of a combined issue, so it doesn't count as missing.</div>
+    {% endif %}
+  </div>
+
+  <!-- Unparsed -->
+  <div class="dm-card" id="unparsed">
+    <div class="dm-card-header">
+      <a class="dm-collapse-toggle collapsed text-decoration-none" data-bs-toggle="collapse" href="#unparsed-list" role="button" aria-expanded="false">
+        <i class="fas fa-chevron-down me-2"></i>Matched but unparsed <span class="badge bg-warning text-dark">{{ result.unparsed_count }}</span>
+      </a>
+      <span class="small dm-muted fw-normal ms-2">galleries and archives that passed the title, tag and language filters, but no title regex</span>
+    </div>
+    <div class="collapse" id="unparsed-list">
+      {% if result.unparsed %}
+        <ul class="list-unstyled small p-3 mb-0">
+          {% for e in result.unparsed %}
+            <li><span class="badge bg-secondary me-1">{{ e.kind }}</span><a href="{{ e.url }}">{{ e.title }}</a>{% if e.detail %} <span class="dm-dim">({{ e.detail }})</span>{% endif %}</li>
+          {% endfor %}
+          {% if result.unparsed_count > result.unparsed|length %}<li class="dm-muted mt-1">{{ result.unparsed_count }} in total, the first {{ result.unparsed|length }} are listed.</li>{% endif %}
+        </ul>
+      {% else %}
+        <div class="p-3 small dm-muted">Every match has an issue in its title.</div>
+      {% endif %}
+      {% if result.skipped_language %}
+        <div class="px-3 pb-3 small dm-muted">{{ result.skipped_language }} more skipped because of their language (allowed: {{ series.allowed_languages|default:"any" }}).</div>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block afterJQ %}
+  {% include "viewer/include/release_series_backlog.html" %}
+  <script>
+    (function () {
+      const all = document.getElementById('missing-all');
+      if (all) all.addEventListener('change', () => {
+        document.querySelectorAll('.rs-missing-check').forEach(cb => { cb.checked = all.checked; });
+      });
+    })();
+  </script>
+{% endblock %}

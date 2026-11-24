@@ -114,6 +114,14 @@ class WantedGallery(models.Model):
     add_to_archive_group = models.ForeignKey("viewer.ArchiveGroup", blank=True, null=True, on_delete=models.SET_NULL)
 
     restricted_to_links = models.BooleanField("Restricted to MonitoredLinks", blank=True, default=False)
+    auto_wanted_source = models.ForeignKey(
+        "viewer.AutoWantedSource",
+        blank=True,
+        null=True,
+        related_name="wanted_galleries",
+        on_delete=models.SET_NULL,
+        help_text="The auto wanted source that created it.",
+    )
 
     class Meta:
         verbose_name_plural = "Wanted galleries"
@@ -137,6 +145,14 @@ class WantedGallery(models.Model):
     def mentions_str(self) -> str:
         lst = [str(x) for x in self.mentions.all()]
         return ", ".join(lst)
+
+    def get_backlog_url_query(self) -> str:
+        """Query used for Backlog searches: backlog_url_query, or search_title when it's empty and not a regexp."""
+        if self.backlog_url_query:
+            return self.backlog_url_query
+        if self.search_title and not self.regexp_search_title:
+            return self.search_title
+        return ""
 
     def mentions_list(self) -> list[str]:
         lst = [str(x) for x in self.mentions.all()]

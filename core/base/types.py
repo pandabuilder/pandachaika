@@ -168,6 +168,20 @@ type DataDict = dict[str, Any]
 type MatchesValues = tuple[str, GalleryData, float]
 
 
+def parse_ssl_verify(value: Any) -> bool | str:
+    """A ssl_verify setting as requests' verify: a boolean, or the path of a CA bundle (empty or null: True)."""
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return True
+    text = str(value).strip()
+    if text.lower() in ("", "true", "yes", "on", "1"):
+        return True
+    if text.lower() in ("false", "no", "off", "0"):
+        return False
+    return text
+
+
 class ProviderSettings:
     def __init__(self, global_settings: "Settings", config: dict[str, Any]) -> None:
         self.cookies: DataDict = {}
@@ -175,6 +189,8 @@ class ProviderSettings:
         self.proxies: DataDict = {}
         self.headers: DataDict = {}
         self.timeout_timer: int = global_settings.timeout_timer
+        # requests' verify: True (certifi's CAs), False (no verification) or a CA bundle path.
+        self.ssl_verify: bool | str = True
         self.wait_timer: float = float(global_settings.wait_timer)
         self.stop_page_number: int | None = None
         self.stop_on_seen_links: bool = getattr(global_settings, "stop_on_seen_links", False)
@@ -205,6 +221,8 @@ class ProviderSettings:
                 self.proxy = config["general"]["proxy"]
             if "timeout_timer" in config["general"]:
                 self.timeout_timer = int(config["general"]["timeout_timer"])
+            if "ssl_verify" in config["general"]:
+                self.ssl_verify = parse_ssl_verify(config["general"]["ssl_verify"])
             if "wait_timer" in config["general"]:
                 self.wait_timer = float(config["general"]["wait_timer"])
             if "autoupdater_timer" in config["general"]:
