@@ -646,6 +646,16 @@ database:
   # Default: 600.0
   pool_max_idle: 600.0
 
+  # PostgreSQL statement_timeout (in milliseconds) for web requests (0 or null to disable).
+  # Cancels runaway queries before reverse-proxy timeouts leave orphaned DB backends.
+  # Default: 30000
+  statement_timeout: 30000
+
+  # Optional PostgreSQL statement_timeout (in milliseconds) for background worker processes.
+  # Set to 0 or null for unlimited.
+  # Default: null
+  worker_statement_timeout: null
+
 # ------------------------------------------------------------------------------
 # Torrent Client Integration
 # Connection settings for Transmission or qBittorrent WebUI.

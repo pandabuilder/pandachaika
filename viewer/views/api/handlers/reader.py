@@ -5,7 +5,6 @@
 ``POST ?reduce-archive=<id>``. The legacy ``/r-api/`` routes in ``viewer/views/api/legacy.py`` call these handlers.
 """
 
-import re
 from typing import Any
 
 from django.contrib.auth.models import AnonymousUser, User
@@ -17,13 +16,14 @@ from django.urls import reverse
 
 from core.base.types import DataDict
 from core.base.utilities import str_to_int, timestamp_or_zero
-from viewer.models import Archive, Image, UserArchivePrefs
+from viewer.models import Archive, ArchiveTag, Image, UserArchivePrefs
 from viewer.views.api.auth import get_api_context, require_user
 from viewer.views.api.common import _get_int, parse_bool_from_data_or_body
 from viewer.views.api.errors import ApiError, json_response
-from viewer.views.api.filters import simple_archive_filter
+from viewer.views.api.filters import MAX_API_TAG_FILTERS, simple_archive_filter
 from viewer.views.api.handlers.tasks import task_reference
 from viewer.views.head import archive_filter_keys, filter_archives
+from viewer.views.head.common import apply_tag_filters
 from workers import client
 
 
@@ -94,40 +94,14 @@ def get_archive_data(data: QueryDict) -> "QuerySet[Archive]":
     q_string = data.get("q")
     if q_string is not None:
         terms = q_string.split()
-        for term in terms:
-            tag = term.strip().replace(" ", "_")
-            tag_clean = re.sub("^[-|^]", "", tag)
-            scope_name = tag_clean.split(":", maxsplit=1)
-            if term.startswith("-^"):
-                tag_query = (
-                    (Q(tags__name__exact=scope_name[1]) & Q(tags__scope__exact=scope_name[0]))
-                    if len(scope_name) > 1
-                    else Q(tags__name__exact=scope_name[0])
-                )
-                results = results.exclude(tag_query)
-            elif term.startswith("-"):
-                tag_query = (
-                    (Q(tags__name__contains=scope_name[1]) & Q(tags__scope__contains=scope_name[0]))
-                    if len(scope_name) > 1
-                    else Q(tags__name__contains=scope_name[0])
-                )
-                results = results.exclude(tag_query)
-            elif term.startswith("^"):
-                tag_query = (
-                    (Q(tags__name__exact=scope_name[1]) & Q(tags__scope__exact=scope_name[0]))
-                    if len(scope_name) > 1
-                    else Q(tags__name__exact=scope_name[0])
-                )
-                results = results.filter(tag_query)
-            else:
-                tag_query = (
-                    (Q(tags__name__contains=scope_name[1]) & Q(tags__scope__contains=scope_name[0]))
-                    if len(scope_name) > 1
-                    else Q(tags__name__contains=scope_name[0])
-                )
-                results = results.filter(tag_query)
-
-        results = results.distinct()
+        if terms:
+            results = apply_tag_filters(
+                results,
+                terms,
+                through_model=ArchiveTag,
+                fk_field="archive_id",
+                max_tags=MAX_API_TAG_FILTERS,
+            )
 
     results = results.prefetch_related("tags")
 
@@ -302,7 +276,12 @@ def handle_get_archives_browse(request: HttpRequest, data: QueryDict, user_is_au
         parameters["sort"] = "create_date" if user_is_authenticated else "public_date"
 
     archives_list_filtered: "QuerySet[Archive]" = filter_archives(
-        request, parameters, display_prms, user_is_authenticated, force_private=user_is_authenticated
+        request,
+        parameters,
+        display_prms,
+        user_is_authenticated,
+        force_private=user_is_authenticated,
+        max_tags=MAX_API_TAG_FILTERS,
     )
     if "extracted" in data:
         archives_list_filtered = archives_list_filtered.filter(extracted=True)

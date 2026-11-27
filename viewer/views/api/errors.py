@@ -89,6 +89,12 @@ class ApiError(Exception):
     def internal(cls, message: str = "Internal server error.") -> "ApiError":
         return cls(500, "internal_error", message)
 
+    @classmethod
+    def query_timeout(
+        cls, message: str = "The query took too long to execute. Please narrow your search filters."
+    ) -> "ApiError":
+        return cls(504, "query_timeout", message)
+
 
 def error_body(error: ApiError, surface: ApiSurface = ApiSurface.V1) -> dict[str, Any]:
     body: dict[str, Any] = {"error": {"code": error.code, "message": error.message}}

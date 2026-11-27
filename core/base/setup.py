@@ -431,6 +431,14 @@ class Settings:
             val = os.environ['DATABASE_POOL_MAX_IDLE'].strip()
             self.database['pool_max_idle'] = None if val.lower() in ('none', 'null', '') else float(val)
 
+        if 'DATABASE_STATEMENT_TIMEOUT' in os.environ:
+            val = os.environ['DATABASE_STATEMENT_TIMEOUT'].strip()
+            self.database['statement_timeout'] = None if val.lower() in ('none', 'null', '') else int(val)
+
+        if 'DATABASE_WORKER_STATEMENT_TIMEOUT' in os.environ:
+            val = os.environ['DATABASE_WORKER_STATEMENT_TIMEOUT'].strip()
+            self.database['worker_statement_timeout'] = None if val.lower() in ('none', 'null', '') else int(val)
+
         if 'DEBUG' in os.environ:
             self.django_debug_mode = os.getenv("DEBUG", "False").lower() in ('true', '1', 't')
 

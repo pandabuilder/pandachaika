@@ -2,7 +2,6 @@ import json
 import logging
 from urllib.parse import quote
 import operator
-import re
 from functools import reduce
 from random import randint
 from typing import Any
@@ -10,7 +9,7 @@ from typing import Any
 from django.contrib import messages
 from django.core.paginator import EmptyPage, InvalidPage, Paginator
 from django.db.models import Avg, Count, F, Max, Min, Q, QuerySet, Sum
-from django.http import Http404, HttpRequest, HttpResponse, HttpResponseRedirect
+from django.http import Http404, HttpRequest, HttpResponse, HttpResponseBadRequest, HttpResponseRedirect
 from django.http.request import QueryDict
 from django.shortcuts import redirect, render
 from django.urls import reverse
@@ -32,6 +31,8 @@ from viewer.utils.functions import archive_search_result_to_json
 from viewer.utils.general import valid_sha1_string
 from viewer.views.head.auth import render_error
 from viewer.views.head.common import (
+    MAX_TAG_FILTERS,
+    TooManyTagsError,
     apply_tag_filters,
     archive_filter_keys,
     archive_order_fields,
@@ -154,7 +155,18 @@ def search(request: HttpRequest, mode: str = "none", tag: str | None = None) -> 
         results = quick_search(request, parameters, display_prms)
     else:
         parameters["main_filters"] = True
-        results = filter_archives(request, parameters, display_prms, request.user.is_authenticated)
+        try:
+            results = filter_archives(
+                request, parameters, display_prms, request.user.is_authenticated, max_tags=MAX_TAG_FILTERS
+            )
+        except TooManyTagsError as e:
+            if json_request:
+                return HttpResponse(
+                    json.dumps({"error": str(e)}, ensure_ascii=False),
+                    status=400,
+                    content_type="application/json; charset=utf-8",
+                )
+            return HttpResponseBadRequest(str(e))
 
     stateless_request = json_request or "gen-ddl" in get or "random" in get
     if not stateless_request and request.user.is_authenticated and parameters != existing_parameters:
@@ -236,6 +248,7 @@ def filter_archives(
     request_filters: dict[str, str],
     authenticated: bool,
     force_private: bool = False,
+    max_tags: int | None = None,
 ) -> QuerySet[Archive]:
     """Filter results through parameters
     and return results list.
@@ -309,6 +322,7 @@ def filter_archives(
             request_filters["tags"],
             through_model=ArchiveTag,
             fk_field="archive_id",
+            max_tags=max_tags,
         )
 
     if (
@@ -552,7 +566,9 @@ def public_stats(request: HttpRequest) -> HttpResponse:
     return render(request, "viewer/public_stats.html", d)
 
 
-def filter_archives_simple(params: dict[str, Any], authenticated=False, show_binned=False) -> ArchiveQuerySet:
+def filter_archives_simple(
+    params: dict[str, Any], authenticated=False, show_binned=False, max_tags: int | None = None
+) -> ArchiveQuerySet:
     """Filter results through parameters
     and return a result list.
     """
@@ -682,6 +698,7 @@ def filter_archives_simple(params: dict[str, Any], authenticated=False, show_bin
             params["tags"],
             through_model=ArchiveTag,
             fk_field="archive_id",
+            max_tags=max_tags,
         )
 
     if "non_public" in params and params["non_public"]:
@@ -705,7 +722,7 @@ def filter_archives_simple(params: dict[str, Any], authenticated=False, show_bin
 
 
 
-def filter_wanted_galleries_simple(params: dict[str, Any]) -> QuerySet[WantedGallery]:
+def filter_wanted_galleries_simple(params: dict[str, Any], max_tags: int | None = None) -> QuerySet[WantedGallery]:
     """Filter results through parameters
     and return results list.
     """
@@ -758,59 +775,15 @@ def filter_wanted_galleries_simple(params: dict[str, Any]) -> QuerySet[WantedGal
         results = results.filter(mentions__source=params["mention-source"]).distinct()
 
     if params["tags"]:
-        tags = params["tags"].split(",")
-        for tag in tags:
-            tag = tag.strip().replace(" ", "_")
-            tag_clean = re.sub("^[-|^]", "", tag)
-            scope_name = tag_clean.split(":", maxsplit=1)
-            if len(scope_name) > 1:
-                tag_scope = scope_name[0]
-                tag_name = scope_name[1]
-            else:
-                tag_scope = ""
-                tag_name = scope_name[0]
-            if tag.startswith("-^"):
-                if tag_name != "" and tag_scope != "":
-                    tag_query = (
-                        Q(wanted_tags__name__exact=tag_name) & Q(wanted_tags__scope__exact=tag_scope)
-                    ) | (Q(unwanted_tags__name__exact=tag_name) & Q(unwanted_tags__scope__exact=tag_scope))
-                elif tag_name != "":
-                    tag_query = Q(wanted_tags__name__exact=tag_name) | Q(unwanted_tags__name__exact=tag_name)
-                else:
-                    tag_query = Q(wanted_tags__scope__exact=tag_scope) | Q(unwanted_tags__scope__exact=tag_scope)
-                results = results.exclude(tag_query)
-            elif tag.startswith("-"):
-                if tag_name != "" and tag_scope != "":
-                    tag_query = (
-                        Q(wanted_tags__name__contains=tag_name) & Q(wanted_tags__scope__contains=tag_scope)
-                    ) | (Q(unwanted_tags__name__contains=tag_name) & Q(unwanted_tags__scope__contains=tag_scope))
-                elif tag_name != "":
-                    tag_query = Q(wanted_tags__name__contains=tag_name) | Q(unwanted_tags__name__contains=tag_name)
-                else:
-                    tag_query = Q(wanted_tags__scope__contains=tag_scope) | Q(unwanted_tags__scope__contains=tag_scope)
-                results = results.exclude(tag_query)
-            elif tag.startswith("^"):
-                if tag_name != "" and tag_scope != "":
-                    tag_query = (Q(wanted_tags__name__exact=tag_name) & Q(wanted_tags__scope__exact=tag_scope)) | (
-                        Q(unwanted_tags__name__exact=tag_name) & Q(unwanted_tags__scope__exact=tag_scope)
-                    )
-                elif tag_name != "":
-                    tag_query = Q(wanted_tags__name__exact=tag_name) | Q(unwanted_tags__name__exact=tag_name)
-                else:
-                    tag_query = Q(wanted_tags__scope__exact=tag_scope) | Q(unwanted_tags__scope__exact=tag_scope)
-                results = results.filter(tag_query)
-            else:
-                if tag_name != "" and tag_scope != "":
-                    tag_query = (
-                        Q(wanted_tags__name__contains=tag_name) & Q(wanted_tags__scope__contains=tag_scope)
-                    ) | (Q(unwanted_tags__name__contains=tag_name) & Q(unwanted_tags__scope__contains=tag_scope))
-                elif tag_name != "":
-                    tag_query = Q(wanted_tags__name__contains=tag_name) | Q(unwanted_tags__name__contains=tag_name)
-                else:
-                    tag_query = Q(wanted_tags__scope__contains=tag_scope) | Q(unwanted_tags__scope__contains=tag_scope)
-                results = results.filter(tag_query)
-
-        results = results.distinct()
+        results = apply_tag_filters(
+            results,
+            params["tags"],
+            through_models=(
+                (WantedGallery.wanted_tags.through, "wantedgallery_id"),
+                (WantedGallery.unwanted_tags.through, "wantedgallery_id"),
+            ),
+            max_tags=max_tags,
+        )
 
     return results
 

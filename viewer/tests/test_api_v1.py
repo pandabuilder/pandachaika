@@ -8,11 +8,14 @@ from unittest.mock import patch
 
 from django.contrib.auth.models import Permission, User
 from django.core.management import call_command
+from django.db import connection, transaction
 from django.test import Client, TestCase
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 
-from viewer.models import Archive, Gallery, Image, UserLongLivedToken
+from viewer.models import Archive, Gallery, Image, Tag, UserLongLivedToken, WantedGallery
+from viewer.views.api.filters import MAX_API_TAG_FILTERS
 from viewer.views.api.openapi import build_openapi_document
 from viewer.views.api.registry import COMMANDS
 from workers.models import TaskQueue
@@ -536,3 +539,161 @@ class OpenApiTests(TestCase):
         response = Client().get("/api/v1/docs/")
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'data-openapi-url="/api/v1/openapi.json"')
+
+
+class ApiTagFilterAndTimeoutTests(TestCase):
+    """Verify API tag search avoids join explosion, honors tags_or, enforces tag limits, and handles DB timeouts."""
+
+    tags: list[Tag]
+    g_first: Gallery
+    g_second: Gallery
+    g_both: Gallery
+    archive_only_title: Archive
+    archive_tagged: Archive
+    wanted_tagged: WantedGallery
+
+    @classmethod
+    def setUpTestData(cls) -> None:
+        owner = User.objects.create_user(username="tag_filter_owner")
+        cls.tags = [Tag.objects.create(scope="artist", name=f"a{i}") for i in range(60)]
+        cls.g_first = Gallery.objects.create(gid="t1", provider="panda", title="First", public=True)
+        cls.g_first.tags.add(cls.tags[0])
+        cls.g_second = Gallery.objects.create(gid="t2", provider="panda", title="Second", public=True)
+        cls.g_second.tags.add(cls.tags[49])
+        cls.g_both = Gallery.objects.create(gid="t3", provider="panda", title="Both", public=True)
+        cls.g_both.tags.add(cls.tags[0], cls.tags[49])
+
+        cls.archive_only_title = Archive.objects.create(
+            title="UniqueTitleNoTagMatch", public=True, extracted=True, user=owner
+        )
+        cls.archive_tagged = Archive.objects.create(
+            title="TaggedArchive", public=True, extracted=True, user=owner, gallery=cls.g_both
+        )
+        cls.archive_tagged.tags.add(cls.tags[0], cls.tags[49])
+
+        cls.wanted_tagged = WantedGallery.objects.create(title="WantedTagged", public=True)
+        cls.wanted_tagged.wanted_tags.add(cls.tags[0])
+
+    def test_gsp_many_exact_tags_or_batches_lookups_and_uses_single_exists(self):
+        tags_param = ",".join(f"^artist:a{i}" for i in range(50))
+        with CaptureQueriesContext(connection) as ctx:
+            response = Client().get(
+                V1,
+                {"gsp": "", "tags_or": "1", "sort": "posted", "asc_desc": "desc", "count": "48", "page": "1", "tags": tags_param},
+            )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["count"], 3)
+        self.assertEqual({g["gid"] for g in data["galleries"]}, {"t1", "t2", "t3"})
+
+        sql_statements = [q["sql"] for q in ctx.captured_queries]
+        tag_lookup_queries = [s for s in sql_statements if 'FROM "viewer_tag"' in s and "gallery_id" not in s]
+        self.assertEqual(len(tag_lookup_queries), 1, "50 exact scoped tags should resolve in a single query")
+        for sql in sql_statements:
+            self.assertNotIn('INNER JOIN "viewer_tag"', sql)
+            self.assertNotIn("SELECT DISTINCT", sql)
+        gallery_count_queries = [s for s in sql_statements if 'COUNT(*)' in s and '"viewer_gallery"' in s]
+        self.assertEqual(len(gallery_count_queries), 1)
+        self.assertEqual(gallery_count_queries[0].count("EXISTS("), 1)
+
+    def test_gsp_tags_or_false_and_zero_require_all_tags(self):
+        tags_param = "^artist:a0,^artist:a49"
+        for tags_or_val in ("", "0", "false"):
+            response = Client().get(V1, {"gsp": "", "tags_or": tags_or_val, "tags": tags_param})
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual([g["gid"] for g in response.json()["galleries"]], ["t3"])
+
+        for tags_or_val in ("1", "true"):
+            response = Client().get(V1, {"gsp": "", "tags_or": tags_or_val, "tags": tags_param})
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual({g["gid"] for g in response.json()["galleries"]}, {"t1", "t2", "t3"})
+
+    def test_api_endpoints_reject_requests_exceeding_max_tags(self):
+        too_many_csv = ",".join(f"^artist:a{i}" for i in range(MAX_API_TAG_FILTERS + 52))
+        too_many_spaces = " ".join(f"^artist:a{i}" for i in range(MAX_API_TAG_FILTERS + 52))
+
+        for params in (
+            {"gsp": "", "tags_or": "1", "tags": too_many_csv},
+            {"gs": "", "tags": too_many_csv},
+            {"g": "", "tags": too_many_csv},
+            {"q": too_many_csv},
+            {"qa": "", "tags": too_many_csv},
+            {"as": "", "tags": too_many_csv},
+            {"wanted-galleries-search": "", "tags": too_many_csv},
+            {"archives-quick": "", "q": too_many_spaces},
+            {"archives-browse": "", "tags": too_many_csv},
+            {"archives-simple": too_many_csv},
+        ):
+            response = Client().get(V1, params)
+            self.assertEqual(response.status_code, 400, f"Expected 400 for {params.keys()}")
+            self.assertEqual(response.json()["error"]["code"], "too_many_tags")
+
+        # Legacy /jsearch/ surface keeps both envelope and result key
+        legacy = Client().get("/jsearch/", {"gsp": "", "tags_or": "1", "tags": too_many_csv})
+        self.assertEqual(legacy.status_code, 400)
+        body = legacy.json()
+        self.assertEqual(body["error"]["code"], "too_many_tags")
+        self.assertIn("Too many tags", body["result"])
+
+    def test_q_archives_quick_and_wanted_search_work_without_viewer_tag_joins(self):
+        # Title match when tag lookup returns 0 matches
+        resp_title = Client().get(V1, {"q": "UniqueTitleNoTagMatch"})
+        self.assertEqual(resp_title.status_code, 200)
+        self.assertEqual([a["id"] for a in resp_title.json()], [self.archive_only_title.pk])
+
+        # Multi-tag q search
+        with CaptureQueriesContext(connection) as ctx:
+            resp_tags = Client().get(V1, {"q": "^artist:a0,^artist:a49"})
+        self.assertEqual(resp_tags.status_code, 200)
+        self.assertEqual([a["id"] for a in resp_tags.json()], [self.archive_tagged.pk])
+        for q in ctx.captured_queries:
+            self.assertNotIn('INNER JOIN "viewer_tag"', q["sql"])
+            self.assertNotIn("SELECT DISTINCT", q["sql"])
+
+        # archives-quick space-separated tags
+        with CaptureQueriesContext(connection) as ctx:
+            resp_quick = Client().get(V1, {"archives-quick": "", "q": "^artist:a0 ^artist:a49"})
+        self.assertEqual(resp_quick.status_code, 200)
+        self.assertEqual([a["id"] for a in resp_quick.json()["objects"]], [self.archive_tagged.pk])
+        for q in ctx.captured_queries:
+            self.assertNotIn('INNER JOIN "viewer_tag"', q["sql"])
+
+        # wanted-galleries-search
+        with CaptureQueriesContext(connection) as ctx:
+            resp_wanted = Client().get(V1, {"wanted-galleries-search": "", "tags": "^artist:a0"})
+        self.assertEqual(resp_wanted.status_code, 200)
+        self.assertEqual([w["id"] for w in resp_wanted.json()], [self.wanted_tagged.pk])
+        for q in ctx.captured_queries:
+            self.assertNotIn('JOIN "viewer_tag"', q["sql"])
+
+    def test_postgres_statement_timeout_configured_and_api_returns_504(self):
+        from core.base.setup import Settings
+        from pandabackup.settings import get_database_config
+
+        web_settings = Settings(load_from_disk=False)
+        web_settings.is_worker_process = False
+        web_options = get_database_config(web_settings)["default"]["OPTIONS"]
+        self.assertEqual(web_options, {"options": "-c statement_timeout=30000"})
+
+        conn_params = connection.get_connection_params()
+        conn_params["options"] = web_options["options"]
+        raw_conn = connection.get_new_connection(conn_params)
+        try:
+            with raw_conn.cursor() as cursor:
+                cursor.execute("SHOW statement_timeout")
+                timeout_val = cursor.fetchone()[0]
+        finally:
+            raw_conn.close()
+        self.assertEqual(timeout_val, "30s")
+
+        def slow_dispatch(_request):
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute("SET LOCAL statement_timeout = '50ms'")
+                    cursor.execute("SELECT pg_sleep(0.25)")
+            raise AssertionError("Expected PostgreSQL statement_timeout to cancel pg_sleep")
+
+        with patch("viewer.views.api.routes.dispatch_command", side_effect=slow_dispatch):
+            response = Client().get(V1, {"gsp": ""})
+        self.assertEqual(response.status_code, 504)
+        self.assertEqual(response.json()["error"]["code"], "query_timeout")

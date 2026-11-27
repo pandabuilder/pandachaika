@@ -11,8 +11,9 @@ from core.base.setup import Settings
 from core.base.types import GalleryData
 from viewer.feeds import LatestArchivesFeed
 from viewer.models import Archive, ArchiveTag, Gallery, ItemProperties, WantedGallery
+from viewer.views.api.filters import MAX_API_TAG_FILTERS, filter_galleries_no_request, simple_archive_filter
 from viewer.views.head import gallery as gallery_views
-from viewer.views.head.common import TAG_ID_PREFETCH_LIMIT, apply_tag_filters
+from viewer.views.head.common import TAG_ID_PREFETCH_LIMIT, TooManyTagsError, apply_tag_filters, gallery_filter_keys
 from workers.models import TaskQueue
 from workers.serialization import deserialize_settings_options, serialize_settings_options
 
@@ -113,6 +114,98 @@ class TagFilterExistsTests(SimpleTestCase):
                 tags_or=True,
             )
         self.assertNotIn("EXISTS", str(trivially_true.query))
+
+    def test_positive_tags_or_collapses_to_single_exists_and_negative_and_collapses_to_single_not_exists(self) -> None:
+        base_qs = Gallery.objects.filter(public=True)
+        with self._mock_tag_ids([[101], [202], [303]]):
+            qs_or = apply_tag_filters(
+                base_qs,
+                "artist:a, artist:b, artist:c",
+                through_model=Gallery.tags.through,
+                fk_field="gallery_id",
+                tags_or=True,
+            )
+        sql_or = str(qs_or.query)
+        self.assertEqual(sql_or.count("EXISTS("), 1)
+        self.assertIn("IN (101, 202, 303)", sql_or)
+        self.assertNotIn("DISTINCT", sql_or)
+
+        with self._mock_tag_ids([[11], [22], [33]]):
+            qs_neg = apply_tag_filters(
+                base_qs,
+                "-artist:a, -artist:b, -artist:c",
+                through_model=Gallery.tags.through,
+                fk_field="gallery_id",
+                tags_or=False,
+            )
+        sql_neg = str(qs_neg.query)
+        self.assertEqual(sql_neg.count("EXISTS("), 1)
+        self.assertIn("NOT (EXISTS(", sql_neg)
+        self.assertIn("IN (11, 22, 33)", sql_neg)
+        self.assertNotIn("DISTINCT", sql_neg)
+
+    def test_max_tags_limit_rejects_before_querying_db(self) -> None:
+        base_qs = Gallery.objects.filter(public=True)
+        tags_str = ",".join(f"^artist:a{i}" for i in range(MAX_API_TAG_FILTERS + 1))
+        with patch("viewer.models.Tag.objects.filter", side_effect=AssertionError("Should not query Tag")):
+            with self.assertRaises(TooManyTagsError) as ctx:
+                apply_tag_filters(
+                    base_qs,
+                    tags_str,
+                    through_model=Gallery.tags.through,
+                    fk_field="gallery_id",
+                    max_tags=MAX_API_TAG_FILTERS,
+                )
+        self.assertEqual(ctx.exception.count, MAX_API_TAG_FILTERS + 1)
+        self.assertEqual(ctx.exception.limit, MAX_API_TAG_FILTERS)
+
+    def test_api_filters_use_exists_without_distinct_or_viewer_tag_join(self) -> None:
+        args = {k: "" for k in gallery_filter_keys}
+        args.update({"sort": "posted", "asc_desc": "desc", "public": "1", "tags": "artist:a, artist:b", "tags_or": "1"})
+        with self._mock_tag_ids([[101], [202]]):
+            qs = filter_galleries_no_request(args)
+        sql = str(qs.query)
+        self.assertEqual(sql.count("EXISTS("), 1)
+        self.assertIn("IN (101, 202)", sql)
+        self.assertNotIn("DISTINCT", sql)
+        self.assertNotIn("viewer_tag", sql)
+
+        # tags_or="0" must use AND semantics (two separate EXISTS clauses)
+        args["tags_or"] = "0"
+        with self._mock_tag_ids([[101], [202]]):
+            qs_and = filter_galleries_no_request(args)
+        sql_and = str(qs_and.query)
+        self.assertEqual(sql_and.count("EXISTS("), 2)
+        self.assertNotIn("DISTINCT", sql_and)
+        self.assertNotIn("viewer_tag", sql_and)
+
+        # simple_archive_filter: empty tag match falls back to title filter without joins or DISTINCT
+        with self._mock_tag_ids([[]]):
+            qs_simple_title = simple_archive_filter("MyTitle", public=True)
+        sql_simple_title = str(qs_simple_title.query)
+        self.assertFalse(qs_simple_title.query.is_empty())
+        self.assertNotIn("DISTINCT", sql_simple_title)
+        self.assertNotIn("viewer_tag", sql_simple_title)
+
+        with self._mock_tag_ids([[10], [20]]):
+            qs_simple_tags = simple_archive_filter("artist:a, artist:b", public=True)
+        sql_simple_tags = str(qs_simple_tags.query)
+        self.assertEqual(sql_simple_tags.count("EXISTS("), 2)
+        self.assertNotIn("DISTINCT", sql_simple_tags)
+        self.assertNotIn("viewer_tag", sql_simple_tags)
+
+    def test_wanted_galleries_tag_filter_uses_exists_without_join_multiplication(self) -> None:
+        from viewer.views.head.common import wanted_gallery_filter_keys
+
+        params = {k: "" for k in wanted_gallery_filter_keys}
+        params.update({"sort": "release_date", "asc_desc": "desc", "tags": "artist:a, -artist:b"})
+        with self._mock_tag_ids([[10], [20]]):
+            qs = search_views.filter_wanted_galleries_simple(params)
+        sql = str(qs.query)
+        self.assertIn("EXISTS(", sql)
+        self.assertIn("NOT (", sql)
+        self.assertNotIn("DISTINCT", sql)
+        self.assertNotIn("viewer_tag", sql)
 
 
 class SearchGalleryAndFeedQueryTests(SimpleTestCase):

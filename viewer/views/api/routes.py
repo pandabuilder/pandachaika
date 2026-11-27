@@ -16,6 +16,8 @@ from typing import Any
 
 from django.conf import settings
 from django.contrib.auth import authenticate, login, logout
+from django.db import connection
+from django.db.utils import OperationalError
 from django.http import HttpRequest, HttpResponse, HttpResponseBadRequest
 from django.shortcuts import render
 from django.urls import reverse
@@ -27,9 +29,22 @@ from viewer.views.api.auth import authenticate_api_request
 from viewer.views.api.dispatch import dispatch_command, user_has_required_perm
 from viewer.views.api.errors import ApiError, ApiSurface, error_response, json_response
 from viewer.views.api.handlers.remote import handle_remote_get, handle_remote_post
+from viewer.views.head.common import TooManyTagsError
 
 logger = logging.getLogger(__name__)
 request_logger = logging.getLogger("django.request")
+
+PG_QUERY_CANCELED_SQLSTATE = "57014"
+
+
+def _is_query_timeout(exc: BaseException) -> bool:
+    cause = exc.__cause__
+    if cause is not None and (
+        getattr(cause, "sqlstate", None) == PG_QUERY_CANCELED_SQLSTATE
+        or getattr(cause, "pgcode", None) == PG_QUERY_CANCELED_SQLSTATE
+    ):
+        return True
+    return "statement timeout" in str(exc).lower()
 
 
 def run_api_view(
@@ -44,6 +59,20 @@ def run_api_view(
         return view(request)
     except ApiError as e:
         return error_response(e, surface)
+    except TooManyTagsError as e:
+        return error_response(ApiError.bad_request(str(e), code="too_many_tags"), surface)
+    except OperationalError as e:
+        if _is_query_timeout(e):
+            if not connection.needs_rollback:
+                try:
+                    logger.warning("API query timed out on %s?%s", request.path, request.META.get("QUERY_STRING", ""))
+                except Exception:
+                    pass
+            return error_response(ApiError.query_timeout(), surface)
+        if settings.DEBUG:
+            raise
+        request_logger.exception("Internal Server Error: %s", request.path, extra={"status_code": 500})
+        return error_response(ApiError.internal(), surface)
     except Exception:
         if settings.DEBUG:
             raise

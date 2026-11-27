@@ -121,7 +121,9 @@ def _id(key: str, what: str, multi: bool = False) -> Param:
 
 def _filters(keys: Sequence[str], sortable: bool = True) -> tuple[Param, ...]:
     params = [Param(key, "Filter, same as the search page.") for key in keys if key != "tags"]
-    params.append(Param("tags", "Comma-separated tags; prefix with ^ for exact, - to exclude, -^ for both."))
+    params.append(
+        Param("tags", "Comma-separated tags (at most 100 per request); prefix with ^ for exact, - to exclude, -^ for both.")
+    )
     if sortable:
         params.append(Param("sort", "Sort field."))
         params.append(Param("asc_desc", "asc or desc."))

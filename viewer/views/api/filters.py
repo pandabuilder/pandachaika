@@ -1,16 +1,24 @@
 """Archive and gallery filter helpers used by the JSON API."""
 
-import re
 from typing import Any
 
 from django.db.models import Q, QuerySet
 from django.http.request import QueryDict
 
 from core.base.utilities import normalize_crc32
-from viewer.models import Archive, Gallery
+from viewer.models import Archive, ArchiveTag, Gallery
 from viewer.views.head import gallery_order_fields
+from viewer.views.head.common import MAX_TAG_FILTERS, apply_tag_filters, parse_bool_flag
 
-def simple_archive_filter(args: str, public: bool = True) -> "QuerySet[Archive]":
+MAX_API_TAG_FILTERS = MAX_TAG_FILTERS
+
+
+def simple_archive_filter(
+    args: str,
+    public: bool = True,
+    *,
+    max_tags: int | None = MAX_API_TAG_FILTERS,
+) -> "QuerySet[Archive]":
     """Simple filtering of archives."""
 
     # sort and filter results by parameters
@@ -18,69 +26,35 @@ def simple_archive_filter(args: str, public: bool = True) -> "QuerySet[Archive]"
 
     if public:
         order = "-public_date"
-        results = Archive.objects.order_by(order).filter(public=True)
+        base_results = Archive.objects.order_by(order).filter(public=True)
     else:
         order = "-create_date"
-        results = Archive.objects.order_by(order)
+        base_results = Archive.objects.order_by(order)
 
     q_formatted = "%" + args.replace(" ", "%") + "%"
-    results_title = results.filter(Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted))
+    results_title = base_results.filter(Q(title__ss=q_formatted) | Q(title_jpn__ss=q_formatted))
 
-    tags = args.split(",")
-    for tag in tags:
-        tag = tag.strip().replace(" ", "_")
-        tag_clean = re.sub("^[-|^]", "", tag)
-        scope_name = tag_clean.split(":", maxsplit=1)
-        if len(scope_name) > 1:
-            tag_scope = scope_name[0]
-            tag_name = scope_name[1]
-        else:
-            tag_scope = ""
-            tag_name = scope_name[0]
-        if tag.startswith("-^"):
-            if tag_name != "" and tag_scope != "":
-                tag_query = Q(tags__name__exact=tag_name) & Q(tags__scope__exact=tag_scope)
-            elif tag_name != "":
-                tag_query = Q(tags__name__exact=tag_name)
-            else:
-                tag_query = Q(tags__scope__exact=tag_scope)
+    if not args or not args.strip():
+        return results_title
 
-            results = results.exclude(tag_query)
-        elif tag.startswith("-"):
-            if tag_name != "" and tag_scope != "":
-                tag_query = Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope)
-            elif tag_name != "":
-                tag_query = Q(tags__name__contains=tag_name)
-            else:
-                tag_query = Q(tags__scope__contains=tag_scope)
+    results_tags = apply_tag_filters(
+        base_results,
+        args,
+        through_model=ArchiveTag,
+        fk_field="archive_id",
+        max_tags=max_tags,
+    )
+    if results_tags.query.is_empty():
+        return results_title
 
-            results = results.exclude(tag_query)
-        elif tag.startswith("^"):
-            if tag_name != "" and tag_scope != "":
-                tag_query = Q(tags__name__exact=tag_name) & Q(tags__scope__exact=tag_scope)
-            elif tag_name != "":
-                tag_query = Q(tags__name__exact=tag_name)
-            else:
-                tag_query = Q(tags__scope__exact=tag_scope)
-
-            results = results.filter(tag_query)
-        else:
-            if tag_name != "" and tag_scope != "":
-                tag_query = Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope)
-            elif tag_name != "":
-                tag_query = Q(tags__name__contains=tag_name)
-            else:
-                tag_query = Q(tags__scope__contains=tag_scope)
-
-            results = results.filter(tag_query)
-    results = results | results_title
-
-    results = results.distinct()
-
-    return results
+    return results_tags | results_title
 
 
-def filter_galleries_no_request(filter_args: dict[str, Any] | QueryDict) -> "QuerySet[Gallery]":
+def filter_galleries_no_request(
+    filter_args: dict[str, Any] | QueryDict,
+    *,
+    max_tags: int | None = MAX_API_TAG_FILTERS,
+) -> "QuerySet[Gallery]":
 
     # sort and filter results by parameters
     order = "posted"
@@ -158,61 +132,16 @@ def filter_galleries_no_request(filter_args: dict[str, Any] | QueryDict) -> "Que
             | Q(gallery_container__archive__isnull=False)
         )
 
-    filters_tags = filter_args["tags"]
+    filters_tags = filter_args.get("tags")
 
     if filters_tags and isinstance(filters_tags, str):
-        tags = filters_tags.split(",")
-        has_positive_tag_filter = False
-        for tag in tags:
-            tag = tag.strip().replace(" ", "_")
-            tag_clean = re.sub("^[-|^]", "", tag)
-            scope_name = tag_clean.split(":", maxsplit=1)
-            if len(scope_name) > 1:
-                tag_scope = scope_name[0]
-                tag_name = scope_name[1]
-            else:
-                tag_scope = ""
-                tag_name = scope_name[0]
-            if tag.startswith("-^"):
-                if tag_name != "" and tag_scope != "":
-                    tag_query = Q(tags__name__exact=tag_name) & Q(tags__scope__exact=tag_scope)
-                elif tag_name != "":
-                    tag_query = Q(tags__name__exact=tag_name)
-                else:
-                    tag_query = Q(tags__scope__exact=tag_scope)
-
-                results = results.exclude(tag_query)
-            elif tag.startswith("-"):
-                if tag_name != "" and tag_scope != "":
-                    tag_query = Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope)
-                elif tag_name != "":
-                    tag_query = Q(tags__name__contains=tag_name)
-                else:
-                    tag_query = Q(tags__scope__contains=tag_scope)
-
-                results = results.exclude(tag_query)
-            elif tag.startswith("^"):
-                has_positive_tag_filter = True
-                if tag_name != "" and tag_scope != "":
-                    tag_query = Q(tags__name__exact=tag_name) & Q(tags__scope__exact=tag_scope)
-                elif tag_name != "":
-                    tag_query = Q(tags__name__exact=tag_name)
-                else:
-                    tag_query = Q(tags__scope__exact=tag_scope)
-
-                results = results.filter(tag_query)
-            else:
-                has_positive_tag_filter = True
-                if tag_name != "" and tag_scope != "":
-                    tag_query = Q(tags__name__contains=tag_name) & Q(tags__scope__contains=tag_scope)
-                elif tag_name != "":
-                    tag_query = Q(tags__name__contains=tag_name)
-                else:
-                    tag_query = Q(tags__scope__contains=tag_scope)
-
-                results = results.filter(tag_query)
-
-        if has_positive_tag_filter:
-            results = results.distinct()
+        results = apply_tag_filters(
+            results,
+            filters_tags,
+            through_model=Gallery.tags.through,
+            fk_field="gallery_id",
+            tags_or=parse_bool_flag(filter_args.get("tags_or")),
+            max_tags=max_tags,
+        )
 
     return results

@@ -878,6 +878,14 @@ class DatabaseSettings(BaseConfigModel):
         default=600.0,
         description="Maximum time in seconds an idle connection exceeding pool_min_size can remain in the pool (null for no idle closing).",
     )
+    statement_timeout: int | None = Field(
+        default=30000,
+        description="PostgreSQL statement_timeout in milliseconds for web requests (0 or null to disable).",
+    )
+    worker_statement_timeout: int | None = Field(
+        default=None,
+        description="Optional PostgreSQL statement_timeout in milliseconds for background worker processes (0 or null for unlimited).",
+    )
 
     @field_validator("postgresql_port", mode="before")
     @classmethod
@@ -892,6 +900,16 @@ class DatabaseSettings(BaseConfigModel):
         if v is None or v == "" or str(v).lower() in ("none", "null"):
             return None
         return int(v)
+
+    @field_validator("statement_timeout", "worker_statement_timeout", mode="before")
+    @classmethod
+    def _coerce_statement_timeout(cls, v: Any) -> int | None:
+        if v is None or v == "" or str(v).lower() in ("none", "null"):
+            return None
+        val = int(v)
+        if val < 0:
+            raise ValueError("statement_timeout must be non-negative")
+        return val
 
     @field_validator("pool_max_size", mode="before")
     @classmethod
@@ -2513,6 +2531,16 @@ database:
   # Idle timeout (in seconds) before closing idle connections above pool_min_size.
   # Default: 600.0
   pool_max_idle: 600.0
+
+  # PostgreSQL statement_timeout (in milliseconds) for web requests (0 or null to disable).
+  # Cancels runaway queries before reverse-proxy timeouts leave orphaned DB backends.
+  # Default: 30000
+  statement_timeout: 30000
+
+  # Optional PostgreSQL statement_timeout (in milliseconds) for background worker processes.
+  # Set to 0 or null for unlimited.
+  # Default: null
+  worker_statement_timeout: null
 
 # ------------------------------------------------------------------------------
 # Torrent Client Integration

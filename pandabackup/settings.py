@@ -267,10 +267,26 @@ if (CORS_ALLOW_ALL_ORIGINS or CORS_ALLOWED_ORIGINS) and module_exists("corsheade
     MIDDLEWARE = ["corsheaders.middleware.CorsMiddleware"] + MIDDLEWARE
 
 
+_NO_STATEMENT_TIMEOUT_COMMANDS = frozenset(
+    {
+        "migrate",
+        "makemigrations",
+        "sqlmigrate",
+        "showmigrations",
+        "flush",
+        "loaddata",
+        "dumpdata",
+        "dbshell",
+        "prune_db",
+        "createcachetable",
+    }
+)
+
+
 def get_database_config(settings_obj: Any = None) -> dict[str, Any]:
     """Build the DATABASES configuration dictionary from crawler Settings,
 
-    tuning connection pooling and CONN_MAX_AGE for web server vs worker environments.
+    tuning connection pooling, CONN_MAX_AGE, and statement_timeout for web server vs worker environments.
     """
     if settings_obj is None:
         settings_obj = crawler_settings
@@ -333,6 +349,19 @@ def get_database_config(settings_obj: Any = None) -> dict[str, Any]:
 
         default_config["CONN_MAX_AGE"] = max_age
         default_config["OPTIONS"] = {}
+
+    is_maintenance_command = len(sys.argv) > 1 and sys.argv[1] in _NO_STATEMENT_TIMEOUT_COMMANDS
+    if is_maintenance_command:
+        raw_statement_timeout = None
+    elif is_worker:
+        raw_statement_timeout = db_dict.get("worker_statement_timeout")
+    else:
+        raw_statement_timeout = db_dict.get("statement_timeout", 30000)
+
+    if raw_statement_timeout is not None and str(raw_statement_timeout).lower() not in ("none", "null", ""):
+        statement_timeout_ms = int(raw_statement_timeout)
+        if statement_timeout_ms > 0:
+            default_config["OPTIONS"]["options"] = f"-c statement_timeout={statement_timeout_ms}"
 
     return {"default": default_config}
 

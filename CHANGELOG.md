@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.1] - 2026-11-27
+
+### Added
+
+- **Configurable PostgreSQL `statement_timeout`**: Added `database.statement_timeout` (default `30000` ms for web processes, `DATABASE_STATEMENT_TIMEOUT`) and `database.worker_statement_timeout` (default `null`/unlimited for background workers, `DATABASE_WORKER_STATEMENT_TIMEOUT`), automatically omitted on migrations and maintenance management commands (`migrate`, `prune_db`, etc.). Timed-out API queries (`SQLSTATE 57014`) now return HTTP `504` (`query_timeout`) instead of leaving orphaned PostgreSQL backends running after reverse-proxy disconnects.
+
+### Fixed
+
+- **API and wanted-gallery tag filter join explosion and missing `tags_or`**: Migrated `filter_galleries_no_request` (`gsp`, `gs`, `g`, `gc`, `match`, remote `gc`), `simple_archive_filter` (`q`, `archives-simple`), `archives-quick`, and `filter_wanted_galleries_simple` (`wanted-galleries-search` and web UI) to the shared `apply_tag_filters()` semi-join helper (`EXISTS` / `NOT EXISTS` without multiplying `INNER JOIN`s or `SELECT DISTINCT *`), and wired `tags_or` support into the gallery API filters.
+- **Multi-tag `apply_tag_filters()` batching and semi-join collapsing**: Exact `^scope:name` tag lookups now resolve in a single batched query, positive `tags_or=1` terms collapse into a single `EXISTS (... tag_id IN (...))` semi-join, and negated AND terms collapse into a single `NOT EXISTS (... tag_id IN (...))` anti-join.
+- **Tag filter count cap (`100` per request)**: API and web search endpoints now reject requests specifying more than 100 tag filters up front before querying the database (`400` with `code: "too_many_tags"` on the JSON API).
+
 ## [1.7.0] - 2026-11-27
 
 ### Added

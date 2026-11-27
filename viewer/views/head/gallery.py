@@ -10,7 +10,14 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import EmptyPage, InvalidPage, Paginator
 from django.db.models import Count, F, Prefetch, Q, QuerySet
-from django.http import Http404, HttpRequest, HttpResponse, HttpResponseNotAllowed, HttpResponseRedirect
+from django.http import (
+    Http404,
+    HttpRequest,
+    HttpResponse,
+    HttpResponseBadRequest,
+    HttpResponseNotAllowed,
+    HttpResponseRedirect,
+)
 from django.http.request import QueryDict
 from django.shortcuts import redirect, render
 from django.templatetags.static import static
@@ -30,10 +37,13 @@ from viewer.utils.general import get_safe_referer, safe_redirect_back
 from viewer.utils.tags import sort_tags
 from viewer.utils.task_actions import task_action_response
 from viewer.views.head.common import (
+    MAX_TAG_FILTERS,
+    TooManyTagsError,
     apply_tag_filters,
     crawler_settings,
     gallery_filter_keys,
     gallery_list_filters_keys,
+    parse_bool_flag,
 )
 from workers import client
 
@@ -475,7 +485,18 @@ def gallery_list(request: HttpRequest, mode: str = "none", tag: str | None = Non
     stateless_request = json_request or "random" in get
     if not stateless_request and request.user.is_authenticated and parameters != existing_parameters:
         request.session["gallery_parameters"] = parameters
-    results = filter_galleries(request, parameters, display_prms, json_request=json_request)
+    try:
+        results = filter_galleries(
+            request, parameters, display_prms, json_request=json_request, max_tags=MAX_TAG_FILTERS
+        )
+    except TooManyTagsError as e:
+        if json_request:
+            return HttpResponse(
+                json.dumps({"error": str(e)}, ensure_ascii=False),
+                status=400,
+                content_type="application/json; charset=utf-8",
+            )
+        return HttpResponseBadRequest(str(e))
 
     if json_request:
         if request.user.is_authenticated:
@@ -573,7 +594,11 @@ filter_galleries_defer = (
 
 
 def filter_galleries(
-    request: HttpRequest, session_filters: dict[str, str], request_filters: dict[str, str], json_request: bool = False
+    request: HttpRequest,
+    session_filters: dict[str, str],
+    request_filters: dict[str, str],
+    json_request: bool = False,
+    max_tags: int | None = None,
 ) -> GalleryQuerySet:
     """Filter gallery results through parameters and return a result list."""
 
@@ -672,7 +697,8 @@ def filter_galleries(
             request_filters["tags"],
             through_model=Gallery.tags.through,
             fk_field="gallery_id",
-            tags_or=bool(request_filters["tags_or"]),
+            tags_or=parse_bool_flag(request_filters.get("tags_or")),
+            max_tags=max_tags,
         )
 
     if session_filters["view"] == "extended":
@@ -803,7 +829,7 @@ def filter_galleries_simple(params: dict[str, Any]) -> GalleryQuerySet:
             params["tags"],
             through_model=Gallery.tags.through,
             fk_field="gallery_id",
-            tags_or=bool(params.get("tags_or")),
+            tags_or=parse_bool_flag(params.get("tags_or")),
         )
 
     if "non_public" in params and params["non_public"]:

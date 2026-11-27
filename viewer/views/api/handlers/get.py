@@ -47,7 +47,7 @@ from viewer.views.api.common import (
     parse_bool_from_data_or_body,
     serialize_gallery_archives,
 )
-from viewer.views.api.filters import filter_galleries_no_request, simple_archive_filter
+from viewer.views.api.filters import MAX_API_TAG_FILTERS, filter_galleries_no_request, simple_archive_filter
 
 ACCEPTED_PER_PAGE = [24, 48, 100, 200, 300]
 
@@ -481,7 +481,9 @@ def handle_get_qa(request: HttpRequest, data: QueryDict, user_is_authenticated: 
         if k not in params:
             params[k] = ""
 
-    results = filter_archives_simple(params, authenticated=user_is_authenticated).prefetch_related("tags")
+    results = filter_archives_simple(
+        params, authenticated=user_is_authenticated, max_tags=MAX_API_TAG_FILTERS
+    ).prefetch_related("tags")
 
     if not user_is_authenticated:
         results = results.filter(public=True).order_by("-public_date")
@@ -824,7 +826,7 @@ def handle_get_as(request: HttpRequest, data: QueryDict, user_is_authenticated: 
             params[k] = ""
 
     results_archive = (
-        filter_archives_simple(params, authenticated=user_is_authenticated)
+        filter_archives_simple(params, authenticated=user_is_authenticated, max_tags=MAX_API_TAG_FILTERS)
         .select_related("gallery")
         .prefetch_related("gallery__tags")
     )
@@ -1081,9 +1083,9 @@ def handle_get_wanted_galleries_search(request: HttpRequest, data: QueryDict, us
             args[k] = ""
 
     if not user_is_authenticated:
-        results = filter_wanted_galleries_simple(args).filter(public=True)
+        results = filter_wanted_galleries_simple(args, max_tags=MAX_API_TAG_FILTERS).filter(public=True)
     else:
-        results = filter_wanted_galleries_simple(args)
+        results = filter_wanted_galleries_simple(args, max_tags=MAX_API_TAG_FILTERS)
 
     include_found_galleries = _include_found_galleries(data)
     prefetches: list[str | Prefetch] = [

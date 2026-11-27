@@ -33,6 +33,8 @@ class DatabaseSettingsConfigModelTestCase(SimpleTestCase):
         self.assertEqual(db_settings.pool_timeout, 30.0)
         self.assertIsNone(db_settings.pool_max_lifetime)
         self.assertEqual(db_settings.pool_max_idle, 600.0)
+        self.assertEqual(db_settings.statement_timeout, 30000)
+        self.assertIsNone(db_settings.worker_statement_timeout)
 
     def test_coercion_and_validators(self):
         # Strings to numeric / none
@@ -46,6 +48,8 @@ class DatabaseSettingsConfigModelTestCase(SimpleTestCase):
             pool_timeout="45.5",
             pool_max_lifetime="",
             pool_max_idle="120.0",
+            statement_timeout="15000",
+            worker_statement_timeout="null",
         )
         self.assertEqual(db_settings.postgresql_port, "5433")
         self.assertEqual(db_settings.conn_max_age, 300)
@@ -56,6 +60,11 @@ class DatabaseSettingsConfigModelTestCase(SimpleTestCase):
         self.assertEqual(db_settings.pool_timeout, 45.5)
         self.assertIsNone(db_settings.pool_max_lifetime)
         self.assertEqual(db_settings.pool_max_idle, 120.0)
+        self.assertEqual(db_settings.statement_timeout, 15000)
+        self.assertIsNone(db_settings.worker_statement_timeout)
+
+        with self.assertRaises(ValueError):
+            DatabaseSettings(statement_timeout=-1)
 
     def test_schema_and_default_yaml_generation(self):
         import yaml
@@ -69,6 +78,8 @@ class DatabaseSettingsConfigModelTestCase(SimpleTestCase):
         self.assertIn("pool_min_size", db_props)
         self.assertIn("pool_max_size", db_props)
         self.assertIn("pool_timeout", db_props)
+        self.assertIn("statement_timeout", db_props)
+        self.assertIn("worker_statement_timeout", db_props)
 
         yaml_content = generate_default_yaml_content()
         parsed = yaml.safe_load(yaml_content)
@@ -76,6 +87,8 @@ class DatabaseSettingsConfigModelTestCase(SimpleTestCase):
         self.assertEqual(validated.database.conn_max_age, 600)
         self.assertTrue(validated.database.conn_health_checks)
         self.assertFalse(validated.database.pooling)
+        self.assertEqual(validated.database.statement_timeout, 30000)
+        self.assertIsNone(validated.database.worker_statement_timeout)
 
 
 class EnvironmentVariableOverridesTestCase(SimpleTestCase):
@@ -92,6 +105,8 @@ class EnvironmentVariableOverridesTestCase(SimpleTestCase):
             "DATABASE_POOL_TIMEOUT": "20.5",
             "DATABASE_POOL_MAX_LIFETIME": "3600.0",
             "DATABASE_POOL_MAX_IDLE": "300.0",
+            "DATABASE_STATEMENT_TIMEOUT": "20000",
+            "DATABASE_WORKER_STATEMENT_TIMEOUT": "120000",
         }
         with patch.dict(os.environ, env_vars):
             settings = Settings(load_from_disk=False)
@@ -105,13 +120,25 @@ class EnvironmentVariableOverridesTestCase(SimpleTestCase):
             self.assertEqual(settings.database["pool_timeout"], 20.5)
             self.assertEqual(settings.database["pool_max_lifetime"], 3600.0)
             self.assertEqual(settings.database["pool_max_idle"], 300.0)
+            self.assertEqual(settings.database["statement_timeout"], 20000)
+            self.assertEqual(settings.database["worker_statement_timeout"], 120000)
 
     def test_load_null_conn_max_age_from_environment(self):
-        with patch.dict(os.environ, {"DATABASE_CONN_MAX_AGE": "null", "DATABASE_WORKER_CONN_MAX_AGE": "none"}):
+        with patch.dict(
+            os.environ,
+            {
+                "DATABASE_CONN_MAX_AGE": "null",
+                "DATABASE_WORKER_CONN_MAX_AGE": "none",
+                "DATABASE_STATEMENT_TIMEOUT": "null",
+                "DATABASE_WORKER_STATEMENT_TIMEOUT": "",
+            },
+        ):
             settings = Settings(load_from_disk=False)
             settings.load_from_environment()
             self.assertIsNone(settings.database["conn_max_age"])
             self.assertIsNone(settings.database["worker_conn_max_age"])
+            self.assertIsNone(settings.database["statement_timeout"])
+            self.assertIsNone(settings.database["worker_statement_timeout"])
 
 
 class GetDatabaseConfigTestCase(SimpleTestCase):
@@ -125,7 +152,34 @@ class GetDatabaseConfigTestCase(SimpleTestCase):
         self.assertEqual(config["ENGINE"], "django.db.backends.postgresql")
         self.assertEqual(config["CONN_MAX_AGE"], 600)
         self.assertTrue(config["CONN_HEALTH_CHECKS"])
-        self.assertEqual(config["OPTIONS"], {})
+        self.assertEqual(config["OPTIONS"], {"options": "-c statement_timeout=30000"})
+
+    def test_statement_timeout_disabled_and_worker_and_maintenance_behavior(self):
+        # Explicitly disabled on web
+        settings = Settings(load_from_disk=False)
+        settings.is_worker_process = False
+        settings.database["statement_timeout"] = 0
+        self.assertEqual(get_database_config(settings)["default"]["OPTIONS"], {})
+
+        settings.database["statement_timeout"] = None
+        self.assertEqual(get_database_config(settings)["default"]["OPTIONS"], {})
+
+        # Workers default to no statement_timeout, but honor worker_statement_timeout
+        worker_settings = Settings(load_from_disk=False)
+        worker_settings.is_worker_process = True
+        self.assertEqual(get_database_config(worker_settings)["default"]["OPTIONS"], {})
+
+        worker_settings.database["worker_statement_timeout"] = 90000
+        self.assertEqual(
+            get_database_config(worker_settings)["default"]["OPTIONS"],
+            {"options": "-c statement_timeout=90000"},
+        )
+
+        # Maintenance commands (e.g. migrate) never get web statement_timeout
+        web_settings = Settings(load_from_disk=False)
+        web_settings.is_worker_process = False
+        with patch("pandabackup.settings.sys.argv", ["manage.py", "migrate"]):
+            self.assertEqual(get_database_config(web_settings)["default"]["OPTIONS"], {})
 
     def test_worker_process_uses_worker_conn_max_age_if_set(self):
         settings = Settings(load_from_disk=False)
@@ -162,6 +216,7 @@ class GetDatabaseConfigTestCase(SimpleTestCase):
         self.assertEqual(pool_opts["max_size"], 8)
         self.assertEqual(pool_opts["timeout"], 15.0)
         self.assertEqual(pool_opts["max_idle"], 180.0)
+        self.assertEqual(config["OPTIONS"]["options"], "-c statement_timeout=30000")
 
     def test_unsupported_engine_raises_value_error(self):
         settings = Settings(load_from_disk=False)
@@ -171,12 +226,19 @@ class GetDatabaseConfigTestCase(SimpleTestCase):
         self.assertIn("PostgreSQL is the only supported database backend", str(ctx.exception))
 
     def test_configure_database_updates_runtime(self):
-        settings = Settings(load_from_disk=False)
-        settings.database["conn_max_age"] = 450
-        configure_database(settings)
+        from django.db import connections
         from pandabackup import settings as django_settings
 
-        self.assertEqual(django_settings.DATABASES["default"]["CONN_MAX_AGE"], 450)
+        orig_settings_db = dict(django_settings.DATABASES["default"])
+        orig_conn_db = dict(connections.databases["default"])
+        try:
+            settings = Settings(load_from_disk=False)
+            settings.database["conn_max_age"] = 450
+            configure_database(settings)
+            self.assertEqual(django_settings.DATABASES["default"]["CONN_MAX_AGE"], 450)
+        finally:
+            django_settings.DATABASES["default"].update(orig_settings_db)
+            connections.databases["default"].update(orig_conn_db)
 
 
 class ServerAndWorkerCleanupTestCase(TestCase):
