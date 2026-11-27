@@ -112,9 +112,11 @@ class Parser(BaseParser[OwnSettings]):
 
     # Search pages.
 
-    def search_pages(self, url: str, max_pages: int | None = None) -> typing.Iterator[list[GalleryData]]:
+    def search_pages(
+        self, url: str, max_pages: int | None = None, *, clean_query: bool = False
+    ) -> typing.Iterator[list[GalleryData]]:
         """The books of a search page link, a page at a time (the search response has the full metadata)."""
-        search = utilities.search_api_request(url, self.base_url)
+        search = utilities.search_api_request(url, self.base_url, clean_query=clean_query)
         if search is None:
             return
         api_url, search_params = search
@@ -137,7 +139,7 @@ class Parser(BaseParser[OwnSettings]):
             page += 1
 
     def links_from_search_page(self, url: str) -> list[str]:
-        for galleries in self.search_pages(url, max_pages=1):
+        for galleries in self.search_pages(url, max_pages=1, clean_query=True):
             return [x.link for x in galleries if x.link]
         return []
 

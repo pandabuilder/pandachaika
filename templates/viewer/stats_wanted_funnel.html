@@ -1,0 +1,737 @@
+{% extends "viewer/base.html" %}
+{% load static %}
+{% block title %}{{ page_title }} | {{ block.super }}{% endblock %}
+{% block sidebar %}{% endblock %}
+
+{% block extra_head %}
+  {% load compress %}
+  {% compress css %}
+    <link href="{% static 'css/dm-pages.css' %}" type="text/css" rel="stylesheet" />
+  {% endcompress %}
+  <script src="{% static 'js/vendor/chart.umd.min.js' %}"></script>
+  <style>
+    .wf-funnel-row {
+      display: grid;
+      grid-template-columns: 12.5rem 1fr 11rem;
+      gap: 0.75rem;
+      align-items: center;
+      padding: 0.45rem 0;
+      border-bottom: 1px solid var(--pg-border-subtle);
+    }
+    .wf-funnel-row:last-child { border-bottom: 0; }
+    .wf-funnel-track {
+      height: 22px;
+      border-radius: 5px;
+      background: var(--pg-bg-darkest);
+      border: 1px solid var(--pg-border-subtle);
+      overflow: hidden;
+    }
+    .wf-funnel-bar {
+      height: 100%;
+      border-radius: 4px;
+      transition: width 0.3s ease;
+    }
+    .wf-funnel-bar-wanted { background: linear-gradient(90deg, #1b5cad, #36b0f9); }
+    .wf-funnel-bar-tracked { background: linear-gradient(90deg, #1e7098, #4ec9e6); }
+    .wf-funnel-bar-found { background: linear-gradient(90deg, #1e7e34, #34c759); }
+    .wf-funnel-bar-archived { background: linear-gradient(90deg, #4b3d8f, #8f7ae6); }
+    .wf-chart-box { position: relative; height: 260px; width: 100%; }
+    .wf-chart-box-tall { position: relative; height: 320px; width: 100%; }
+    .wf-percentile-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(5.2rem, 1fr));
+      gap: 0.45rem;
+      margin-bottom: 0.9rem;
+    }
+    .wf-percentile {
+      background: var(--pg-bg-inset);
+      border: 1px solid var(--pg-border-subtle);
+      border-radius: 6px;
+      padding: 0.35rem 0.5rem;
+      text-align: center;
+    }
+    .wf-percentile .wf-p-lbl { font-size: 0.7rem; text-transform: uppercase; color: var(--pg-text-secondary); letter-spacing: 0.4px; }
+    .wf-percentile .wf-p-val { font-size: 0.98rem; font-weight: 700; font-family: monospace; color: var(--pg-text-primary); }
+    .wf-percentile.wf-percentile-highlight { border-color: var(--pg-accent-blue); }
+    .wf-percentile.wf-percentile-highlight .wf-p-val { color: var(--pg-accent-blue); }
+    @media (max-width: 767.98px) {
+      .wf-funnel-row { grid-template-columns: 1fr; gap: 0.25rem; }
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+  {% include "viewer/include/dm_messages.html" %}
+
+  <!-- Header -->
+  <div class="dm-page-header">
+    <div>
+      <h2 class="h3 mb-1"><i class="fas fa-filter text-info me-2"></i>Wanted-Gallery Funnel</h2>
+      <p class="mb-0 small">
+        Conversion from wanted rule to matched gallery and local archive, time-to-first-find distribution, hit rate by publisher and category, and overdue unfound items.
+      </p>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      <a href="{{ wanted_list_url }}" class="btn btn-outline-info btn-sm"><i class="fas fa-binoculars me-1"></i>Wanted galleries</a>
+      <a href="{% url 'viewer:found-galleries' %}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-check-double me-1"></i>Found log</a>
+      {% if user.is_staff or perms.viewer.read_private_stats %}
+        <a href="{% url 'viewer:stats-collection' %}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-chart-pie me-1"></i>Collection stats</a>
+      {% endif %}
+      <a href="?{{ json_query }}" class="btn btn-outline-secondary btn-sm" title="Download this funnel snapshot as JSON (supports read-scope bearer token)">
+        <i class="fas fa-code me-1"></i>JSON
+      </a>
+    </div>
+  </div>
+
+  <!-- Filter form -->
+  <form method="get" action="{% url 'viewer:stats-wanted' %}" class="dm-card p-3" id="wf-filter-form">
+    <div class="row g-2 align-items-end">
+      <div class="col-6 col-md-4 col-xl-2">
+        <label for="wf-scope" class="form-label dm-lbl">Scope</label>
+        <select id="wf-scope" name="scope" class="form-select form-select-sm">
+          {% for key, label in scope_choices %}
+            <option value="{{ key }}" {% if options.scope == key %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-4 col-xl-2">
+        <label for="wf-window" class="form-label dm-lbl">Created window</label>
+        <select id="wf-window" name="created_window" class="form-select form-select-sm">
+          {% for key, label in window_presets %}
+            <option value="{{ key }}" {% if options.created_window == key %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-4 col-xl-2">
+        <label for="wf-baseline" class="form-label dm-lbl">Time baseline</label>
+        <select id="wf-baseline" name="baseline" class="form-select form-select-sm">
+          {% for key, label in baseline_choices %}
+            <option value="{{ key }}" {% if options.baseline == key %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-3 col-xl-2">
+        <label for="wf-overdue-days" class="form-label dm-lbl">Overdue after (days)</label>
+        <input id="wf-overdue-days" type="number" name="overdue_days" min="{{ min_overdue_days }}" max="{{ max_overdue_days }}"
+               value="{{ options.overdue_days }}" class="form-control form-control-sm">
+      </div>
+      <div class="col-6 col-md-4 col-xl-2">
+        <label for="wf-publisher" class="form-label dm-lbl">Publisher</label>
+        <select id="wf-publisher" name="publisher" class="form-select form-select-sm">
+          <option value="">All publishers</option>
+          {% for item in funnel.filter_choices.publishers %}
+            <option value="{{ item.value }}" {% if options.publisher == item.value %}selected{% endif %}>{{ item.label }} ({{ item.count }})</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-5 col-xl-2">
+        <label for="wf-category" class="form-label dm-lbl">Category</label>
+        <select id="wf-category" name="category" class="form-select form-select-sm">
+          <option value="">All categories</option>
+          {% for item in funnel.filter_choices.categories %}
+            <option value="{{ item.value }}" {% if options.category == item.value %}selected{% endif %}>{{ item.label }} ({{ item.count }})</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-4 col-xl-2">
+        <label for="wf-book-type" class="form-label dm-lbl">Book type</label>
+        <select id="wf-book-type" name="book_type" class="form-select form-select-sm">
+          <option value="">All book types</option>
+          {% for item in funnel.filter_choices.book_types %}
+            <option value="{{ item.value }}" {% if options.book_type == item.value %}selected{% endif %}>{{ item.label }} ({{ item.count }})</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-4 col-xl-2">
+        <label for="wf-reason" class="form-label dm-lbl">Reason</label>
+        <select id="wf-reason" name="reason" class="form-select form-select-sm">
+          <option value="">All reasons</option>
+          {% for item in funnel.filter_choices.reasons %}
+            <option value="{{ item.value }}" {% if options.reason == item.value %}selected{% endif %}>{{ item.label }} ({{ item.count }})</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-4 col-xl-2">
+        <label for="wf-provider" class="form-label dm-lbl">Wanted provider</label>
+        <select id="wf-provider" name="provider" class="form-select form-select-sm">
+          <option value="">All providers</option>
+          {% for item in funnel.filter_choices.providers %}
+            <option value="{{ item.value }}" {% if options.provider == item.value %}selected{% endif %}>{{ item.label }} ({{ item.count }})</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-12 col-md-8 col-xl-4">
+        <div class="form-check form-switch mb-1">
+          <input class="form-check-input" type="checkbox" id="wf-include-paused" name="include_paused" value="1"
+                 {% if options.include_paused %}checked{% endif %}>
+          <label class="form-check-label small" for="wf-include-paused">
+            Include paused (<code>should_search=False</code>) in overdue items
+          </label>
+        </div>
+        <div class="d-flex flex-wrap gap-1 align-items-center">
+          <span class="small dm-muted me-1">Overdue presets:</span>
+          {% for preset in overdue_preset_links %}
+            <a href="{{ preset.url }}" class="badge text-decoration-none {% if preset.active %}bg-info text-dark{% else %}dm-badge-outline text-secondary{% endif %}">{{ preset.days }}d</a>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="col-12 col-xl-2 d-flex gap-2 justify-content-xl-end">
+        <button type="submit" class="btn btn-info btn-sm"><i class="fas fa-sync-alt me-1"></i>Apply</button>
+        {% if active_filters %}
+          <a href="{% url 'viewer:stats-wanted' %}" class="btn btn-outline-light btn-sm"><i class="fas fa-times me-1"></i>Reset</a>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if active_filters %}
+      <div class="dm-chips mt-2 pt-2 border-top border-secondary border-opacity-25">
+        <span class="small dm-muted">Active filters:</span>
+        {% for chip in active_filters %}
+          <span class="dm-chip">
+            <span class="dm-chip-label">{{ chip.label }}:</span>
+            <span class="dm-chip-value">{{ chip.value }}</span>
+            <a href="{{ chip.remove_url }}" class="dm-chip-remove" aria-label="Remove {{ chip.label }} filter">&times;</a>
+          </span>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </form>
+
+  {% with s=funnel.summary ttf=funnel.time_to_find ov=funnel.overdue %}
+  <!-- KPI Summary Tiles -->
+  <div class="row g-2 mb-3">
+    <div class="col-6 col-md-4 col-xl-2">
+      <a class="dm-stat" href="{{ wanted_list_url }}">
+        <div class="dm-lbl">Wanted in scope</div>
+        <div class="dm-val text-info">{{ s.total }}</div>
+        <div class="dm-stat-sub">{{ s.one_shot }} one-shot · {{ s.recurring }} recurring</div>
+      </a>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+      <div class="dm-stat">
+        <div class="dm-lbl">Hit rate</div>
+        <div class="dm-val {% if s.hit_rate is not None and s.hit_rate >= 75 %}text-success{% elif s.hit_rate is not None and s.hit_rate >= 40 %}text-info{% else %}text-warning{% endif %}">
+          {% if s.hit_rate is not None %}{{ s.hit_rate|floatformat:1 }}%{% else %}—{% endif %}
+        </div>
+        <div class="dm-stat-sub">
+          {{ s.found }} found · {% if s.active_hit_rate is not None %}{{ s.active_hit_rate|floatformat:1 }}% active{% else %}no active{% endif %}
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+      <div class="dm-stat">
+        <div class="dm-lbl">Archived</div>
+        <div class="dm-val text-primary">{{ s.archived }}</div>
+        <div class="dm-stat-sub">
+          {% if s.archive_rate is not None %}{{ s.archive_rate|floatformat:1 }}% of found have a local archive{% else %}no found items yet{% endif %}
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+      <a class="dm-stat" href="#ttf-section">
+        <div class="dm-lbl">Median time-to-find</div>
+        <div class="dm-val text-info">{{ ttf.median.display }}</div>
+        <div class="dm-stat-sub">
+          {% if ttf.sample_count %}P25 {{ ttf.p25.display }} · P75 {{ ttf.p75.display }}{% else %}no timestamped finds{% endif %}
+        </div>
+      </a>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+      <a class="dm-stat" href="#overdue-section">
+        <div class="dm-lbl">Overdue (&ge;{{ ov.threshold_days }}d)</div>
+        <div class="dm-val {% if ov.total_count %}text-danger{% else %}text-success{% endif %}">{{ ov.total_count }}</div>
+        <div class="dm-stat-sub">
+          {{ ov.active_count }} active{% if ov.paused_count %} · {{ ov.paused_count }} paused{% endif %}{% if ov.upcoming_count %} · {{ ov.upcoming_count }} upcoming{% endif %}
+        </div>
+      </a>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+      <a class="dm-stat" href="{% url 'viewer:wanted-galleries' %}?with-possible-matches=1">
+        <div class="dm-lbl">Possible matches</div>
+        <div class="dm-val {% if s.unfound_with_possible %}text-warning{% else %}text-secondary{% endif %}">{{ s.unfound_with_possible }}</div>
+        <div class="dm-stat-sub">unfound rules with candidates</div>
+      </a>
+    </div>
+  </div>
+
+  <!-- Funnel Conversion Stages -->
+  <div class="dm-card">
+    <div class="dm-card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <span><i class="fas fa-stream text-info me-1"></i>Conversion Funnel</span>
+      <span class="small dm-muted fw-normal">
+        Unfound breakdown:
+        <strong class="text-danger">{{ s.overdue_active }}</strong> overdue active ·
+        <strong class="text-info">{{ s.fresh_searching_unfound }}</strong> fresh searching ·
+        <strong class="text-secondary">{{ s.paused_unfound }}</strong> paused
+        {% if s.upcoming_unfound %}· <strong class="text-warning">{{ s.upcoming_unfound }}</strong> upcoming{% endif %}
+      </span>
+    </div>
+    <div class="p-3">
+      {% for stage in s.stages %}
+        <div class="wf-funnel-row">
+          <div>
+            <div class="fw-semibold">{{ stage.label }}</div>
+            <div class="small dm-muted">{{ stage.description }}</div>
+          </div>
+          <div>
+            <div class="wf-funnel-track">
+              <div class="wf-funnel-bar wf-funnel-bar-{{ stage.key }}" style="width: {{ stage.percent_of_total }}%;"></div>
+            </div>
+          </div>
+          <div class="text-md-end font-monospace">
+            <span class="fw-bold">{{ stage.count }}</span>
+            <span class="small dm-muted">({{ stage.percent_of_total|floatformat:1 }}%)</span>
+            {% if not forloop.first and stage.step_rate is not None %}
+              <div class="small text-info">{{ stage.step_rate|floatformat:1 }}% of prev</div>
+            {% endif %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Time-to-Find & Monthly Trend -->
+  <div class="row g-3 mb-3" id="ttf-section">
+    <div class="col-lg-6">
+      <div class="dm-card h-100 mb-0">
+        <div class="dm-card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+          <span><i class="fas fa-stopwatch text-info me-1"></i>Time-to-First-Find Distribution</span>
+          <span class="badge dm-badge-outline text-info">{{ ttf.sample_count }} found</span>
+        </div>
+        <div class="p-3">
+          <div class="wf-percentile-grid">
+            <div class="wf-percentile"><div class="wf-p-lbl">Min</div><div class="wf-p-val">{{ ttf.min.display }}</div></div>
+            <div class="wf-percentile"><div class="wf-p-lbl">P25</div><div class="wf-p-val">{{ ttf.p25.display }}</div></div>
+            <div class="wf-percentile wf-percentile-highlight"><div class="wf-p-lbl">Median</div><div class="wf-p-val">{{ ttf.median.display }}</div></div>
+            <div class="wf-percentile"><div class="wf-p-lbl">Mean</div><div class="wf-p-val">{{ ttf.mean.display }}</div></div>
+            <div class="wf-percentile"><div class="wf-p-lbl">P75</div><div class="wf-p-val">{{ ttf.p75.display }}</div></div>
+            <div class="wf-percentile"><div class="wf-p-lbl">P90</div><div class="wf-p-val">{{ ttf.p90.display }}</div></div>
+            <div class="wf-percentile"><div class="wf-p-lbl">Max</div><div class="wf-p-val">{{ ttf.max.display }}</div></div>
+          </div>
+          {% if ttf.sample_count %}
+            <div class="wf-chart-box"><canvas id="wfTtfChart"></canvas></div>
+          {% else %}
+            <div class="dm-empty"><i class="fas fa-clock"></i>No found wanted galleries with valid timestamps in this scope.</div>
+          {% endif %}
+          <p class="small dm-muted mb-0 mt-2">
+            Measured to the earliest <code>FoundGallery</code> timestamp (falling back to <code>date_found</code>) so recurring <code>keep_searching</code> rules are not skewed by later matches.
+            {% if ttf.missing_timestamp_count %}
+              {{ ttf.missing_timestamp_count }} found item{{ ttf.missing_timestamp_count|pluralize }} had no timestamp.
+            {% endif %}
+            {% if ttf.before_baseline_count %}
+              {{ ttf.before_baseline_count }} matched before the selected baseline (e.g. pre-release leak).
+            {% endif %}
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-6">
+      <div class="dm-card h-100 mb-0">
+        <div class="dm-card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+          <span><i class="fas fa-chart-line text-info me-1"></i>Monthly Wanted Created vs. First Finds</span>
+          <span class="small dm-muted fw-normal">Last {{ chart_data.monthly_trend|length }} active months</span>
+        </div>
+        <div class="p-3">
+          {% if chart_data.monthly_trend %}
+            <div class="wf-chart-box-tall"><canvas id="wfTrendChart"></canvas></div>
+          {% else %}
+            <div class="dm-empty"><i class="fas fa-chart-area"></i>No monthly activity to display.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Publisher & Category Visual Charts -->
+  <div class="row g-3 mb-3">
+    <div class="col-lg-7">
+      <div class="dm-card h-100 mb-0">
+        <div class="dm-card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+          <span><i class="fas fa-building text-info me-1"></i>Top Publishers — Found vs. Unfound</span>
+          <span class="small dm-muted fw-normal">Top {{ chart_data.top_publishers|length }} by volume</span>
+        </div>
+        <div class="p-3">
+          {% if chart_data.top_publishers %}
+            <div class="wf-chart-box-tall"><canvas id="wfPublisherChart"></canvas></div>
+          {% else %}
+            <div class="dm-empty"><i class="fas fa-building"></i>No publisher data.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-5">
+      <div class="dm-card h-100 mb-0">
+        <div class="dm-card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+          <span><i class="fas fa-folder-open text-info me-1"></i>Categories — Found vs. Unfound</span>
+          <span class="small dm-muted fw-normal">Includes M2M categories</span>
+        </div>
+        <div class="p-3">
+          {% if chart_data.categories %}
+            <div class="wf-chart-box-tall"><canvas id="wfCategoryChart"></canvas></div>
+          {% else %}
+            <div class="dm-empty"><i class="fas fa-folder-open"></i>No category data.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Breakdown Tables Filter -->
+  <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+    <span class="dm-lbl me-1">Hit-rate breakdowns</span>
+    <input type="search" class="form-control form-control-sm bg-transparent text-light" style="max-width: 18rem;"
+           placeholder="Filter breakdown rows (press /)" aria-label="Filter breakdown rows"
+           data-dm-filter="tr[data-dm-filter-row]" data-dm-hotkey="/">
+    <span class="small dm-muted">Click any column header to sort, or click a name to filter the funnel.</span>
+  </div>
+
+  {% include "viewer/include/wanted_funnel_breakdown_table.html" with rows=funnel.breakdowns.publishers label="Publisher" table_id="wf-publishers" title="Hit rate by publisher" icon="fa-building" %}
+  {% include "viewer/include/wanted_funnel_breakdown_table.html" with rows=funnel.breakdowns.categories label="Category" table_id="wf-categories" title="Hit rate by category" icon="fa-folder-open" %}
+  {% include "viewer/include/wanted_funnel_breakdown_table.html" with rows=funnel.breakdowns.book_types label="Book type" table_id="wf-book-types" title="Hit rate by book type" icon="fa-book" collapsed=1 %}
+  {% include "viewer/include/wanted_funnel_breakdown_table.html" with rows=funnel.breakdowns.reasons label="Reason" table_id="wf-reasons" title="Hit rate by reason" icon="fa-tag" collapsed=1 %}
+  {% include "viewer/include/wanted_funnel_breakdown_table.html" with rows=funnel.breakdowns.wanted_providers label="Wanted provider" table_id="wf-providers" title="Hit rate by wanted provider" icon="fa-server" collapsed=1 %}
+
+  {% if funnel.breakdowns.auto_wanted_sources %}
+    {% include "viewer/include/wanted_funnel_breakdown_table.html" with rows=funnel.breakdowns.auto_wanted_sources label="Auto-wanted source" table_id="wf-auto-sources" title="Hit rate by auto-wanted source" icon="fa-robot" collapsed=1 %}
+  {% endif %}
+
+  {% if funnel.breakdowns.found_providers %}
+    <div class="dm-card" data-dm-filter-section>
+      <div class="dm-card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+        <a class="dm-collapse-toggle text-decoration-none collapsed" data-bs-toggle="collapse" href="#wf-found-providers-body"
+           role="button" aria-expanded="false" aria-controls="wf-found-providers-body">
+          <i class="fas fa-chevron-down me-1"></i><i class="fas fa-download text-info me-1"></i>Matched galleries by source provider
+        </a>
+        <span class="badge dm-badge-outline text-info">{{ funnel.breakdowns.found_providers|length }} provider{{ funnel.breakdowns.found_providers|length|pluralize }}</span>
+      </div>
+      <div class="collapse" id="wf-found-providers-body">
+        <div class="table-responsive">
+          <table class="table table-dm table-hover table-sm dm-sortable mb-0" id="wf-found-providers">
+            <thead>
+              <tr>
+                <th data-dm-sort="text">Gallery provider</th>
+                <th data-dm-sort="num" class="text-end">Distinct wanted matched</th>
+                <th data-dm-sort="num" style="min-width: 10rem;">Share</th>
+                <th data-dm-sort="num" class="text-end">Total found entries</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in funnel.breakdowns.found_providers %}
+                <tr data-dm-filter-row>
+                  <td>{{ row.provider }}</td>
+                  <td class="text-end font-monospace" data-dm-value="{{ row.wanted_galleries }}">{{ row.wanted_galleries }}</td>
+                  <td data-dm-value="{{ row.wanted_galleries }}">
+                    <div class="dm-bar-wrap"><div class="dm-bar-track"><span class="dm-bar dm-bar-green" data-dm-bar="{{ row.wanted_galleries }}" data-dm-bar-group="wf-found-providers"></span></div></div>
+                  </td>
+                  <td class="text-end font-monospace" data-dm-value="{{ row.found_entries }}">{{ row.found_entries }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+  <!-- Overdue Unfound Items -->
+  <div class="dm-card" id="overdue-section">
+    <div class="dm-card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <div>
+        <i class="fas fa-hourglass-end text-danger me-1"></i>Overdue Unfound Items
+        <span class="badge bg-danger ms-1">{{ ov.total_count }}</span>
+        <span class="small dm-muted fw-normal ms-2">
+          Waiting &ge; {{ ov.threshold_days }} day{{ ov.threshold_days|pluralize }}
+          {% if not ov.include_paused %}
+            (actively searching only{% if ov.paused_count %}; {{ ov.paused_count }} paused hidden{% endif %})
+          {% else %}
+            ({{ ov.active_count }} active, {{ ov.paused_count }} paused)
+          {% endif %}
+          {% if ov.missing_baseline_count %}
+            · {{ ov.missing_baseline_count }} unfound missing {{ ov.baseline }}
+          {% endif %}
+        </span>
+      </div>
+      <div class="d-flex flex-wrap align-items-center gap-2">
+        <form method="get" action="{% url 'viewer:stats-wanted' %}#overdue-section" class="d-inline-flex align-items-center gap-1">
+          {% for key, val in request.GET.items %}
+            {% if key != "overdue_sort" and key != "overdue_page" and key != "format" %}
+              <input type="hidden" name="{{ key }}" value="{{ val }}">
+            {% endif %}
+          {% endfor %}
+          <label for="wf-overdue-sort" class="small dm-muted mb-0">Sort:</label>
+          <select id="wf-overdue-sort" name="overdue_sort" class="form-select form-select-sm" style="width: auto;" onchange="this.form.submit()">
+            {% for key, label in overdue_sort_choices %}
+              <option value="{{ key }}" {% if options.overdue_sort == key %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </form>
+        <a href="{{ overdue_wanted_list_url }}" class="btn btn-outline-info btn-sm">
+          <i class="fas fa-external-link-alt me-1"></i>Manage in Wanted Galleries
+        </a>
+      </div>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-dm table-hover table-sm mb-0">
+        <thead>
+          <tr>
+            <th>Title</th>
+            <th>Publisher</th>
+            <th>Category</th>
+            <th>Type / Reason</th>
+            <th>State</th>
+            <th class="text-nowrap">Release date</th>
+            <th class="text-nowrap">Created</th>
+            <th class="text-end text-nowrap">Waiting</th>
+            <th class="text-end text-nowrap">Possible</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in ov.items %}
+            <tr>
+              <td class="dm-wrap">
+                <a href="{{ item.url }}" class="fw-semibold">{{ item.title }}</a>
+                {% if item.title_jpn %}
+                  <div class="small dm-muted">{{ item.title_jpn }}</div>
+                {% endif %}
+              </td>
+              <td class="small text-nowrap">
+                {% if item.publisher %}
+                  <a href="{% url 'viewer:stats-wanted' %}?publisher={{ item.publisher|urlencode }}" class="text-decoration-none">{{ item.publisher }}</a>
+                {% else %}
+                  <span class="dm-dim fst-italic">(none)</span>
+                {% endif %}
+              </td>
+              <td class="small text-nowrap">
+                {% if item.category_display %}{{ item.category_display }}{% else %}<span class="dm-dim">—</span>{% endif %}
+              </td>
+              <td class="small">
+                {% if item.book_type %}<span class="badge dm-badge-outline text-info">{{ item.book_type }}</span>{% endif %}
+                {% if item.reason %}<span class="badge dm-badge-outline text-secondary">{{ item.reason }}</span>{% endif %}
+                {% if not item.book_type and not item.reason %}<span class="dm-dim">—</span>{% endif %}
+              </td>
+              <td class="small text-nowrap">
+                {% if item.should_search %}
+                  <span class="badge bg-success bg-opacity-75">Searching</span>
+                {% else %}
+                  <span class="badge bg-secondary">Paused</span>
+                {% endif %}
+                {% if item.keep_searching %}
+                  <span class="badge dm-badge-outline text-info" title="Keep searching after found">Recurring</span>
+                {% endif %}
+                {% if item.restricted_to_links %}
+                  <span class="badge dm-badge-outline text-warning" title="Restricted to MonitoredLinks">Links only</span>
+                {% endif %}
+              </td>
+              <td class="small text-nowrap font-monospace">
+                {% if item.release_date %}{{ item.release_date|date:"Y-m-d" }}{% else %}<span class="dm-dim">—</span>{% endif %}
+              </td>
+              <td class="small text-nowrap font-monospace">{{ item.create_date|date:"Y-m-d" }}</td>
+              <td class="text-end text-nowrap font-monospace">
+                <span class="badge {% if item.wait_days >= 365 %}bg-danger{% elif item.wait_days >= 90 %}bg-warning text-dark{% else %}bg-info text-dark{% endif %}"
+                      title="{{ item.wait_days }} days since {{ item.baseline_date|date:'Y-m-d' }}">
+                  {{ item.wait_display }}
+                </span>
+              </td>
+              <td class="text-end text-nowrap font-monospace">
+                {% if item.possible_match_count %}
+                  <a href="{{ item.url }}" class="badge bg-warning text-dark text-decoration-none" title="Review possible matches">
+                    {{ item.possible_match_count }}
+                  </a>
+                {% else %}
+                  <span class="dm-dim">0</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% empty %}
+            <tr>
+              <td colspan="9" class="dm-empty">
+                <i class="fas fa-check-circle text-success"></i>
+                No overdue unfound items waiting &ge; {{ ov.threshold_days }} day{{ ov.threshold_days|pluralize }} in this scope.
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if ov.num_pages > 1 %}
+      <div class="p-2 px-3 border-top border-secondary border-opacity-25 dm-pager">
+        <div class="dm-pager-info">
+          Page {{ ov.page }} of {{ ov.num_pages }} ({{ ov.total_count }} overdue item{{ ov.total_count|pluralize }})
+        </div>
+        <nav aria-label="Overdue items pagination">
+          <ul class="pagination pagination-sm">
+            <li class="page-item{% if not ov.has_previous %} disabled{% endif %}">
+              <a class="page-link" href="{{ prev_page_url|default:'#' }}">Previous</a>
+            </li>
+            <li class="page-item active"><span class="page-link">{{ ov.page }} / {{ ov.num_pages }}</span></li>
+            <li class="page-item{% if not ov.has_next %} disabled{% endif %}">
+              <a class="page-link" href="{{ next_page_url|default:'#' }}">Next</a>
+            </li>
+          </ul>
+        </nav>
+      </div>
+    {% endif %}
+  </div>
+  {% endwith %}
+</div>
+
+{{ chart_data|json_script:"wf-chart-data" }}
+{% endblock %}
+
+{% block afterJQ %}
+  {% load compress %}
+  {% compress js %}
+    <script src="{% static 'js/dm-pages.js' %}"></script>
+  {% endcompress %}
+  <script>
+    (function () {
+      if (typeof Chart === 'undefined') return;
+      var dataEl = document.getElementById('wf-chart-data');
+      if (!dataEl) return;
+      var data = JSON.parse(dataEl.textContent || '{}');
+
+      var textColor = '#8ba4be';
+      var gridColor = 'rgba(23, 66, 139, 0.45)';
+      var tooltipBg = '#001122';
+
+      // 1. Time-to-Find Histogram
+      var ttfCanvas = document.getElementById('wfTtfChart');
+      if (ttfCanvas && data.ttf_buckets && data.ttf_buckets.length) {
+        new Chart(ttfCanvas, {
+          type: 'bar',
+          data: {
+            labels: data.ttf_buckets.map(function (b) { return b.label; }),
+            datasets: [{
+              label: 'Wanted galleries',
+              data: data.ttf_buckets.map(function (b) { return b.count; }),
+              backgroundColor: 'rgba(54, 176, 249, 0.72)',
+              borderColor: '#36b0f9',
+              borderWidth: 1,
+              borderRadius: 4
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                backgroundColor: tooltipBg,
+                callbacks: {
+                  label: function (ctx) {
+                    var b = data.ttf_buckets[ctx.dataIndex];
+                    return ' ' + b.count + ' (' + b.percent.toFixed(1) + '%)';
+                  }
+                }
+              }
+            },
+            scales: {
+              x: { ticks: { color: textColor }, grid: { display: false } },
+              y: { beginAtZero: true, ticks: { color: textColor, precision: 0 }, grid: { color: gridColor } }
+            }
+          }
+        });
+      }
+
+      // 2. Monthly Created vs First Finds
+      var trendCanvas = document.getElementById('wfTrendChart');
+      if (trendCanvas && data.monthly_trend && data.monthly_trend.length) {
+        new Chart(trendCanvas, {
+          type: 'bar',
+          data: {
+            labels: data.monthly_trend.map(function (m) { return m.month; }),
+            datasets: [
+              {
+                label: 'Wanted created',
+                data: data.monthly_trend.map(function (m) { return m.created; }),
+                backgroundColor: 'rgba(54, 176, 249, 0.55)',
+                borderColor: '#36b0f9',
+                borderWidth: 1,
+                borderRadius: 3
+              },
+              {
+                label: 'First finds',
+                type: 'line',
+                data: data.monthly_trend.map(function (m) { return m.first_finds; }),
+                borderColor: '#34c759',
+                backgroundColor: 'rgba(52, 199, 89, 0.18)',
+                tension: 0.25,
+                fill: true,
+                pointRadius: 2
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+              legend: { labels: { color: '#e6edf3', boxWidth: 12 } },
+              tooltip: { backgroundColor: tooltipBg }
+            },
+            scales: {
+              x: { ticks: { color: textColor, maxRotation: 45 }, grid: { display: false } },
+              y: { beginAtZero: true, ticks: { color: textColor, precision: 0 }, grid: { color: gridColor } }
+            }
+          }
+        });
+      }
+
+      // Helper for stacked horizontal Found / Searching / Paused charts
+      function renderStackedChart(canvasId, rows) {
+        var el = document.getElementById(canvasId);
+        if (!el || !rows || !rows.length) return;
+        new Chart(el, {
+          type: 'bar',
+          data: {
+            labels: rows.map(function (r) { return r.label; }),
+            datasets: [
+              {
+                label: 'Found',
+                data: rows.map(function (r) { return r.found; }),
+                backgroundColor: 'rgba(40, 167, 69, 0.8)'
+              },
+              {
+                label: 'Searching',
+                data: rows.map(function (r) { return r.searching; }),
+                backgroundColor: 'rgba(255, 193, 7, 0.8)'
+              },
+              {
+                label: 'Paused',
+                data: rows.map(function (r) { return r.paused; }),
+                backgroundColor: 'rgba(139, 164, 190, 0.4)'
+              }
+            ]
+          },
+          options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { labels: { color: '#e6edf3', boxWidth: 12 } },
+              tooltip: {
+                backgroundColor: tooltipBg,
+                callbacks: {
+                  afterBody: function (items) {
+                    if (!items.length) return '';
+                    var r = rows[items[0].dataIndex];
+                    return 'Hit rate: ' + r.hit_rate.toFixed(1) + '% (active: ' + r.active_hit_rate.toFixed(1) + '%)';
+                  }
+                }
+              }
+            },
+            scales: {
+              x: { stacked: true, beginAtZero: true, ticks: { color: textColor, precision: 0 }, grid: { color: gridColor } },
+              y: { stacked: true, ticks: { color: '#e6edf3' }, grid: { display: false } }
+            }
+          }
+        });
+      }
+
+      renderStackedChart('wfPublisherChart', data.top_publishers);
+      renderStackedChart('wfCategoryChart', data.categories);
+    })();
+  </script>
+{% endblock %}

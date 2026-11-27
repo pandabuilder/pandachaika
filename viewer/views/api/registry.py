@@ -131,7 +131,19 @@ def _filters(keys: Sequence[str], sortable: bool = True) -> tuple[Param, ...]:
 GALLERY_FILTERS = _filters(gallery_filter_keys)
 ARCHIVE_FILTERS = _filters(archive_filter_keys)
 WANTED_FILTERS = _filters(wanted_gallery_filter_keys)
+WANTED_TAGS = Param("tags", "Comma-separated tags (or repeat the parameter). At most 100 without authentication.")
 PROVIDER = Param("provider", "Provider slug, to disambiguate a GID shared by several providers.")
+INCLUDE_DOWNLOADS = Param(
+    "include_downloads",
+    "Include download status and progress (download_status) for each archive. "
+    "Requires authentication and viewer.download_history.",
+    type="boolean",
+)
+DOWNLOADING_ONLY = Param(
+    "downloading_only",
+    "Only include archives that are currently downloading (incomplete / active download).",
+    type="boolean",
+)
 GALLERY_STATUS_BODY: dict[str, Any] = {
     "type": "object",
     "required": ["status"],
@@ -371,6 +383,7 @@ GET_COMMANDS: list[Command] = [
         "Gallery by internal ID",
         TAG_GALLERIES,
         key_param=_id("gallery", "Gallery"),
+        params=(INCLUDE_DOWNLOADS, DOWNLOADING_ONLY),
     ),
     Command(
         "GET",
@@ -378,8 +391,13 @@ GET_COMMANDS: list[Command] = [
         handle_get_gids,
         "Galleries by provider GID",
         TAG_GALLERIES,
-        key_param=Param("gids", "Provider GID (repeat the parameter).", required=True, multi=True),
-        params=(PROVIDER,),
+        key_param=Param(
+            "gids",
+            "Provider GID (repeat the parameter). At most 100 without authentication.",
+            required=True,
+            multi=True,
+        ),
+        params=(PROVIDER, INCLUDE_DOWNLOADS, DOWNLOADING_ONLY),
     ),
     Command(
         "GET",
@@ -388,7 +406,7 @@ GET_COMMANDS: list[Command] = [
         "Gallery by provider GID",
         TAG_GALLERIES,
         key_param=Param("gid", "Provider GID.", required=True),
-        params=(PROVIDER,),
+        params=(PROVIDER, INCLUDE_DOWNLOADS, DOWNLOADING_ONLY),
     ),
     Command("GET", "gt", handle_get_gt, "Sorted tags of a gallery", TAG_GALLERIES, key_param=_id("gt", "Gallery")),
     Command(
@@ -515,7 +533,13 @@ GET_COMMANDS: list[Command] = [
         handle_get_wanted_galleries,
         "Several wanted galleries",
         TAG_WANTED,
-        key_param=_id("wanted-galleries", "Wanted gallery", multi=True),
+        key_param=Param(
+            "wanted-galleries",
+            "Wanted gallery IDs (repeat the parameter). At most 100 without authentication.",
+            "integer",
+            True,
+            True,
+        ),
         params=(Param("include_found_galleries", "Include the found galleries."),),
     ),
     Command(
@@ -525,6 +549,7 @@ GET_COMMANDS: list[Command] = [
         "Filtered wanted gallery search",
         TAG_WANTED,
         params=WANTED_FILTERS,
+        description="Unpaginated. Without authentication, only the first 200 results are returned.",
     ),
     Command(
         "GET",
@@ -532,7 +557,7 @@ GET_COMMANDS: list[Command] = [
         handle_get_wanted_tags,
         "Wanted galleries by wanted tag",
         TAG_WANTED,
-        params=(Param("tags", "Comma-separated tags (or repeat the parameter)."),),
+        params=(WANTED_TAGS,),
     ),
     Command(
         "GET",
@@ -540,7 +565,7 @@ GET_COMMANDS: list[Command] = [
         handle_get_wanted_tags,
         "Wanted galleries by wanted tag (alias of wanted-tags)",
         TAG_WANTED,
-        params=(Param("tags", "Comma-separated tags (or repeat the parameter)."),),
+        params=(WANTED_TAGS,),
     ),
 ]
 
@@ -560,19 +585,22 @@ POST_COMMANDS: list[Command] = [
         "POST",
         "extract-archive",
         handle_post_extract_archive,
-        "Extract an archive's images",
+        "Queue extraction of an archive's images",
         TAG_READER,
         key_param=_id("extract-archive", "Archive"),
         perm="viewer.expand_archive",
+        params=(Param("resized", type="boolean", description="Extract resized images when enabled."),),
+        queues_tasks=True,
     ),
     Command(
         "POST",
         "reduce-archive",
         handle_post_reduce_archive,
-        "Remove an archive's extracted images",
+        "Queue removal of an archive's extracted images",
         TAG_READER,
         key_param=_id("reduce-archive", "Archive"),
         perm="viewer.expand_archive",
+        queues_tasks=True,
     ),
     Command(
         "POST",

@@ -666,7 +666,7 @@ def filter_archives_simple(params: dict[str, Any], authenticated=False, show_bin
                     results = results.filter(reason__icontains=reason)
         else:
             if params["reason"].startswith("-"):
-                results = results.filter(reason__icontains=params["reason"][1:])
+                results = results.exclude(reason__icontains=params["reason"][1:])
             else:
                 results = results.filter(reason__icontains=params["reason"])
     if params["uploader"]:

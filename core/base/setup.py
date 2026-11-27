@@ -341,8 +341,6 @@ class Settings:
 
         self.requests_headers: dict[str, Any] = {}
 
-        self.experimental: dict[str, Any] = {}
-
         self.providers: ProvidersDict = ProvidersDict()
 
         self._proxy: str = ""
@@ -810,8 +808,6 @@ class Settings:
 
         self._resolve_shared_fields(config)
 
-        if "experimental" in config and config["experimental"] is not None:
-            self.experimental.update(config["experimental"])
         if "matchers" in config and isinstance(config["matchers"], dict):
             self.matchers = dict(config["matchers"])
         if "downloaders" in config and isinstance(config["downloaders"], dict):

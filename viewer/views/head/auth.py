@@ -1,5 +1,6 @@
 import json
 import logging
+from datetime import timedelta
 
 from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout, update_session_auth_hash
@@ -8,6 +9,8 @@ from django.contrib.auth.models import User
 from django.http import Http404, HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import redirect, render
 from django.urls import reverse
+from django.utils import timezone
+from django.utils.cache import add_never_cache_headers
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
@@ -18,7 +21,7 @@ from viewer.forms import (
     UserChangeForm,
     UserTokenCreateForm,
 )
-from viewer.models import Archive, Profile, UserArchivePrefs
+from viewer.models import Archive, EventLog, Profile, UserArchivePrefs, UserLongLivedToken
 from viewer.utils.general import get_safe_referer, safe_redirect_back
 from viewer.utils.task_actions import htmx_redirect, is_htmx
 from viewer.utils.types import AuthenticatedHttpRequest
@@ -97,6 +100,10 @@ def change_password(request: HttpRequest) -> HttpResponse:
     return render(request, "viewer/accounts/change_password.html", {"form": form})
 
 
+# Session key holding a just-created token's secret until the profile page shows it, once.
+NEW_TOKEN_SESSION_KEY = "new_user_token"
+
+
 @login_required
 def change_profile(request: AuthenticatedHttpRequest) -> HttpResponse:
     if not hasattr(request.user, "profile"):
@@ -116,13 +123,39 @@ def change_profile(request: AuthenticatedHttpRequest) -> HttpResponse:
     else:
         user_form = UserChangeForm(instance=request.user, error_class=DivErrorList)
         profile_form = ProfileChangeForm(instance=request.user.profile, error_class=DivErrorList)
+
+    # A token created on the previous request: its secret is shown on this page load only.
+    new_token = request.session.pop(NEW_TOKEN_SESSION_KEY, None)
+
+    tokens = list(request.user.long_lived_tokens.order_by("-create_date"))
+    now = timezone.now()
+    soon = now + timedelta(days=14)
+    for token in tokens:
+        token.expires_soon = token.expire_date is not None and now < token.expire_date <= soon  # type: ignore[attr-defined]
+
+    own_events = EventLog.objects.filter(user=request.user)
     context = {
         "profile_form": profile_form,
         "user_form": user_form,
         "token_form": UserTokenCreateForm(user=request.user),
-        "tokens": request.user.long_lived_tokens.order_by("-create_date"),
+        "token_scopes": [
+            (value, *(label.split(": ", 1) if ": " in label else (label, "")))
+            for value, label in UserLongLivedToken.SCOPE_CHOICES
+        ],
+        "tokens": tokens,
+        "token_counts": {
+            "active": sum(1 for t in tokens if not t.is_expired),
+            "expired": sum(1 for t in tokens if t.is_expired),
+        },
+        "new_token": new_token,
+        "recent_events": own_events.prefetch_related("content_object", "content_type")[:6],
+        "events_last_month": own_events.filter(create_date__gte=now - timedelta(days=30)).count(),
     }
-    return render(request, "viewer/accounts/user_profile.html", context)
+    response = render(request, "viewer/accounts/user_profile.html", context)
+    if new_token:
+        # Keep the page with the secret out of the browser and back/forward caches.
+        add_never_cache_headers(response)
+    return response
 
 
 def session_settings(request: HttpRequest) -> HttpResponse:

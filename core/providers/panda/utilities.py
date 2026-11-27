@@ -58,7 +58,7 @@ def map_external_gallery_data_to_internal(gallery_data: DataDict) -> GalleryData
             internal_gallery_data.extra_provider_data.append(("parent", "text", parent_link))
 
     if "first_gid" in gallery_data:
-        internal_gallery_data.first_gallery_gid = gallery_data["first_gid"]
+        internal_gallery_data.first_gallery_gid = str(gallery_data["first_gid"])
         if "first_key" in gallery_data:
             parent_link = link_from_gid_token_fjord(gallery_data["first_gid"], gallery_data["first_key"])
             internal_gallery_data.extra_provider_data.append(("first", "text", parent_link))

@@ -1,0 +1,261 @@
+{% comment %}Script of the archive group tool (include/release_series_group.html), after Bootstrap is loaded.{% endcomment %}
+<script>
+(function () {
+  const body = document.getElementById('rs-group-body');
+  if (!body) return;
+  const url = body.dataset.url;
+  const $ = id => document.getElementById(id);
+  const loading = $('rs-group-loading'), errorEl = $('rs-group-error'), tool = $('rs-group-tool');
+  const select = $('rs-group-select'), link = $('rs-group-link'), titleInput = $('rs-group-title');
+  const rowsEl = $('rs-group-archives'), summary = $('rs-group-summary'), statusEl = $('rs-group-status');
+  const applyBtn = $('rs-group-apply');
+  let data = null;       // the series' archives and the groups
+  let group = null;      // the chosen group's entries
+  let checked = new Set();
+  let loaded = false;
+
+  function el(tag, attrs, text) {
+    const node = document.createElement(tag);
+    Object.entries(attrs || {}).forEach(([k, v]) => {
+      if (k === 'className') node.className = v; else node.setAttribute(k, v);
+    });
+    if (text !== undefined && text !== null) node.textContent = text;
+    return node;
+  }
+  function badge(text, cls, title) {
+    const node = el('span', {className: 'badge ms-1 ' + cls}, text);
+    if (title) node.title = title;
+    return node;
+  }
+  function csrf() {
+    const input = document.querySelector('input[name="csrfmiddlewaretoken"]');
+    if (input) return input.value;
+    const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+    return m ? decodeURIComponent(m[1]) : '';
+  }
+  function showError(message) {
+    errorEl.textContent = message;
+    errorEl.classList.toggle('d-none', !message);
+  }
+  function target() { return document.querySelector('input[name="rs-group-target"]:checked').value; }
+  function mode() { return document.querySelector('input[name="rs-group-mode"]:checked').value; }
+
+  async function getJson(query) {
+    const response = await fetch(url + (query || ''), {headers: {'Accept': 'application/json'}, credentials: 'same-origin'});
+    const json = await response.json().catch(() => ({error: 'Unexpected answer (' + response.status + ').'}));
+    if (!response.ok || json.error) throw new Error(json.error || ('Error ' + response.status));
+    return json;
+  }
+
+  async function load() {
+    loading.classList.remove('d-none');
+    showError('');
+    try {
+      data = await getJson('');
+    } catch (e) {
+      loading.classList.add('d-none');
+      showError(e.message);
+      return;
+    }
+    loading.classList.add('d-none');
+    loaded = true;
+    checked = new Set(data.archives.filter(a => a.suggested).map(a => a.id));
+    titleInput.value = titleInput.value || body.dataset.defaultTitle;
+    fillGroups();
+    tool.classList.remove('d-none');
+    if (!data.can_change && data.can_create) {
+      $('rs-group-target-new').checked = true;
+    }
+    if (!data.can_change && !data.can_create) {
+      showError("Creating or changing archive groups needs the archive group permissions.");
+    }
+    $('rs-group-target-existing').disabled = !data.can_change;
+    $('rs-group-target-new').disabled = !data.can_create;
+    await targetChanged();
+  }
+
+  function fillGroups(selectedId) {
+    select.innerHTML = '';
+    select.appendChild(el('option', {value: ''}, data.groups.length ? 'Choose a group...' : 'No archive groups yet'));
+    const suggestedIds = new Set(data.suggested.map(g => g.id));
+    if (data.suggested.length) {
+      const og = el('optgroup', {label: "With some of the series' archives"});
+      data.suggested.forEach(g => og.appendChild(el('option', {value: g.id}, g.title + ' (' + g.series_archives + ')')));
+      select.appendChild(og);
+    }
+    const all = el('optgroup', {label: 'All groups'});
+    data.groups.filter(g => !suggestedIds.has(g.id)).forEach(g => all.appendChild(el('option', {value: g.id}, g.title)));
+    select.appendChild(all);
+    const preselect = selectedId || (data.suggested.length ? data.suggested[0].id : '');
+    select.value = preselect ? String(preselect) : '';
+  }
+
+  async function targetChanged() {
+    const isNew = target() === 'new';
+    $('rs-group-existing').classList.toggle('d-none', isNew);
+    $('rs-group-new').classList.toggle('d-none', !isNew);
+    $('rs-group-modes').classList.toggle('d-none', isNew);
+    if (isNew) {
+      group = null;
+      render();
+    } else {
+      await loadGroup();
+    }
+  }
+
+  async function loadGroup() {
+    group = null;
+    link.classList.add('d-none');
+    showError('');
+    if (select.value) {
+      try {
+        group = (await getJson('?group=' + encodeURIComponent(select.value))).group;
+        link.href = group.url;
+        link.classList.remove('d-none');
+      } catch (e) {
+        showError(e.message);
+      }
+    }
+    render();
+  }
+
+  // What happens to each series archive and each other group entry, as update_group does it.
+  function plan() {
+    const isNew = target() === 'new';
+    const inGroup = new Set(group ? group.entries.map(e => e.id) : []);
+    const seriesIds = new Set(data.archives.map(a => a.id));
+    const m = isNew ? 'add' : mode();
+    const archives = data.archives.map(a => {
+      let state;
+      if (isNew) state = checked.has(a.id) ? 'add' : 'skip';
+      else if (inGroup.has(a.id)) state = (m === 'replace' && !checked.has(a.id)) ? 'remove' : 'keep';
+      else state = checked.has(a.id) ? 'add' : 'skip';
+      return {archive: a, state: state};
+    });
+    const others = group ? group.entries.filter(e => !seriesIds.has(e.id)) : [];
+    const othersState = m === 'replace' ? 'remove' : (m === 'merge' ? 'after' : 'keep');
+    return {archives: archives, others: others, othersState: othersState, isNew: isNew};
+  }
+
+  const STATES = {
+    add: ['will be added', 'bg-success'],
+    keep: ['in the group', 'bg-secondary'],
+    remove: ['will be removed', 'bg-danger'],
+    skip: ['', ''],
+  };
+
+  function render() {
+    const p = plan();
+    rowsEl.innerHTML = '';
+    if (!data.archives.length) {
+      const tr = el('tr');
+      tr.appendChild(el('td', {colspan: '4', className: 'dm-muted small'}, "No archives with an issue in their title found for this series."));
+      rowsEl.appendChild(tr);
+    }
+    p.archives.forEach(({archive: a, state}) => {
+      const tr = el('tr');
+      const td0 = el('td');
+      const cb = el('input', {type: 'checkbox', className: 'form-check-input', 'aria-label': 'Choose ' + a.title});
+      cb.checked = checked.has(a.id);
+      cb.addEventListener('change', () => { if (cb.checked) checked.add(a.id); else checked.delete(a.id); render(); });
+      td0.appendChild(cb);
+      tr.appendChild(td0);
+      tr.appendChild(el('td', {className: 'fw-semibold text-nowrap'}, a.issue));
+      const td2 = el('td');
+      td2.appendChild(el('a', {href: a.url, target: '_blank', rel: 'noopener'}, a.title));
+      a.flags.forEach(f => td2.appendChild(badge(f, 'bg-warning text-dark')));
+      if (a.via_gallery) td2.appendChild(badge('via its gallery', 'bg-dark border', "Its own title doesn't match the series, its gallery's does"));
+      tr.appendChild(td2);
+      const td3 = el('td', {className: 'text-end text-nowrap'});
+      if (STATES[state][0]) td3.appendChild(badge(STATES[state][0], STATES[state][1]));
+      tr.appendChild(td3);
+      rowsEl.appendChild(tr);
+    });
+
+    const othersBox = $('rs-group-others');
+    const list = $('rs-group-others-list');
+    list.innerHTML = '';
+    othersBox.classList.toggle('d-none', !p.others.length);
+    $('rs-group-others-count').textContent = p.others.length;
+    const otherLabel = {remove: ['will be removed', 'bg-danger'], after: ['moved after the series', 'bg-info text-dark'], keep: ['kept', 'bg-secondary']}[p.othersState];
+    p.others.forEach(e => {
+      const li = el('li');
+      li.appendChild(el('a', {href: e.url, target: '_blank', rel: 'noopener'}, e.title));
+      li.appendChild(badge(otherLabel[0], otherLabel[1]));
+      list.appendChild(li);
+    });
+
+    const count = s => p.archives.filter(x => x.state === s).length;
+    const added = count('add');
+    const removed = count('remove') + (p.othersState === 'remove' ? p.others.length : 0);
+    const parts = [checked.size + ' of ' + data.archives.length + ' checked', added + ' to add'];
+    if (!p.isNew && group) {
+      parts.push(count('keep') + ' already in the group');
+      if (removed) parts.push(removed + ' to remove');
+    }
+    summary.textContent = parts.join(' · ');
+
+    let disabled = false;
+    if (p.isNew) disabled = !added || !titleInput.value.trim();
+    else if (!group) disabled = true;
+    else if (mode() === 'replace') disabled = !checked.size;
+    else if (mode() === 'add') disabled = !added;
+    if (!(p.isNew ? data.can_create : data.can_change)) disabled = true;
+    applyBtn.disabled = disabled;
+    applyBtn.className = 'btn btn-sm ' + (!p.isNew && mode() === 'replace' && removed ? 'btn-danger' : 'btn-info');
+    applyBtn.querySelector('span').textContent = p.isNew ? 'Create group' : ({add: 'Add to group', merge: 'Merge and sort', replace: 'Replace group contents'})[mode()];
+  }
+
+  async function apply() {
+    const p = plan();
+    const form = new FormData();
+    if (p.isNew) {
+      form.append('action', 'create');
+      form.append('title', titleInput.value.trim());
+      if ($('rs-group-public').checked) form.append('public', '1');
+    } else {
+      form.append('action', 'update');
+      form.append('group', group.id);
+      form.append('mode', mode());
+      const removed = p.archives.filter(x => x.state === 'remove').length + (p.othersState === 'remove' ? p.others.length : 0);
+      if (removed && !window.confirm('Remove ' + removed + ' entr' + (removed === 1 ? 'y' : 'ies') + ' from "' + group.title + '"?')) return;
+    }
+    checked.forEach(id => form.append('archive', id));
+    applyBtn.disabled = true;
+    statusEl.className = 'small dm-muted';
+    statusEl.textContent = 'Saving...';
+    try {
+      const response = await fetch(url, {method: 'POST', body: form, headers: {'X-CSRFToken': csrf(), 'Accept': 'application/json'}, credentials: 'same-origin'});
+      const json = await response.json().catch(() => ({error: 'Unexpected answer (' + response.status + ').'}));
+      if (!response.ok || json.error) throw new Error(json.error || ('Error ' + response.status));
+      statusEl.className = 'small text-success';
+      statusEl.textContent = json.message + ' ';
+      statusEl.appendChild(el('a', {href: json.group.url, target: '_blank', rel: 'noopener'}, 'Open the group'));
+      // Reload, so the suggestions and the group's entries are current, and show the group just changed.
+      data = await getJson('');
+      $('rs-group-target-existing').checked = true;
+      fillGroups(json.group.id);
+      await targetChanged();
+    } catch (e) {
+      statusEl.className = 'small text-danger';
+      statusEl.textContent = e.message;
+      render();
+    }
+  }
+
+  body.addEventListener('show.bs.collapse', () => { if (!loaded) load(); });
+  document.querySelectorAll('input[name="rs-group-target"]').forEach(r => r.addEventListener('change', targetChanged));
+  document.querySelectorAll('input[name="rs-group-mode"]').forEach(r => r.addEventListener('change', render));
+  select.addEventListener('change', loadGroup);
+  titleInput.addEventListener('input', () => { if (data) render(); });
+  applyBtn.addEventListener('click', apply);
+  document.querySelectorAll('[data-rs-group-check]').forEach(btn => btn.addEventListener('click', () => {
+    const which = btn.dataset.rsGroupCheck;
+    checked = new Set(which === 'none' ? [] : data.archives.filter(a => which === 'all' || a.suggested).map(a => a.id));
+    render();
+  }));
+  if (window.location.hash === '#archive-group' && window.bootstrap) {
+    window.bootstrap.Collapse.getOrCreateInstance(body).show();
+  }
+})();
+</script>

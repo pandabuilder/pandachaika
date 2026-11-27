@@ -2,6 +2,7 @@ import io
 import os
 import tempfile
 import zipfile
+from unittest.mock import patch
 
 from django.contrib.auth.models import User
 from django.core.files import File
@@ -106,6 +107,30 @@ class ImageDownloadTests(TestCase):
             self.assertIn('attachment; filename="ext_01.jpg"', response.headers.get("Content-Disposition", ""))
             content = b"".join(response.streaming_content)
             self.assertEqual(content, raw_bytes[0])
+        finally:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+
+    def test_image_download_does_not_test_the_whole_zip(self):
+        archive, raw_bytes, tmp_path = self._create_archive_with_zip()
+        try:
+            image = archive.image_set.first()
+            with patch("zipfile.ZipFile.testzip", side_effect=AssertionError("testzip called")):
+                response = self.auth_client.get(reverse("viewer:image-download", args=[image.pk]))
+                self.assertEqual(b"".join(response.streaming_content), raw_bytes[0])
+        finally:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+
+    def test_image_download_corrupt_member_ends_the_stream(self):
+        archive, raw_bytes, tmp_path = self._create_archive_with_zip()
+        try:
+            image = archive.image_set.first()
+            with patch("zipfile.ZipExtFile.read", side_effect=zipfile.BadZipFile("Bad CRC-32")):
+                response = self.auth_client.get(reverse("viewer:image-download", args=[image.pk]))
+                self.assertEqual(response.status_code, 200)
+                with self.assertLogs("viewer.services.archive_extraction", level="ERROR"):
+                    self.assertEqual(b"".join(response.streaming_content), b"")
         finally:
             if os.path.exists(tmp_path):
                 os.unlink(tmp_path)

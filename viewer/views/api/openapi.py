@@ -284,7 +284,7 @@ def _remote_paths() -> dict[str, Any]:
                 },
                 "responses": {
                     "200": {
-                        "description": "Operations that queue a crawl also return task_id and status_url.",
+                        "description": "Operations that queue background tasks (webcrawler, match_archive, match_archive_internally) return task_id and status_url.",
                         "content": {"application/json": {"schema": {"type": "object"}}},
                     },
                     **errors,

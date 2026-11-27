@@ -281,8 +281,16 @@ class PandaLinkCaptureTests(TestCase):
         self.parser._record_and_check_processed_links([self.URL_A, self.URL_B], set())
         self.assertEqual(ProcessedLinks.objects.filter(monitored_link=self.link).count(), 2)
 
-    def test_combined_mode_records_links_as_processed(self):
+    def test_combined_mode_records_links_as_pending_until_processed(self):
+        # A single frequency run stores the new links as pending too: they are only marked as processed once their
+        # metadata was fetched, so a run that dies midway leaves them to the next run instead of losing them.
         self.parser._record_and_check_processed_links([self.URL_A], set())
+        self.assertEqual(self.pending(), {"1001"})
+        urls: set[str] = set()
+        self.parser._load_pending_links(urls)
+        self.assertEqual(urls, {self.URL_A})
+        self.parser._resolved_links = {"1001"}
+        self.parser._finish_pending_links()
         row = ProcessedLinks.objects.get(source_id="1001")
         self.assertEqual(row.status, ProcessedLinks.Status.PROCESSED)
 

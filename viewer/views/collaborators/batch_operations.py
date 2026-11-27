@@ -34,9 +34,9 @@ from viewer.models import (
     Gallery,
     Tag,
     GalleryMatchGroup,
-    GalleryMatchGroupEntry,
     GalleryGroupPossibleMatches
 )
+from viewer.services.elasticsearch_index import ElasticsearchIndexService
 from viewer.views.head import (
     gallery_filter_keys,
     filter_galleries_simple,
@@ -50,6 +50,7 @@ logger = logging.getLogger(__name__)
 
 
 @permission_required("viewer.manage_gallery")
+@ElasticsearchIndexService.batch_indexing()
 def manage_galleries(request: HttpRequest) -> HttpResponse:
     p = request.POST
     get = request.GET
@@ -106,58 +107,61 @@ def manage_galleries(request: HttpRequest) -> HttpResponse:
             results_gallery = Gallery.objects.filter(id__in=pks).order_by(preserved)
 
         if "delete_galleries" in p and request.user.has_perm("viewer.mark_delete_gallery"):
-            for gallery in results_gallery:
-                message = "Marking deleted for gallery: {}, link: {}".format(gallery.title, gallery.get_link())
-                logger.info(message)
-                messages.success(request, message)
-                gallery.mark_as_deleted()
-                event_log(
-                    request.user,
-                    "MARK_DELETE_GALLERY",
+            gallery_pks = list(results_gallery.values_list("pk", flat=True))
+            if gallery_pks:
+                client.enqueue(
+                    args=gallery_pks,
+                    task_type="gallery_batch_worker",
+                    override_options={"operation": "mark_deleted"},
+                    user=request.user,
                     reason=reason,
-                    content_object=gallery,
-                    result="success",
+                    event_action="MARK_DELETE_GALLERY",
                 )
+                message = "Queued marking {} gallery(ies) as deleted".format(len(gallery_pks))
+                logger.info("User %s: %s", request.user.username, message)
+                messages.success(request, message)
         elif "real_delete_galleries" in p and request.user.has_perm("viewer.delete_gallery"):
-            for gallery in results_gallery:
-                message = "Deleting gallery: {}, link: {}".format(gallery.title, gallery.get_link())
-                old_gallery_link = gallery.get_link()
-                logger.info(message)
-                messages.success(request, message)
-                gallery.delete()
-                event_log(
-                    request.user,
-                    "DELETE_GALLERY",
+            gallery_pks = list(results_gallery.values_list("pk", flat=True))
+            if gallery_pks:
+                client.enqueue(
+                    args=gallery_pks,
+                    task_type="gallery_batch_worker",
+                    override_options={"operation": "delete"},
+                    user=request.user,
                     reason=reason,
-                    data=old_gallery_link,
-                    result="success",
+                    event_action="DELETE_GALLERY",
                 )
+                message = "Queued deleting {} gallery(ies)".format(len(gallery_pks))
+                logger.info("User %s: %s", request.user.username, message)
+                messages.success(request, message)
         elif "publish_galleries" in p and request.user.has_perm("viewer.publish_gallery"):
-            for gallery in results_gallery:
-                message = "Publishing gallery: {}, link: {}".format(gallery.title, gallery.get_link())
-                logger.info(message)
-                messages.success(request, message)
-                gallery.set_public()
-                event_log(
-                    request.user,
-                    "PUBLISH_GALLERY",
+            gallery_pks = list(results_gallery.values_list("pk", flat=True))
+            if gallery_pks:
+                client.enqueue(
+                    args=gallery_pks,
+                    task_type="gallery_batch_worker",
+                    override_options={"operation": "publish"},
+                    user=request.user,
                     reason=reason,
-                    content_object=gallery,
-                    result="success",
+                    event_action="PUBLISH_GALLERY",
                 )
+                message = "Queued publishing {} gallery(ies)".format(len(gallery_pks))
+                logger.info("User %s: %s", request.user.username, message)
+                messages.success(request, message)
         elif "private_galleries" in p and request.user.has_perm("viewer.private_gallery"):
-            for gallery in results_gallery:
-                message = "Making private gallery: {}, link: {}".format(gallery.title, gallery.get_link())
-                logger.info(message)
-                messages.success(request, message)
-                gallery.set_private()
-                event_log(
-                    request.user,
-                    "UNPUBLISH_GALLERY",
+            gallery_pks = list(results_gallery.values_list("pk", flat=True))
+            if gallery_pks:
+                client.enqueue(
+                    args=gallery_pks,
+                    task_type="gallery_batch_worker",
+                    override_options={"operation": "private"},
+                    user=request.user,
                     reason=reason,
-                    content_object=gallery,
-                    result="success",
+                    event_action="UNPUBLISH_GALLERY",
                 )
+                message = "Queued making {} gallery(ies) private".format(len(gallery_pks))
+                logger.info("User %s: %s", request.user.username, message)
+                messages.success(request, message)
         elif "download_galleries" in p and request.user.has_perm("viewer.download_gallery"):
             for gallery in results_gallery:
                 message = "Queueing gallery: {}, link: {}".format(gallery.title, gallery.get_link())
@@ -199,23 +203,6 @@ def manage_galleries(request: HttpRequest) -> HttpResponse:
 
             galleries_update_metadata(gallery_links, gallery_providers, request.user, reason, crawler_settings)
         elif "create_gallery_match_groups" in p and request.user.has_perm("viewer.add_gallerymatchgroup"):
-            gallery_match_group_pks = []
-            for gallery in results_gallery:
-                gallery_match_group, created = GalleryMatchGroup.objects.get_or_create(galleries__in=(gallery,))
-                if created:
-                    gallery_match_group.galleries.add(gallery)
-                    gallery_match_group.save()
-                    message = "Created gallery match group: {}, galleries: {}".format(gallery_match_group.pk, [x.get_absolute_url() for x in gallery_match_group.galleries.all()])
-                    logger.info(message)
-                    messages.success(request, message)
-                    event_log(
-                        request.user, "CREATE_GALLERY_MATCH_GROUP",
-                        reason=reason, content_object=gallery_match_group, result="created"
-                    )
-                gallery_match_group_pks.append(gallery_match_group.pk)
-
-            gallery_match_groups = GalleryMatchGroup.objects.filter(pk__in=gallery_match_group_pks)
-
             if thread_exists_in_db("match_unmatched_gallery_groups_worker"):
                 return render_error(request, "Gallery Groups matching worker is already running.")
             provider = p["create_gallery_match_groups"]
@@ -229,61 +216,51 @@ def manage_galleries(request: HttpRequest) -> HttpResponse:
             except ValueError:
                 max_matches = 10
 
-            client.enqueue_matching_task(
-                task_type="match_unmatched_gallery_groups_worker",
-                args=gallery_match_groups,
-                matching_kwargs={
-                    "cutoff": cutoff,
-                    "max_matches": max_matches,
-                    "providers": (provider,),
-                    "string_attributes_to_match": methods,
-                },
-                user=request.user,
-            )
-            messages.success(
-                request,
-                "Looking for possible matches in gallery database "
-                "for Gallery Groups (cutoff: {}, max matches: {}) "
-                'using provider filter "{}" and methods filter: {}'.format(cutoff, max_matches, provider, methods),
-            )
+            gallery_pks = list(results_gallery.values_list("pk", flat=True))
+            if gallery_pks:
+                client.enqueue(
+                    args=gallery_pks,
+                    task_type="gallery_batch_worker",
+                    override_options={
+                        "operation": "create_and_match_groups",
+                        "matching_kwargs": {
+                            "cutoff": cutoff,
+                            "max_matches": max_matches,
+                            "providers": [provider],
+                            "string_attributes_to_match": list(methods),
+                        },
+                    },
+                    user=request.user,
+                    reason=reason,
+                    event_action="CREATE_GALLERY_MATCH_GROUP",
+                )
+                messages.success(
+                    request,
+                    "Queued creating Gallery Match Groups and looking for possible matches "
+                    "(cutoff: {}, max matches: {}) "
+                    'using provider filter "{}" and methods filter: {}'.format(cutoff, max_matches, provider, methods),
+                )
         elif "delete_gallery_match_groups" in p and request.user.has_perm("viewer.delete_gallerymatchgroup"):
             delete_result = GalleryMatchGroup.objects.filter(galleries__in=results_gallery).delete()
             logger.info("User {}: Deleting {} Gallery Match Groups for galleries".format(request.user.username, delete_result[0]))
             messages.success(request, "Clearing possible matches.")
         elif "auto_select_first_match" in p:
-            for gallery in results_gallery:
-                try:
-                    gallery_match_group_first = GalleryMatchGroup.objects.filter(galleries__in=(gallery,)).first()
-                    if gallery_match_group_first:
-                        gallery_match = gallery_match_group_first.possible_matches.first()
-                        if gallery_match:
-                            gallery_match_group_first.add_gallery(gallery_match)
-                            gallery_match_group_first.save()
-                            GalleryGroupPossibleMatches.objects.filter(
-                                gallery_match_group=gallery_match_group_first
-                            ).delete()
-
-                            logger.info(
-                                "User: {}: Gallery {} ({}) was matched in a group with gallery {} ({}).".format(
-                                    request.user.username,
-                                    gallery,
-                                    reverse("viewer:gallery", args=(gallery.pk,)),
-                                    gallery_match,
-                                    reverse("viewer:gallery", args=(gallery_match.pk,)),
-                                )
-                            )
-                            event_log(
-                                request.user,
-                                "ADD_GALLERY_TO_MATCH_GROUP",
-                                # reason=user_reason,
-                                data=reverse("viewer:gallery", args=(gallery_match.pk,)),
-                                content_object=gallery_match,
-                                result="matched",
-                            )
-                except ValueError:
-                    return safe_redirect_back(request, request.get_full_path())
-
-            messages.success(request, "Adding the first possible match to the Match Group.")
+            gallery_pks = list(results_gallery.values_list("pk", flat=True))
+            if gallery_pks:
+                client.enqueue(
+                    args=gallery_pks,
+                    task_type="gallery_batch_worker",
+                    override_options={"operation": "auto_select_first_match"},
+                    user=request.user,
+                    reason=reason,
+                    event_action="ADD_GALLERY_TO_MATCH_GROUP",
+                )
+                messages.success(
+                    request,
+                    "Queued adding the first possible match to the Match Group for {} gallery(ies).".format(
+                        len(gallery_pks)
+                    ),
+                )
         if json_request:
             return HttpResponse("", content_type="application/json; charset=utf-8")
         return HttpResponseRedirect(request.get_full_path())
@@ -471,39 +448,21 @@ def gallery_match_groups_possibles(request: HttpRequest) -> HttpResponse:
             logger.info("User {}: Deleting {} Gallery Match Groups for galleries".format(request.user.username, delete_result[0]))
             messages.success(request, "Deleted the match groups of the selected galleries.")
         elif "auto_select_first_match" in p:
-            for gallery in galleries:
-                try:
-                    gallery_match_group_first = GalleryMatchGroup.objects.filter(galleries__in=(gallery,)).first()
-                    if gallery_match_group_first:
-                        gallery_match = gallery_match_group_first.possible_matches.first()
-                        if gallery_match:
-                            gallery_match_group_first.add_gallery(gallery_match)
-                            gallery_match_group_first.save()
-                            GalleryGroupPossibleMatches.objects.filter(
-                                gallery_match_group=gallery_match_group_first
-                            ).delete()
-
-                            logger.info(
-                                "User: {}: Gallery {} ({}) was matched in a group with gallery {} ({}).".format(
-                                    request.user.username,
-                                    gallery,
-                                    reverse("viewer:gallery", args=(gallery.pk,)),
-                                    gallery_match,
-                                    reverse("viewer:gallery", args=(gallery_match.pk,)),
-                                )
-                            )
-                            event_log(
-                                request.user,
-                                "ADD_GALLERY_TO_MATCH_GROUP",
-                                # reason=user_reason,
-                                data=reverse("viewer:gallery", args=(gallery_match.pk,)),
-                                content_object=gallery_match,
-                                result="matched",
-                            )
-                except ValueError:
-                    return safe_redirect_back(request, request.get_full_path())
-
-            messages.success(request, "Adding the first possible match to the Match Group.")
+            gallery_pks = list(galleries.values_list("pk", flat=True))
+            if gallery_pks:
+                client.enqueue(
+                    args=gallery_pks,
+                    task_type="gallery_batch_worker",
+                    override_options={"operation": "auto_select_first_match"},
+                    user=request.user,
+                    event_action="ADD_GALLERY_TO_MATCH_GROUP",
+                )
+                messages.success(
+                    request,
+                    "Queued adding the first possible match to the Match Group for {} gallery(ies).".format(
+                        len(gallery_pks)
+                    ),
+                )
 
         # Post/redirect/get: reloading the page must not repeat the action.
         return HttpResponseRedirect(request.get_full_path())
@@ -777,58 +736,61 @@ def missing_archives_for_galleries(request: HttpRequest) -> HttpResponse:
         results_gallery = Gallery.objects.filter(id__in=pks).order_by(preserved)
 
         if "delete_galleries" in p and request.user.has_perm("viewer.mark_delete_gallery"):
-            for gallery in results_gallery:
-                message = "Marking deleted for gallery: {}, link: {}".format(gallery.title, gallery.get_link())
-                logger.info(message)
-                messages.success(request, message)
-                gallery.mark_as_deleted()
-                event_log(
-                    request.user,
-                    "MARK_DELETE_GALLERY",
+            gallery_pks = list(results_gallery.values_list("pk", flat=True))
+            if gallery_pks:
+                client.enqueue(
+                    args=gallery_pks,
+                    task_type="gallery_batch_worker",
+                    override_options={"operation": "mark_deleted"},
+                    user=request.user,
                     reason=reason,
-                    content_object=gallery,
-                    result="success",
+                    event_action="MARK_DELETE_GALLERY",
                 )
+                message = "Queued marking {} gallery(ies) as deleted".format(len(gallery_pks))
+                logger.info("User %s: %s", request.user.username, message)
+                messages.success(request, message)
         elif "real_delete_galleries" in p and request.user.has_perm("viewer.delete_gallery"):
-            for gallery in results_gallery:
-                message = "Deleting gallery: {}, link: {}".format(gallery.title, gallery.get_link())
-                old_gallery_link = gallery.get_link()
-                logger.info(message)
-                messages.success(request, message)
-                gallery.delete()
-                event_log(
-                    request.user,
-                    "DELETE_GALLERY",
+            gallery_pks = list(results_gallery.values_list("pk", flat=True))
+            if gallery_pks:
+                client.enqueue(
+                    args=gallery_pks,
+                    task_type="gallery_batch_worker",
+                    override_options={"operation": "delete"},
+                    user=request.user,
                     reason=reason,
-                    data=old_gallery_link,
-                    result="success",
+                    event_action="DELETE_GALLERY",
                 )
+                message = "Queued deleting {} gallery(ies)".format(len(gallery_pks))
+                logger.info("User %s: %s", request.user.username, message)
+                messages.success(request, message)
         elif "publish_galleries" in p and request.user.has_perm("viewer.publish_gallery"):
-            for gallery in results_gallery:
-                message = "Publishing gallery: {}, link: {}".format(gallery.title, gallery.get_link())
-                logger.info(message)
-                messages.success(request, message)
-                gallery.set_public()
-                event_log(
-                    request.user,
-                    "PUBLISH_GALLERY",
+            gallery_pks = list(results_gallery.values_list("pk", flat=True))
+            if gallery_pks:
+                client.enqueue(
+                    args=gallery_pks,
+                    task_type="gallery_batch_worker",
+                    override_options={"operation": "publish"},
+                    user=request.user,
                     reason=reason,
-                    content_object=gallery,
-                    result="success",
+                    event_action="PUBLISH_GALLERY",
                 )
+                message = "Queued publishing {} gallery(ies)".format(len(gallery_pks))
+                logger.info("User %s: %s", request.user.username, message)
+                messages.success(request, message)
         elif "private_galleries" in p and request.user.has_perm("viewer.private_gallery"):
-            for gallery in results_gallery:
-                message = "Making private gallery: {}, link: {}".format(gallery.title, gallery.get_link())
-                logger.info(message)
-                messages.success(request, message)
-                gallery.set_private()
-                event_log(
-                    request.user,
-                    "UNPUBLISH_GALLERY",
+            gallery_pks = list(results_gallery.values_list("pk", flat=True))
+            if gallery_pks:
+                client.enqueue(
+                    args=gallery_pks,
+                    task_type="gallery_batch_worker",
+                    override_options={"operation": "private"},
+                    user=request.user,
                     reason=reason,
-                    content_object=gallery,
-                    result="success",
+                    event_action="UNPUBLISH_GALLERY",
                 )
+                message = "Queued making {} gallery(ies) private".format(len(gallery_pks))
+                logger.info("User %s: %s", request.user.username, message)
+                messages.success(request, message)
         elif "download_galleries" in p and request.user.has_perm("viewer.download_gallery"):
             for gallery in results_gallery:
                 message = "Queueing gallery: {}, link: {}".format(gallery.title, gallery.get_link())
@@ -942,29 +904,27 @@ def repeated_galleries_by_field(request: HttpRequest) -> HttpResponse:
             pks = []
             for k in p:
                 if k.startswith("sel-"):
-                    # k, pk = k.split('-')
-                    # results[pk][k] = v
                     v_keys = [int(x) for x in p.getlist(k)]
                     pks.extend(v_keys)
-            results_gallery = Gallery.objects.filter(id__in=pks).order_by("-create_date")
-
-            for gallery in results_gallery:
-                message = "Removing gallery: {}, link: {}".format(gallery.title, gallery.get_link())
-                logger.info(message)
-                messages.success(request, message)
-                gallery.mark_as_deleted()
-
-                event_log(
-                    request.user, "MARK_DELETE_GALLERY", reason=user_reason, content_object=gallery, result="deleted"
+            gallery_pks = list(Gallery.objects.filter(id__in=pks).order_by("-create_date").values_list("pk", flat=True))
+            if gallery_pks:
+                client.enqueue(
+                    args=gallery_pks,
+                    task_type="gallery_batch_worker",
+                    override_options={"operation": "mark_deleted", "event_result": "deleted"},
+                    user=request.user,
+                    reason=user_reason,
+                    event_action="MARK_DELETE_GALLERY",
                 )
+                message = "Queued marking {} gallery(ies) as deleted".format(len(gallery_pks))
+                logger.info("User %s: %s", request.user.username, message)
+                messages.success(request, message)
         elif "create_gallery_match_groups" in p and request.user.has_perm("viewer.add_gallerymatchgroup"):
             groups = []
             pks = []
             order_by_pk = {}
             for k in p:
                 if k.startswith("sel-"):
-                    # k, pk = k.split('-')
-                    # results[pk][k] = v
                     v_keys = [int(x) for x in p.getlist(k)]
                     groups.append(v_keys)
                     pks.extend(v_keys)
@@ -973,28 +933,23 @@ def repeated_galleries_by_field(request: HttpRequest) -> HttpResponse:
                     if k_value is not None:
                         order_by_pk[int(k.replace("ord-", ""))] = int(k_value)
 
-            results_gallery = Gallery.objects.filter(id__in=pks)
-            gallery_mappings = {x.pk: x for x in results_gallery}
-
-            gallery_groups = [sorted([gallery_mappings[y] for y in x], key=lambda x: order_by_pk[x.pk]) for x in groups]
-
-            for gallery_group in gallery_groups:
-                GalleryMatchGroup.objects.filter(galleries__in=gallery_group).delete()
-                gallery_match_group = GalleryMatchGroup()
-                gallery_match_group.save()
-                for count, gallery in enumerate(gallery_group, start=1):
-                    gallery_match_group_entry, _ = GalleryMatchGroupEntry.objects.update_or_create(
-                        gallery=gallery,
-                        defaults={"gallery_match_group": gallery_match_group, "gallery_position": count}
-                    )
-                # Save again to make sure it gets the title
-                gallery_match_group.save()
-                message = "Created gallery match group: {}, galleries: {}".format(gallery_match_group.pk, [x.get_absolute_url() for x in gallery_match_group.galleries.all()])
-                logger.info(message)
-                messages.success(request, message)
-                event_log(
-                    request.user, "CREATE_GALLERY_MATCH_GROUP", reason=user_reason, content_object=gallery_match_group, result="created"
+            ordered_groups = [
+                sorted(group, key=lambda gid: order_by_pk.get(gid, 0))
+                for group in groups
+                if group
+            ]
+            if ordered_groups:
+                client.enqueue(
+                    args=list(dict.fromkeys(pks)),
+                    task_type="gallery_batch_worker",
+                    override_options={"operation": "create_match_groups", "groups": ordered_groups},
+                    user=request.user,
+                    reason=user_reason,
+                    event_action="CREATE_GALLERY_MATCH_GROUP",
                 )
+                message = "Queued creating {} gallery match group(s)".format(len(ordered_groups))
+                logger.info("User %s: %s", request.user.username, message)
+                messages.success(request, message)
 
         return HttpResponseRedirect(request.get_full_path())
 

@@ -301,6 +301,8 @@
                         <span class="card-field-title">First:</span>
                         {% if gallery.first_gallery %}
                           <a href="{% url 'viewer:gallery' gallery.first_gallery.id %}">{{ gallery.first_gallery }}</a>
+                        {% elif gallery.first_gallery_gid %}
+                          <span class="text-secondary">gid {{ gallery.first_gallery_gid }} (not in the database)</span>
                         {% else %}
                           <span class="text-secondary">None</span>
                         {% endif %}
@@ -314,7 +316,11 @@
                   <td>{{ gallery.get_origin_display }}</td>
                 </tr>
                 <tr>
-                  <th>Status Reason</th>
+                  <th>Status</th>
+                  <td>{{ gallery.get_status_display }}</td>
+                </tr>
+                <tr>
+                  <th>Reason</th>
                   <td>{{ gallery.reason|default:"None" }}</td>
                 </tr>
                 <tr>

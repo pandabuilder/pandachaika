@@ -9,12 +9,10 @@ import uuid
 import zipfile
 import zlib
 from collections import Counter
-from datetime import timezone
 from operator import itemgetter
 from os.path import join as pjoin
 from urllib.parse import quote
 
-import elasticsearch
 from PIL import Image as PImage
 from PIL import ImageFile
 from django.conf import settings
@@ -43,7 +41,7 @@ from viewer.models.change_log import ARCHIVE_TRACKED_FIELDS, TrackedChangesMixin
 from viewer.models.common import EMPTY_TITLE, IMAGE_PHASH_BLACK, IMAGE_PHASH_WHITE, ItemProperties, fs
 from viewer.models.gallery import Gallery
 from viewer.models.tag import SortedTagList, Tag
-from viewer.services import CompareObjectsService
+from viewer.services import CompareObjectsService, ElasticsearchIndexMixin
 from viewer.utils import image_processing
 from viewer.utils.tags import sort_tags, sort_tags_str
 
@@ -110,6 +108,9 @@ class ArchiveManager(models.Manager["Archive"]):
 
     def filter_by_missing_file_info(self) -> ArchiveQuerySet:
         return self.get_queryset().filter(crc32="")
+
+    def filter_by_missing_thumbnails(self) -> ArchiveQuerySet:
+        return self.get_queryset().filter(thumbnail="", file_deleted=False)
 
     def filter_by_authenticated_status(self, authenticated: bool, **kwargs: typing.Any) -> ArchiveQuerySet:
         if authenticated:
@@ -184,7 +185,10 @@ class ArchiveManager(models.Manager["Archive"]):
 
 
 
-class Archive(TrackedChangesMixin, models.Model):
+class Archive(ElasticsearchIndexMixin, TrackedChangesMixin, models.Model):
+    es_autorefresh_setting = "ES_AUTOREFRESH"
+    es_select_related = ("gallery",)
+    es_prefetch_related = ("tags",)
 
     ORIGIN_DEFAULT = 1
     ORIGIN_ACCEPT_SUBMITTED = 2
@@ -346,105 +350,21 @@ class Archive(TrackedChangesMixin, models.Model):
             ),
         ]
 
-    def es_repr(self) -> DataDict:
-        data = {}
-        mapping = getattr(self._meta, "es_mapping")
-        data["_id"] = self.pk
-        for field_name in mapping["properties"].keys():
-            data[field_name] = self.field_es_repr(field_name)
-        return data
-
-    def field_es_repr(self, field_name: str) -> typing.Any:
-        config = getattr(self._meta, "es_mapping")["properties"][field_name]
-        if hasattr(self, "get_es_%s" % field_name):
-            field_es_value = getattr(self, "get_es_%s" % field_name)()
-        else:
-            if config["type"] == "object":
-                related_object = getattr(self, field_name)
-                if related_object:
-                    field_es_value = {"_id": related_object.pk}
-                    for prop in config["properties"].keys():
-                        field_es_value[prop] = getattr(related_object, prop)
-                else:
-                    field_es_value = None
-            else:
-                field_es_value = getattr(self, field_name)
-        return field_es_value
-
     def get_es_title(self) -> str:
         return self.best_title
 
-    def get_es_title_complete(self) -> DataDict:
-        title_input = []
-        if self.title:
-            title_input.append(self.title)
-        if self.title_jpn:
-            title_input.append(self.title_jpn)
-        return {
-            "input": title_input,
-        }
-
-    def get_es_title_suggest(self) -> list[str]:
-        title_input = []
-        if self.title:
-            title_input.append(self.title)
-        if self.title_jpn:
-            title_input.append(self.title_jpn)
-        return title_input
-
-    def get_es_size(self) -> int | None:
-        return self.filesize
-
     def get_es_category(self) -> str | None:
-        data = None
         if self.gallery:
-            data = self.gallery.category
-        return data
-
-    def get_es_image_count(self) -> int | None:
-        return self.filecount
+            return self.gallery.category
+        return None
 
     def get_es_original_date(self) -> str | None:
-        data = None
-        if self.gallery and self.gallery.posted:
-            data = self.gallery.posted.replace(tzinfo=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S%z")
-        return data
+        if self.gallery:
+            return self._format_es_datetime(self.gallery.posted)
+        return None
 
     def get_es_public_date(self) -> str | None:
-        if self.public_date:
-            return self.public_date.replace(tzinfo=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S%z")
-        else:
-            return None
-
-    def get_es_create_date(self) -> str | None:
-        if self.create_date:
-            return self.create_date.replace(tzinfo=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S%z")
-        else:
-            return None
-
-    def get_es_tags(self) -> list[DataDict]:
-        data: list[DataDict] = []
-        if self.tags.exists():
-            data += [{"scope": c.scope, "name": c.name, "full": str(c)} for c in self.tags.all()]
-        return data
-
-    def get_es_tag_names(self) -> list[str]:
-        data: list[str] = []
-        if self.tags.exists():
-            data += [c.name for c in self.tags.all()]
-        return data
-
-    def get_es_tag_scopes(self) -> list[str]:
-        data: list[str] = []
-        if self.tags.exists():
-            data += [c.scope for c in self.tags.all()]
-        return data
-
-    def get_es_thumbnail(self) -> str | None:
-        if self.thumbnail:
-            return self.thumbnail.url
-        else:
-            return None
+        return self._format_es_datetime(self.public_date)
 
     def __str__(self) -> str:
         return self.title or self.title_jpn or ""
@@ -564,8 +484,8 @@ class Archive(TrackedChangesMixin, models.Model):
             return "unknown", 0
 
     def set_public(self, reason: str = "", skip_zip_check: bool = False) -> bool:
-
-        if not self.has_zipped_file() or not self.crc32:
+        """Publish the archive and its galleries. Archives in the Recycle Bin, or without a file, can't be."""
+        if self.binned or not self.has_zipped_file() or not self.crc32:
             return False
         activity_cb = getattr(self, "_activity_callback", None)
         if callable(activity_cb):
@@ -598,9 +518,10 @@ class Archive(TrackedChangesMixin, models.Model):
         return True
 
     def set_private(self, reason: str = "") -> None:
+        """Unpublish the archive and its galleries.
 
-        if not self.has_zipped_file() or not self.crc32:
-            return
+        Unlike set_public, this doesn't need the file: binned or deleted archives must still be hidden.
+        """
         self.public = False
         self.public_date = None
         if reason:
@@ -810,62 +731,8 @@ class Archive(TrackedChangesMixin, models.Model):
     def delete(self, *args: typing.Any, **kwargs: typing.Any) -> tuple[int, dict[str, int]]:
         prev_pk = self.pk
         deleted = super(Archive, self).delete(*args, **kwargs)
-        if settings.ES_CLIENT and settings.ES_AUTOREFRESH and prev_pk is not None:
-            es_index = getattr(self._meta, "es_index_name")
-
-            def _delete_from_es() -> None:
-                if not settings.ES_CLIENT:
-                    return
-                try:
-                    settings.ES_CLIENT.delete(
-                        index=es_index, id=str(prev_pk), refresh=True
-                    )
-                except elasticsearch.exceptions.NotFoundError:
-                    pass
-
-            transaction.on_commit(_delete_from_es)
+        self.schedule_index_delete(prev_pk)
         return deleted
-
-    def update_index(self) -> None:
-        if settings.ES_CLIENT and settings.ES_AUTOREFRESH and self.pk is not None:
-            if (settings.ES_ONLY_INDEX_PUBLIC and self.public) or not settings.ES_ONLY_INDEX_PUBLIC:
-                payload = self.es_repr()
-                del payload["_id"]
-                es_index = getattr(self._meta, "es_index_name")
-                try:
-                    settings.ES_CLIENT.update(
-                        index=es_index,
-                        id=str(self.pk),
-                        refresh=True,
-                        doc=payload,
-                    )
-                except elasticsearch.exceptions.NotFoundError:
-                    settings.ES_CLIENT.create(
-                        index=es_index,
-                        id=str(self.pk),
-                        refresh=True,
-                        document=payload,
-                    )
-
-    def schedule_index_update(self) -> None:
-        if not (settings.ES_CLIENT and settings.ES_AUTOREFRESH):
-            return
-        if settings.ES_ONLY_INDEX_PUBLIC and not self.public:
-            return
-        if self.pk is None:
-            return
-        conn = transaction.get_connection()
-        key = (self._meta.label, self.pk)
-        if conn.in_atomic_block and any(
-            getattr(func, "_es_index_key", None) == key for _, func, _ in conn.run_on_commit
-        ):
-            return
-
-        def _on_commit() -> None:
-            self.update_index()
-
-        setattr(_on_commit, "_es_index_key", key)
-        transaction.on_commit(_on_commit)
 
     def simple_save(self, *args: typing.Any, **kwargs: typing.Any) -> None:
         super(Archive, self).save(*args, **kwargs)

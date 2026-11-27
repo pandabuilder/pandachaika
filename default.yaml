@@ -912,8 +912,9 @@ retention:
   processed_links_days: 180
 
   # Days to retain Gallery/Archive change log entries (recorded field and tag changes).
-  # 0 to disable pruning for this entity. Default: 90
-  history_days: 90
+  # Only real changes are stored, so keeping them is cheap.
+  # 0 to disable pruning for this entity (keep them forever). Default: 0
+  history_days: 0
 
   # Days past expiry to retain expired Django sessions (django_session).
   # 0 to disable pruning for this entity. Default: 1

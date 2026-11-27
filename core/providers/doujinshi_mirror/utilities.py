@@ -149,20 +149,21 @@ def clean_title_query(text: str) -> str:
     return " ".join(text.replace('"', " ").replace("$", " ").split())
 
 
-def search_api_request(url: str, base: str) -> tuple[str, dict[str, str]] | None:
+def search_api_request(url: str, base: str, *, clean_query: bool = False) -> tuple[str, dict[str, str]] | None:
     """The API request (URL, query parameters) of a search page on the mirror, None if it's not one.
 
     Search pages are the frontend's book lists (``#/books?...``, ``#/item/<type>/<id>``) and the API's book searches
-    (``api/v1/books?...``, ``api/v1/items/<type>/<id>/books?...``). Their filters are the API's, so they pass as is,
-    except the title query, cleaned with :func:`clean_title_query`.
+    (``api/v1/books?...``, ``api/v1/items/<type>/<id>/books?...``). Their filters are the API's, so they pass as is.
+    Pass ``clean_query=True`` for backlog search URLs whose title query may contain other sites' search syntax.
     """
     request = _search_api_request(url, base)
     if request is None:
         return None
     api_url, params = request
-    for name in TITLE_QUERY_PARAMS:
-        if name in params:
-            params[name] = clean_title_query(params[name])
+    if clean_query:
+        for name in TITLE_QUERY_PARAMS:
+            if name in params:
+                params[name] = clean_title_query(params[name])
     return api_url, params
 
 

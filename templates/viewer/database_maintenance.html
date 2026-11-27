@@ -339,21 +339,8 @@
                           Dry Run (simulate without deleting)
                         </label>
                       </div>
-                      <div class="mb-3">
-                        <label class="form-label text-light">Execution Mode:</label>
-                        <div class="form-check">
-                          <input class="form-check-input" type="radio" name="action" id="execBg{{ entity.key }}" value="prune_background" checked>
-                          <label class="form-check-label text-light" for="execBg{{ entity.key }}">
-                            Background Task (Recommended - non-blocking, dispatched to worker queue)
-                          </label>
-                        </div>
-                        <div class="form-check">
-                          <input class="form-check-input" type="radio" name="action" id="execNow{{ entity.key }}" value="prune_immediate">
-                          <label class="form-check-label text-light" for="execNow{{ entity.key }}">
-                            Immediate (Synchronous web request)
-                          </label>
-                        </div>
-                      </div>
+                      <input type="hidden" name="action" value="prune_background">
+                      <div class="form-text text-muted">Runs as a non-blocking background worker task.</div>
                     </div>
                     <div class="modal-footer border-secondary">
                       <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -401,21 +388,8 @@
                 Dry Run (simulate without deleting)
               </label>
             </div>
-            <div class="mb-3">
-              <label class="form-label text-light">Execution Mode:</label>
-              <div class="form-check">
-                <input class="form-check-input" type="radio" name="action" id="execBgAll" value="prune_background" checked>
-                <label class="form-check-label text-light" for="execBgAll">
-                  Background Task (Recommended - non-blocking, dispatched to worker queue)
-                </label>
-              </div>
-              <div class="form-check">
-                <input class="form-check-input" type="radio" name="action" id="execNowAll" value="prune_immediate">
-                <label class="form-check-label text-light" for="execNowAll">
-                  Immediate (Synchronous web request)
-                </label>
-              </div>
-            </div>
+            <input type="hidden" name="action" value="prune_background">
+            <div class="form-text text-muted">Runs as a non-blocking background worker task.</div>
           </div>
           <div class="modal-footer border-secondary">
             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>

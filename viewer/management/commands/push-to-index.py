@@ -1,9 +1,9 @@
-
 from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.core.paginator import Paginator
 
 from viewer.models import Archive, Gallery
+from viewer.services.elasticsearch_index import ElasticsearchIndexService
 from viewer.utils.elasticsearch import ES_MATCH_MAPPING
 
 crawler_settings = settings.CRAWLER_SETTINGS
@@ -14,12 +14,7 @@ class Command(BaseCommand):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        from elasticsearch import Elasticsearch
-
-        self.es_client = Elasticsearch(
-            [crawler_settings.elasticsearch.url],
-            request_timeout=crawler_settings.elasticsearch.timeout,
-        )
+        self.es_client = ElasticsearchIndexService.create_client()
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -86,97 +81,46 @@ class Command(BaseCommand):
             self.push_db_to_index_model(Gallery, options["bulk_size"])
 
     def recreate_match_index_model(self):
-
-        from elasticsearch.client import IndicesClient
-
-        indices_client = IndicesClient(client=self.es_client)
-        index_name = crawler_settings.elasticsearch.match_index_name
-        if indices_client.exists(index=index_name):
-            indices_client.delete(index=index_name)
-        indices_client.create(index=index_name)
-        indices_client.close(index=index_name)
-        indices_client.put_settings(
-            index=index_name,
-            body={
-                "index": {"max_result_window": settings.MAX_RESULT_WINDOW},
-                "analysis": {
-                    "filter": {"edge_ngram_filter": {"type": "edge_ngram", "min_gram": 2, "max_gram": 20}},
-                    "analyzer": {
-                        "edge_ngram_analyzer": {
-                            "type": "custom",
-                            "tokenizer": "standard",
-                            "filter": ["lowercase", "edge_ngram_filter"],
-                        }
-                    },
-                },
-            },
+        ElasticsearchIndexService.recreate_index(
+            crawler_settings.elasticsearch.match_index_name,
+            ES_MATCH_MAPPING,
+            client=self.es_client,
         )
-
-        indices_client.put_mapping(
-            body=ES_MATCH_MAPPING,
-            index=index_name,
-        )
-        indices_client.open(index=index_name)
 
     def recreate_index_model(self, model: type[Gallery] | type[Archive]):
-
-        from elasticsearch.client import IndicesClient
-
-        indices_client = IndicesClient(client=self.es_client)
-        index_name = getattr(model._meta, "es_index_name")
-        if indices_client.exists(index=index_name):
-            indices_client.delete(index=index_name)
-        indices_client.create(index=index_name)
-        indices_client.close(index=index_name)
-        indices_client.put_settings(
-            index=index_name,
-            body={
-                "index": {"max_result_window": settings.MAX_RESULT_WINDOW},
-                "analysis": {
-                    "filter": {"edge_ngram_filter": {"type": "edge_ngram", "min_gram": 2, "max_gram": 20}},
-                    "analyzer": {
-                        "edge_ngram_analyzer": {
-                            "type": "custom",
-                            "tokenizer": "standard",
-                            "filter": ["lowercase", "edge_ngram_filter"],
-                        }
-                    },
-                },
-            },
-        )
-        indices_client.put_mapping(
-            body=getattr(model._meta, "es_mapping"),
-            index=index_name,
-        )
-        indices_client.open(index=index_name)
+        ElasticsearchIndexService.recreate_model_index(model, client=self.es_client)
 
     def push_db_to_index_model(self, model: type[Gallery] | type[Archive], bulk_size: int = 0):
-
-        from elasticsearch.helpers import bulk
-
-        if settings.ES_ONLY_INDEX_PUBLIC:
-            query = model.objects.filter(public=True).prefetch_related("tags").order_by("-pk")
-        else:
-            query = model.objects.all().prefetch_related("tags").order_by("-pk")
+        query = ElasticsearchIndexService.get_queryset_for_indexing(model, order_by_pk_desc=True)
 
         if not bulk_size:
-            data = [self.convert_for_bulk(s, "create") for s in query]
-            bulk(client=self.es_client, actions=data, stats_only=True, raise_on_error=False)
+            ElasticsearchIndexService.bulk_index(
+                query,
+                op_type="create",
+                doc_as_upsert=False,
+                client=self.es_client,
+                force=True,
+                respect_public_only=False,
+            )
         else:
             paginator = Paginator(query, bulk_size)
 
             for page_number in paginator.page_range:
                 self.stdout.write("Bulk sending page {} of {}.".format(page_number, paginator.num_pages))
                 page = paginator.page(page_number)
-                data = [self.convert_for_bulk(s, "create") for s in page]
-
-                bulk(client=self.es_client, actions=data, stats_only=True, raise_on_error=False)
+                ElasticsearchIndexService.bulk_index(
+                    page,
+                    op_type="create",
+                    doc_as_upsert=False,
+                    chunk_size=bulk_size,
+                    client=self.es_client,
+                    force=True,
+                    respect_public_only=False,
+                )
 
     def convert_for_bulk(self, django_object, action=None):
-        data = django_object.es_repr()
-        metadata = {
-            "_op_type": action,
-            "_index": django_object._meta.es_index_name,
-        }
-        data.update(**metadata)
-        return data
+        return ElasticsearchIndexService.to_bulk_action(
+            django_object,
+            op_type=action or "index",
+            doc_as_upsert=False,
+        )

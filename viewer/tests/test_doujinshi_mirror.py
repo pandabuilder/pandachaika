@@ -204,6 +204,22 @@ class UtilitiesTests(MirrorSettingsMixin, SimpleTestCase):
             utilities.search_api_request(MIRROR + "api/v1/items/author/1/books?sort=released", MIRROR),
             (MIRROR + "api/v1/items/author/1/books", {"sort": "released"}),
         )
+        # General link parsing keeps query parameters verbatim; only clean_query=True strips foreign syntax.
+        self.assertEqual(
+            utilities.search_api_request(
+                MIRROR + "api/v1/books?q=hana-man+vol&per_page=48&not_collections=COMIC HANA-MAN GOLD", MIRROR
+            ),
+            (books, {"q": "hana-man vol", "per_page": "48", "not_collections": "COMIC HANA-MAN GOLD"}),
+        )
+        raw_query_url = MIRROR + 'api/v1/books?q="COMIC LO" -language:translated$'
+        self.assertEqual(
+            utilities.search_api_request(raw_query_url, MIRROR),
+            (books, {"q": '"COMIC LO" -language:translated$'}),
+        )
+        self.assertEqual(
+            utilities.search_api_request(raw_query_url, MIRROR, clean_query=True),
+            (books, {"q": "COMIC LO"}),
+        )
         for url in (
             MIRROR + "#/book/123",
             MIRROR + "api/v1/books/123",
@@ -287,8 +303,17 @@ class ParserTests(MirrorSettingsMixin, TestCase):
         self.assertEqual([c.args[1]["params"]["page"] for c in web_request.call_args_list], [1, 2])
         self.assertEqual(web_request.call_args.args[1]["params"]["circle"], "PLANT")
 
-        with mock.patch.object(Parser, "web_request", side_effect=[FakeResponse({"results": [book(4)]})]):
-            self.assertEqual(self.parser.links_from_search_page(MIRROR + "#/books?q=a"), [MIRROR + "#/book/4"])
+        with mock.patch.object(Parser, "web_request", side_effect=[FakeResponse({"results": [book(4)]})]) as web_request:
+            found = list(self.parser.search_pages(MIRROR + 'api/v1/books?q="hana-man" -extra$'))
+        self.assertEqual([[x.gid for x in page] for page in found], [["mugi-B4"]])
+        self.assertEqual(web_request.call_args.args[1]["params"]["q"], '"hana-man" -extra$')
+
+        with mock.patch.object(Parser, "web_request", side_effect=[FakeResponse({"results": [book(4)]})]) as web_request:
+            self.assertEqual(
+                self.parser.links_from_search_page(MIRROR + '#/books?q="COMIC LO" -language:translated$'),
+                [MIRROR + "#/book/4"],
+            )
+        self.assertEqual(web_request.call_args.args[1]["params"]["q"], "COMIC LO")
 
     def test_crawl_urls(self):
         Gallery.objects.create(gid="mugi-B2", provider="doujinshi_mirror", title="known")
@@ -307,6 +332,35 @@ class ParserTests(MirrorSettingsMixin, TestCase):
         # The known one isn't fetched.
         self.assertEqual(web_request.call_args.args[1]["params"]["ids"], "1")
         self.assertEqual([x.gid for x in passed.call_args.args[0]], ["mugi-B1"])
+
+    def test_crawl_urls_results_link_preserves_params(self):
+        self.parser.downloaders = [(mock.Mock(), 1)]
+        crawler_settings = settings.CRAWLER_SETTINGS
+        saved = (crawler_settings.update_metadata_mode, crawler_settings.replace_metadata)
+        crawler_settings.update_metadata_mode, crawler_settings.replace_metadata = False, False
+        self.addCleanup(setattr, crawler_settings, "update_metadata_mode", saved[0])
+        self.addCleanup(setattr, crawler_settings, "replace_metadata", saved[1])
+        results_url = MIRROR + "api/v1/books?q=hana-man+vol&per_page=48&not_collections=COMIC HANA-MAN GOLD"
+        with (
+            mock.patch.object(
+                Parser, "web_request", side_effect=[FakeResponse({"results": [book(10), book(11)]})]
+            ) as web_request,
+            mock.patch.object(Parser, "pass_gallery_data_to_downloaders") as passed,
+        ):
+            self.parser.crawl_urls([results_url])
+        url, request_dict = web_request.call_args.args[:2]
+        self.assertEqual(url, MIRROR + "api/v1/books")
+        self.assertEqual(
+            request_dict["params"],
+            {
+                "q": "hana-man vol",
+                "per_page": "48",
+                "not_collections": "COMIC HANA-MAN GOLD",
+                "count": 0,
+                "page": 1,
+            },
+        )
+        self.assertEqual([x.gid for x in passed.call_args.args[0]], ["mugi-B10", "mugi-B11"])
 
 
 class MatcherTests(MirrorSettingsMixin, TestCase):

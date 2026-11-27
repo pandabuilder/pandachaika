@@ -19,6 +19,7 @@ from django.db.models.functions import Concat, Replace
 
 from core.base import setup_utilities
 from core.base.cancellation import TaskCancelledError, ping_activity
+from core.base.errors import ProviderBannedError
 from core.base.utilities import send_pushover_notification, chunks, provider_web_request
 from core.base.types import GalleryData, ProviderSettings
 from viewer.signals import wanted_gallery_found
@@ -41,6 +42,10 @@ def aggregate_wanted_time_taken(func):
         args[0].time_taken_wanted += end - start
 
     return wrapper_save_time_taken
+
+
+# Seen links that fail to be processed this many times are marked as failed, instead of being retried forever.
+MAX_LINK_PROCESS_ATTEMPTS = 5
 
 
 class BaseParser[T_ProviderSettings: ProviderSettings]:
@@ -70,6 +75,14 @@ class BaseParser[T_ProviderSettings: ProviderSettings]:
         self.wanted_matches_count: int = 0
         # Stats of the monitored link run being crawled, None when not crawling a monitored link's URL.
         self.link_run: MonitoredLinkRun | None = None
+        # Source ids of the seen links recorded as new by the current crawl.
+        self._recorded_links: set[str] = set()
+        # Seen links (source id -> ProcessedLinks pk) this crawl must mark as processed when it ends, for parsers
+        # without link capture: they are stored as pending until then, so a crawl that dies doesn't lose them.
+        self._links_to_finish: dict[str, int] = {}
+        # Set when the last crawl stopped because the provider is banning requests for longer than a task waits.
+        # Crawls run in their own thread, so the web crawler raises it again for the worker to delay the task.
+        self.provider_ban: ProviderBannedError | None = None
         self.archive_callback: Callable[["Archive" | None, str | None, str], None] | None = None
         self.gallery_callback: Callable[["Gallery" | None, str | None, str], None] | None = None
 
@@ -532,6 +545,9 @@ class BaseParser[T_ProviderSettings: ProviderSettings]:
     ):
         self.wanted_matches_count = 0
         self.link_run = self._start_link_run(urls)
+        self._recorded_links = set()
+        self._links_to_finish = {}
+        self.provider_ban = None
         error = ""
         try:
             self.crawl_urls(
@@ -540,11 +556,46 @@ class BaseParser[T_ProviderSettings: ProviderSettings]:
                 wanted_only=wanted_only,
                 preselected_wanted_matches=preselected_wanted_matches,
             )
+        except ProviderBannedError as e:
+            self.provider_ban = e
+            error = str(e)
+            logger.warning("Provider %s stopped crawling: %s", self.name, e)
         except BaseException:
             error = traceback.format_exc()
             logger.critical(error)
+        # A ban isn't the links' fault: they are left pending for the delayed task, without counting an attempt.
+        self._finish_recorded_links(succeeded=not error, count_attempt=self.provider_ban is None)
         self._finish_link_run(error)
         close_old_connections()
+
+    def _finish_recorded_links(self, succeeded: bool, count_attempt: bool = True) -> None:
+        """Mark the seen links this crawl took as processed, or count a failed attempt so the next run retries them
+        (up to MAX_LINK_PROCESS_ATTEMPTS). Only for parsers without link capture, the others finish their own."""
+        links_to_finish = list(self._links_to_finish.values())
+        self._links_to_finish = {}
+        if not links_to_finish:
+            return
+        from viewer.models import ProcessedLinks
+
+        try:
+            for group in chunks(links_to_finish, 900):
+                pending = ProcessedLinks.objects.filter(pk__in=group, status=ProcessedLinks.Status.PENDING)
+                if succeeded:
+                    pending.update(status=ProcessedLinks.Status.PROCESSED, processed_date=django_tz.now())
+                elif count_attempt:
+                    pending.update(process_attempts=F("process_attempts") + 1)
+                    ProcessedLinks.objects.filter(
+                        pk__in=group,
+                        status=ProcessedLinks.Status.PENDING,
+                        process_attempts__gte=MAX_LINK_PROCESS_ATTEMPTS,
+                    ).update(status=ProcessedLinks.Status.FAILED)
+            if not succeeded:
+                logger.warning(
+                    "The crawl failed, %d seen links are left pending to be retried by the next run.",
+                    len(links_to_finish),
+                )
+        except Exception as e:
+            logger.warning("Could not update the status of the seen links: %s", e)
 
     def current_monitored_link(self) -> typing.Any | None:
         return getattr(self.own_settings, "monitored_link", None) or getattr(self.settings, "monitored_link", None)
@@ -623,14 +674,19 @@ class BaseParser[T_ProviderSettings: ProviderSettings]:
 
         Returns the links to process and whether to stop reading more pages: with stop on seen links, the links
         from the first one seen by an earlier run onwards are left out. Crawls that aren't of a monitored link
-        (on-demand) don't record anything nor stop."""
+        (on-demand) don't record anything nor stop.
+
+        New links are stored as pending, and only marked as processed once they were: by the process step of
+        parsers with link capture (``_load_pending_links``), or at the end of a successful crawl for the others
+        (``_finish_recorded_links``). For the latter, links left pending by a failed crawl don't count as seen,
+        so the next run processes them again instead of stopping on them."""
         link_list = list(links)
         monitored_link = self.current_monitored_link()
         if monitored_link is None:
             return link_list, False
 
         stop_on_seen = self._stop_on_seen_enabled(monitored_link)
-        capture_only = self._capturing_links_only()
+        finishes_in_crawl = not self.supports_link_capture
 
         try:
             from viewer.models import ProcessedLinks
@@ -640,13 +696,18 @@ class BaseParser[T_ProviderSettings: ProviderSettings]:
             logger.warning("Could not access Provider or ProcessedLinks: %s", e)
             return link_list, False
 
-        seen_source_ids = set(
-            ProcessedLinks.objects.filter(
-                provider=provider,
-                source_id__in=[source_id for source_id, _ in link_list],
-                monitored_link=monitored_link,
-            ).values_list("source_id", flat=True)
-        )
+        known_rows = ProcessedLinks.objects.filter(
+            provider=provider,
+            source_id__in=[source_id for source_id, _ in link_list],
+            monitored_link=monitored_link,
+        ).values_list("pk", "source_id", "status")
+        retry_pks: dict[str, int] = {}
+        seen_source_ids: set[str] = set()
+        for pk, source_id, status in known_rows:
+            if finishes_in_crawl and status == ProcessedLinks.Status.PENDING:
+                retry_pks[source_id] = pk
+            else:
+                seen_source_ids.add(source_id)
 
         to_process: list[tuple[str, str]] = []
         to_create: list[ProcessedLinks] = []
@@ -654,7 +715,12 @@ class BaseParser[T_ProviderSettings: ProviderSettings]:
         known_count = 0
 
         for source_id, url in link_list:
-            if source_id in seen_source_ids:
+            if source_id in retry_pks:
+                # Left pending by a failed crawl: processed again, not a reason to stop.
+                known_count += 1
+                to_process.append((source_id, url))
+                self._links_to_finish[source_id] = retry_pks.pop(source_id)
+            elif source_id in seen_source_ids:
                 known_count += 1
                 if stop_on_seen:
                     logger.info(
@@ -674,8 +740,7 @@ class BaseParser[T_ProviderSettings: ProviderSettings]:
                         monitored_link=monitored_link,
                         source_id=source_id,
                         url=url,
-                        # Captured links wait for the process run, otherwise they are processed in this run.
-                        status=ProcessedLinks.Status.PENDING if capture_only else ProcessedLinks.Status.PROCESSED,
+                        status=ProcessedLinks.Status.PENDING,
                     )
                 )
                 seen_source_ids.add(source_id)
@@ -683,6 +748,16 @@ class BaseParser[T_ProviderSettings: ProviderSettings]:
         if to_create:
             try:
                 ProcessedLinks.objects.bulk_create(to_create, ignore_conflicts=True)
+                self._recorded_links.update(link.source_id for link in to_create)
+                if finishes_in_crawl:
+                    self._links_to_finish.update(
+                        ProcessedLinks.objects.filter(
+                            provider=provider,
+                            monitored_link=monitored_link,
+                            source_id__in=[link.source_id for link in to_create],
+                            status=ProcessedLinks.Status.PENDING,
+                        ).values_list("source_id", "pk")
+                    )
             except Exception as e:
                 logger.warning("Could not bulk create ProcessedLinks: %s", e)
 

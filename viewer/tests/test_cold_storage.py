@@ -826,11 +826,18 @@ class ColdStorageArchiveManagerTests(ColdStorageTestMixin, TestCase):
 
     def test_activity_progress_is_throttled(self) -> None:
         calls: list[int] = []
-        progress = cold_storage._activity_progress(lambda: calls.append(1), interval=3600)
-        assert progress is not None
-        for _ in range(5):
-            progress(1024)
-        assert len(calls) == 1
+        with mock.patch(
+            "viewer.services.cold_storage.time.monotonic",
+            side_effect=[10.0, 11.0, 12.0, 3610.0, 3611.0],
+        ):
+            progress = cold_storage._activity_progress(lambda: calls.append(1), interval=3600)
+            assert progress is not None
+            for _ in range(3):
+                progress(1024)
+            assert len(calls) == 1
+            for _ in range(2):
+                progress(1024)
+            assert len(calls) == 2
         assert cold_storage._activity_progress(None) is None
 
     def test_clean_filter_storage(self) -> None:

@@ -14,7 +14,8 @@ import bs4
 from bs4 import BeautifulSoup
 from django.db.models import QuerySet
 
-from core.base.parsers import BaseParser
+from core.base.errors import ProviderBannedError
+from core.base.parsers import MAX_LINK_PROCESS_ATTEMPTS, BaseParser
 from core.base.utilities import (
     chunks,
     construct_request_dict,
@@ -42,8 +43,6 @@ logger = logging.getLogger(__name__)
 
 RE_PANDA_GALLERY = re.compile(r"(.+)/g/(\d+)/(\w+)")
 
-# Captured links that fail to be processed this many times are marked as failed, instead of being retried forever.
-MAX_LINK_PROCESS_ATTEMPTS = 5
 
 
 class Parser(BaseParser):
@@ -193,17 +192,20 @@ class Parser(BaseParser):
         for pk, source_id, url in pending:
             self._pending_links[source_id] = pk
             unique_urls.add(url)
+        # Links recorded by this same run (single frequency) are pending too, but weren't taken from the queue.
+        from_queue = [source_id for _, source_id, _ in pending if source_id not in self._recorded_links]
         if self.link_run is not None:
-            self.link_run.pending_loaded += len(pending)
+            self.link_run.pending_loaded += len(from_queue)
             self.link_run.recent_added += len(recent_urls - {url for _, _, url in pending})
-        if pending:
+        if from_queue:
             logger.info(
-                "Processing %d captured links for monitored link '%s'.", len(pending), getattr(monitored_link, "name", "")
+                "Processing %d captured links for monitored link '%s'.", len(from_queue), getattr(monitored_link, "name", "")
             )
 
-    def _finish_pending_links(self) -> None:
+    def _finish_pending_links(self, count_attempts: bool = True) -> None:
         """Mark the captured links as processed once their metadata was fetched and checked.
-        The ones that couldn't be, stay pending to be retried by the next run, up to MAX_LINK_PROCESS_ATTEMPTS."""
+        The ones that couldn't be, stay pending to be retried by the next run, up to MAX_LINK_PROCESS_ATTEMPTS
+        (with ``count_attempts=False``, without counting this run as one of them)."""
         if not self._pending_links:
             return
         from django.db.models import F
@@ -221,7 +223,7 @@ class Parser(BaseParser):
                 ProcessedLinks.objects.filter(pk__in=group).update(
                     status=ProcessedLinks.Status.PROCESSED, processed_date=now
                 )
-            for group in chunks(failed, 900):
+            for group in chunks(failed if count_attempts else [], 900):
                 ProcessedLinks.objects.filter(pk__in=group).update(process_attempts=F("process_attempts") + 1)
                 given_up += ProcessedLinks.objects.filter(
                     pk__in=group, process_attempts__gte=MAX_LINK_PROCESS_ATTEMPTS, status=ProcessedLinks.Status.PENDING
@@ -657,10 +659,15 @@ class Parser(BaseParser):
     ) -> None:
         self._pending_links = {}
         self._resolved_links = set()
+        banned = False
         try:
             self._crawl_urls(urls, wanted_filters, wanted_only, preselected_wanted_matches)
+        except ProviderBannedError:
+            banned = True
+            raise
         finally:
-            self._finish_pending_links()
+            # A ban isn't the links' fault: the unresolved ones stay pending without counting an attempt.
+            self._finish_pending_links(count_attempts=not banned)
 
     def _crawl_urls(
         self,

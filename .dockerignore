@@ -60,7 +60,5 @@ docker-compose.build.yml
 .gitlab-ci.yml
 sample.env
 .stylelintrc
-dev-requirements.txt
-pyproject.toml
 renovate.json
 set_db_engine.sh

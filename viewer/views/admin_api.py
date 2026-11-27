@@ -178,10 +178,18 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
             response["error"] = "POST required"
             return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8", status=405)
     if tool == "reconcile_downloads":
-        from viewer.utils.downloads import reconcile_downloads
-
-        stats = reconcile_downloads(settings=crawler_settings)
-        response["stats"] = stats
+        if thread_exists_in_db("reconcile_downloads_worker"):
+            response["error"] = "Reconcile downloads worker is already running."
+            return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
+        task = client.enqueue(
+            args=[],
+            task_type="reconcile_downloads_worker",
+            override_options=crawler_settings,
+            user=request.user,
+            event_action="RECONCILE_DOWNLOADS",
+        )
+        response["message"] = "Reconcile downloads worker started in background."
+        response["task_id"] = task.pk
         return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
     elif tool == "retry_failed":
         client.enqueue(args=["--retry-failed"], task_type="web_crawler", override_options=crawler_settings, user=request.user)
@@ -221,7 +229,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
             response["error"] = "Thumbnails worker is already running."
             return HttpResponse(json.dumps(response), content_type="application/json; charset=utf-8")
 
-        archives_no_thumbnail = Archive.objects.filter(thumbnail="")
+        archives_no_thumbnail = Archive.objects.filter_by_missing_thumbnails()
         archive_pks = list(archives_no_thumbnail.values_list("pk", flat=True))
         if not archive_pks:
             response["message"] = "No archives missing thumbnails found."

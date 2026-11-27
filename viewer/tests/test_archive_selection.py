@@ -9,7 +9,16 @@ from django.contrib.auth.models import Permission
 from django.test import TestCase
 from django.urls import reverse
 
-from viewer.models import Archive, ArchiveManageEntry, ArchiveRecycleEntry, ArchiveTag, Tag, UserArchivePrefs
+from viewer.models import (
+    Archive,
+    ArchiveGroup,
+    ArchiveGroupEntry,
+    ArchiveManageEntry,
+    ArchiveRecycleEntry,
+    ArchiveTag,
+    Tag,
+    UserArchivePrefs,
+)
 from viewer.services.archive_selection import (
     ADMIN_FILTERS,
     ALL_FILTERS,
@@ -88,10 +97,17 @@ class FilterPermissionTests(TestCase):
         self.assertEqual(clean_filter({"public": True, "hidden": False}, self.staff), {"public": "1"})
 
     def test_clean_filter_rejects_invalid_values(self):
-        for params in ({"filecount_from": "many"}, {"created_from": "yesterday"}, {"origin": "system"}):
+        for params in (
+            {"filecount_from": "many"},
+            {"created_from": "yesterday"},
+            {"origin": "system"},
+            {"archive_group": "my group"},
+        ):
             with self.assertRaises(ValueError, msg=params):
                 clean_filter(params, self.staff)
         self.assertEqual(clean_filter({"origin": "2"}, self.staff), {"origin": "2"})
+        self.assertEqual(clean_filter({"archive_group": "7"}, self.manager), {"archive_group": "7"})
+        self.assertEqual(clean_filter({"archive_group": "none"}, self.manager), {"archive_group": "none"})
 
 
 class FilterArchivesTests(TestCase):
@@ -154,6 +170,46 @@ class FilterArchivesTests(TestCase):
         self.assertEqual(self.ids(filter_archives({"title": "normal"})), {self.normal.pk})
         self.assertEqual(self.ids(filter_archives({"downloading": "1"})), {self.downloading.pk})
         self.assertEqual(self.ids(filter_archives({"filesize_from": "15"})), {self.downloading.pk})
+
+    def test_archive_group(self):
+        group = ArchiveGroup.objects.create(title="Group")
+        other = ArchiveGroup.objects.create(title="Other")
+        ArchiveGroupEntry.objects.create(archive_group=group, archive=self.normal)
+        ArchiveGroupEntry.objects.create(archive_group=other, archive=self.normal)
+        ArchiveGroupEntry.objects.create(archive_group=other, archive=self.binned)
+
+        self.assertEqual(self.ids(filter_archives({"archive_group": str(group.pk)})), {self.normal.pk})
+        # In two groups, but listed once.
+        self.assertEqual(filter_archives({"archive_group": str(other.pk)}).count(), 1)
+        self.assertEqual(
+            self.ids(filter_archives({"archive_group": str(other.pk), "recycled": "any"}, can_view_recycled=True)),
+            {self.normal.pk, self.binned.pk},
+        )
+        self.assertEqual(self.ids(filter_archives({"archive_group": "none"})), {self.downloading.pk})
+        self.assertEqual(self.ids(filter_archives({"archive_group": ""})), {self.normal.pk, self.downloading.pk})
+
+    def test_gallery_has_child(self):
+        parent = GalleryFactory.create()
+        old_version = ArchiveFactory.create(gallery=parent, title="Old version")
+        GalleryFactory.create(parent_gallery=parent)
+        # A gallery that is its own parent doesn't count.
+        own_parent = GalleryFactory.create()
+        own_parent.parent_gallery = own_parent
+        own_parent.save()
+        ArchiveFactory.create(gallery=own_parent, title="Own parent")
+        ArchiveFactory.create(title="No children")
+
+        self.assertEqual(self.ids(filter_archives({"gallery-has-child": "1"})), {old_version.pk})
+        staff = make_user("s_child", staff=True)
+        self.assertEqual(clean_filter({"gallery-has-child": "on"}, staff), {"gallery-has-child": "1"})
+
+    def test_excluded_reason(self):
+        self.normal.reason = "backup"
+        self.normal.save()
+        self.downloading.reason = "wanted"
+        self.downloading.save()
+        self.assertEqual(self.ids(filter_archives({"reason": "-backup"})), {self.downloading.pk})
+        self.assertEqual(self.ids(filter_archives({"reason": "-backup,want"})), {self.downloading.pk})
 
     def test_archives_matching_counts_annotated_and_joined_filters(self):
         tag = Tag.objects.create(name="custom", scope="")
@@ -244,6 +300,46 @@ class ArchiveManagerListingTests(TestCase):
         data = json.loads(self.client.get(url, {"json": "1", "recycled": "1"}).content)
         self.assertEqual([r["id"] for r in data["results"]], [binned.pk])
 
+    def test_json_listing_filters_by_archive_group_and_sends_groups_and_autocomplete(self):
+        group = ArchiveGroup.objects.create(title="Group")
+        grouped = ArchiveFactory.create(gallery=None, title="Grouped")
+        ArchiveFactory.create(gallery=None, title="Loose")
+        ArchiveGroupEntry.objects.create(archive_group=group, archive=grouped)
+        url = reverse("viewer:archive-manager")
+
+        # Without change_archivegroup: the groups are still sent, for the filter.
+        self.client.force_login(make_user("manager", "manage_archive"))
+        data = json.loads(self.client.get(url, {"json": "1", "archive_group": str(group.pk)}).content)
+        self.assertEqual([r["id"] for r in data["results"]], [grouped.pk])
+        self.assertEqual(data["groups"], [{"id": group.pk, "title": "Group"}])
+        self.assertEqual(data["autocomplete"]["tags"], reverse("tag-json-autocomplete"))
+        self.assertEqual(data["autocomplete"]["reason"], reverse("reason-json-autocomplete"))
+
+        data = json.loads(self.client.get(url, {"json": "1", "archive_group": "none"}).content)
+        self.assertEqual([r["title"] for r in data["results"]], ["Loose"])
+
+    def test_json_listing_sends_the_newer_versions_of_the_gallery(self):
+        parent = GalleryFactory.create(filesize=100, filecount=5)
+        old_version = ArchiveFactory.create(gallery=parent, title="Old version")
+        child = GalleryFactory.create(parent_gallery=parent, title="New version")
+        new_archive = ArchiveFactory.create(gallery=child, title="New archive")
+        binned = ArchiveFactory.create(gallery=child, title="Binned new archive", binned=True)
+        url = reverse("viewer:archive-manager")
+
+        self.client.force_login(make_user("manager", "manage_archive"))
+        data = json.loads(self.client.get(url, {"json": "1", "gallery-has-child": "1"}).content)
+        self.assertEqual([r["id"] for r in data["results"]], [old_version.pk])
+        gallery = data["results"][0]["gallery"]
+        self.assertEqual((gallery["filesize"], gallery["filecount"], gallery["provider"]), (100, 5, "panda"))
+        [child_json] = gallery["children"]
+        self.assertEqual((child_json["id"], child_json["title"]), (child.pk, "New version"))
+        self.assertEqual(
+            [(a["id"], a["binned"]) for a in child_json["archives"]], [(new_archive.pk, False), (binned.pk, True)]
+        )
+
+        data = json.loads(self.client.get(url, {"json": "1", "title": "New archive"}).content)
+        self.assertEqual(data["results"][0]["gallery"]["children"], [])
+
     def test_run_for_all_uses_the_listing_filters(self):
         shared = GalleryFactory.create()
         twins = [ArchiveFactory.create(gallery=shared, title=f"Twin {n}") for n in (1, 2)]
@@ -252,7 +348,18 @@ class ArchiveManagerListingTests(TestCase):
         self.client.force_login(staff)
 
         url = reverse("viewer:archive-manager") + "?json=1&gallery-other-archives=1"
-        self.client.post(url, {"change_archive_reason": "1", "archive_reason": "dupe", "run_for_all": "1"})
+        resp = self.client.post(url, {"change_archive_reason": "1", "archive_reason": "dupe", "run_for_all": "1"})
+        body = json.loads(resp.content)
+        self.assertEqual(len(body["task_ids"]), 1)
+        task = TaskQueue.objects.get(pk=body["task_ids"][0])
+        self.assertEqual(sorted(task.args), sorted([t.pk for t in twins]))
+
+        from core.base.setup import Settings
+        from workers.runner import WorkerRunner
+
+        task.status = TaskQueue.Status.PROCESSING
+        task.save(update_fields=["status"])
+        WorkerRunner(Settings(load_from_disk=False), enable_schedulers=False).execute_job(task)
 
         self.assertEqual({a.reason for a in Archive.objects.filter(pk__in=[t.pk for t in twins])}, {"dupe"})
         single.refresh_from_db()

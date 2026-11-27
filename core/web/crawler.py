@@ -5,13 +5,13 @@ import logging
 import os
 import typing
 from collections import defaultdict
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from typing import NoReturn, Any
 
 import requests
 from django.db.models import QuerySet, Q
 
-from core.base.parsers import InternalParser
+from core.base.parsers import BaseParser, InternalParser
 from viewer.models import Gallery, WantedGallery, Archive
 
 if typing.TYPE_CHECKING:
@@ -28,6 +28,15 @@ class YieldingArgumentParser(argparse.ArgumentParser):
 
     def error(self, message: str) -> NoReturn:
         raise ArgumentParserError(message)
+
+
+def raise_provider_ban(parsers: "Iterable[BaseParser]") -> None:
+    """Raise the ban that stopped a provider's crawl thread (the longest one, if several did), so the worker puts the
+    task back in the queue to start after it, instead of marking it as done. The other providers' work is kept: a
+    delayed task finds their galleries already added."""
+    bans = [parser.provider_ban for parser in parsers if parser.provider_ban is not None]
+    if bans:
+        raise max(bans, key=lambda ban: ban.retry_after)
 
 
 class WebCrawler(object):
@@ -541,6 +550,7 @@ class WebCrawler(object):
         for provider_thread in provider_threads:
             provider_thread.join()
 
+        raise_provider_ban(parsers)
         logger.info("Web Crawler links crawling done.")
         return
 
@@ -611,6 +621,7 @@ class WebCrawler(object):
         for provider_thread in provider_threads:
             provider_thread.join()
 
+        raise_provider_ban(parsers)
         logger.info("Web Crawler links crawling done.")
         return
 

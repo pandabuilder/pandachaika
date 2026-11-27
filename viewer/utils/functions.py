@@ -3,6 +3,7 @@ from datetime import timedelta
 from typing import Any
 
 from django.core.exceptions import ObjectDoesNotExist
+from django.db.models import Prefetch
 from django.core.mail import get_connection, EmailMultiAlternatives
 from django.http import HttpRequest
 from django.urls import reverse
@@ -79,6 +80,41 @@ def _recycle_entry_to_json(archive: Archive) -> dict[str, Any] | None:
     }
 
 
+def archive_manage_json_prefetches() -> list[Prefetch]:
+    """Prefetches for ``archive_manage_results_to_json``: the newer versions (child galleries) of each archive's
+    gallery, with their archives."""
+    return [
+        Prefetch(
+            "gallery__children_galleries",
+            queryset=Gallery.objects.order_by("pk").prefetch_related(
+                Prefetch("archive_set", queryset=Archive.objects.order_by("pk").only("pk", "gallery_id", "binned"))
+            ),
+        )
+    ]
+
+
+def _gallery_children_to_json(request: HttpRequest, gallery: Gallery) -> list[dict[str, Any]]:
+    return [
+        {
+            "id": child.pk,
+            "title": child.title or "",
+            "url": request.build_absolute_uri(reverse("viewer:gallery", args=(child.pk,))),
+            "link": child.get_link(),
+            "posted": timestamp_or_null(child.posted),
+            "archives": [
+                {
+                    "id": archive.pk,
+                    "url": request.build_absolute_uri(reverse("viewer:archive", args=(archive.pk,))),
+                    "binned": archive.binned,
+                }
+                for archive in child.archive_set.all()
+            ],
+        }
+        for child in gallery.children_galleries.all()
+        if child.pk != gallery.pk
+    ]
+
+
 def archive_manage_results_to_json(
     request: HttpRequest,
     archives: Iterable[Archive],
@@ -127,6 +163,11 @@ def archive_manage_results_to_json(
                     "link": archive.gallery.get_link(),
                     "hidden": archive.gallery.hidden,
                     "url": request.build_absolute_uri(reverse("viewer:gallery", args=(archive.gallery.pk,))),
+                    "provider": archive.gallery.provider,
+                    "filecount": archive.gallery.filecount,
+                    "filesize": archive.gallery.filesize,
+                    # Newer versions of the gallery, with their archives (see archive_manage_json_prefetches).
+                    "children": _gallery_children_to_json(request, archive.gallery),
                 }
                 if archive.gallery
                 else None

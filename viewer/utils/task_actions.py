@@ -45,6 +45,13 @@ TASK_LABELS: dict[str, tuple[str, str]] = {
     "web_crawler": ("Downloading", "Downloaded"),
     "cold_storage_offload_worker": ("Offloading", "Offloaded"),
     "cold_storage_restore_worker": ("Restoring", "Restored"),
+    "archive_batch_worker": ("Updating archives", "Archives updated"),
+    "gallery_batch_worker": ("Updating galleries", "Galleries updated"),
+    "reconcile_downloads_worker": ("Reconciling downloads", "Downloads reconciled"),
+    "update_provider_wanted_worker": ("Creating wanted galleries", "Wanted galleries created"),
+    "send_email_worker": ("Sending emails", "Emails sent"),
+    "database_prune": ("Pruning database", "Database pruned"),
+    "web_match_worker": ("Web matching", "Web match done"),
 }
 
 

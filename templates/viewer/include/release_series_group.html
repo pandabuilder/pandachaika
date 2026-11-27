@@ -1,0 +1,92 @@
+{% comment %}
+Archive group tool for a release series' page: puts the series' archives (in issue order) in a new or an existing archive
+group. The data is loaded when the card is opened (viewer:release-series-archive-group), and loaded again for the group
+chosen, so the preview shows what each archive and group entry becomes before applying.
+See viewer.services.release_series_group for the modes.
+{% endcomment %}
+<div class="dm-card" id="archive-group">
+  <div class="dm-card-header">
+    <a class="dm-collapse-toggle collapsed text-decoration-none" data-bs-toggle="collapse" href="#rs-group-body" role="button" aria-expanded="false" aria-controls="rs-group-body">
+      <i class="fas fa-chevron-down me-2"></i><i class="fas fa-layer-group me-1"></i>Archive group
+    </a>
+    <span class="small dm-muted fw-normal ms-2">put the series' archives in an archive group, in issue order</span>
+  </div>
+  <div class="collapse" id="rs-group-body" data-url="{% url 'viewer:release-series-archive-group' series.pk %}" data-default-title="{{ series.name }}">
+    <div class="p-3">
+      <div id="rs-group-loading" class="small dm-muted"><i class="fas fa-spinner fa-spin me-1"></i>Loading the series' archives...</div>
+      <div id="rs-group-error" class="alert alert-danger py-2 d-none"></div>
+      <div id="rs-group-tool" class="d-none">
+        <div class="row g-3 mb-2">
+          <div class="col-lg-6">
+            <div class="dm-lbl mb-1">Group</div>
+            <div class="d-flex flex-wrap gap-3 mb-2">
+              <div class="form-check m-0">
+                <input class="form-check-input" type="radio" name="rs-group-target" id="rs-group-target-existing" value="existing" checked>
+                <label class="form-check-label small" for="rs-group-target-existing">Existing group</label>
+              </div>
+              <div class="form-check m-0">
+                <input class="form-check-input" type="radio" name="rs-group-target" id="rs-group-target-new" value="new">
+                <label class="form-check-label small" for="rs-group-target-new">New group</label>
+              </div>
+            </div>
+            <div id="rs-group-existing">
+              <div class="d-flex gap-2 align-items-center">
+                <select id="rs-group-select" class="form-select form-select-sm" aria-label="Archive group"></select>
+                <a id="rs-group-link" class="btn btn-sm btn-outline-light text-nowrap d-none" target="_blank" rel="noopener" title="Open the group"><i class="fas fa-external-link-alt"></i></a>
+              </div>
+            </div>
+            <div id="rs-group-new" class="d-none">
+              <div class="d-flex flex-wrap gap-2 align-items-center">
+                <input type="text" id="rs-group-title" class="form-control form-control-sm" style="max-width: 28rem;" maxlength="500" placeholder="Title" aria-label="New group title">
+                <div class="form-check m-0">
+                  <input class="form-check-input" type="checkbox" id="rs-group-public">
+                  <label class="form-check-label small" for="rs-group-public">Public</label>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="col-lg-6" id="rs-group-modes">
+            <div class="dm-lbl mb-1">Update</div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="rs-group-mode" id="rs-group-mode-add" value="add" checked>
+              <label class="form-check-label small" for="rs-group-mode-add"><strong>Add</strong>: append the checked archives not in the group yet, in issue order. Nothing else changes.</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="rs-group-mode" id="rs-group-mode-merge" value="merge">
+              <label class="form-check-label small" for="rs-group-mode-merge"><strong>Merge and sort</strong>: add them, then sort the group: the series' archives in issue order, its other entries after them.</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="rs-group-mode" id="rs-group-mode-replace" value="replace">
+              <label class="form-check-label small" for="rs-group-mode-replace"><strong>Replace</strong>: the group becomes the checked archives, in issue order. Every other entry is removed.</label>
+            </div>
+          </div>
+        </div>
+
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+          <span class="small dm-muted">Check:</span>
+          <button type="button" class="btn btn-sm btn-outline-light" data-rs-group-check="all">All</button>
+          <button type="button" class="btn btn-sm btn-outline-light" data-rs-group-check="suggested" title="Not in the Recycle Bin, with their file">Usable</button>
+          <button type="button" class="btn btn-sm btn-outline-light" data-rs-group-check="none">None</button>
+          <span class="small ms-auto" id="rs-group-summary"></span>
+        </div>
+        <div class="table-responsive" style="max-height: 28rem; overflow-y: auto;">
+          <table class="table table-sm table-dm table-hover mb-0">
+            <thead>
+              <tr><th style="width: 2rem;"></th><th>Issue</th><th>Archive</th><th class="text-end">In the group</th></tr>
+            </thead>
+            <tbody id="rs-group-archives"></tbody>
+          </table>
+        </div>
+        <div id="rs-group-others" class="mt-3 d-none">
+          <div class="dm-lbl mb-1">Other entries in the group <span class="badge bg-secondary" id="rs-group-others-count"></span></div>
+          <ul class="list-unstyled small mb-0" id="rs-group-others-list" style="max-height: 12rem; overflow-y: auto;"></ul>
+        </div>
+
+        <div class="d-flex flex-wrap align-items-center gap-2 mt-3">
+          <button type="button" class="btn btn-sm btn-info" id="rs-group-apply"><i class="fas fa-check me-1"></i><span>Apply</span></button>
+          <span class="small" id="rs-group-status"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

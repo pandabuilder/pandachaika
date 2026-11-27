@@ -79,6 +79,8 @@
         <th>First</th>
         {% if gallery.first_gallery %}
         <td><a href="{% url 'viewer:gallery' gallery.first_gallery.id %}">{{ gallery.first_gallery }}</a></td>
+        {% elif gallery.first_gallery_gid %}
+        <td>gid {{ gallery.first_gallery_gid }} (not in the database)</td>
         {% else %}
         <td>None</td>
         {% endif %}

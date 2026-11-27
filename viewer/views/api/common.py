@@ -10,7 +10,7 @@ from django.utils import timezone as django_tz
 from django.utils.dateparse import parse_date, parse_datetime, parse_duration
 
 from core.base.utilities import str_to_int, timestamp_or_zero
-from viewer.models import ArchiveGroup, Category, Gallery, Provider, Tag, WantedGallery
+from viewer.models import Archive, ArchiveGroup, Category, DownloadEvent, Gallery, Provider, Tag, WantedGallery
 from viewer.views.head import gallery_filter_keys
 from viewer.views.api.filters import filter_galleries_no_request
 
@@ -100,7 +100,106 @@ def get_gallery_by_gid(data: QueryDict, body: dict | None = None, gid_key: str =
     return Gallery.objects.filter_first(gid=gid)
 
 
-def gallery_by_gid_to_json(gallery: Gallery, user_is_authenticated: bool) -> dict[str, Any]:
+ACTIVE_DOWNLOAD_STATUSES = (DownloadEvent.Status.QUEUED, DownloadEvent.Status.IN_PROGRESS)
+FAILED_DOWNLOAD_STATUSES = (DownloadEvent.Status.FAILED, DownloadEvent.Status.CANCELLED)
+
+
+def _download_event_sort_key(event: DownloadEvent) -> tuple[int, float, int]:
+    status = event.effective_status
+    if status == DownloadEvent.Status.IN_PROGRESS:
+        rank = 2
+    elif status == DownloadEvent.Status.QUEUED:
+        rank = 1
+    else:
+        rank = 0
+    created_ts = float(timestamp_or_zero(event.create_date)) if event.create_date else 0.0
+    return (rank, created_ts, event.pk or 0)
+
+
+def get_latest_download_events_for_archives(archive_ids: list[int]) -> dict[int, DownloadEvent]:
+    """Return the most relevant DownloadEvent per archive (active in_progress > queued > newest)."""
+    if not archive_ids:
+        return {}
+    selected: dict[int, DownloadEvent] = {}
+    for event in DownloadEvent.objects.filter(archive_id__in=archive_ids):
+        aid = event.archive_id
+        if aid is None:
+            continue
+        existing = selected.get(aid)
+        if existing is None or _download_event_sort_key(event) > _download_event_sort_key(existing):
+            selected[aid] = event
+    return selected
+
+
+def download_event_to_json(event: DownloadEvent) -> dict[str, Any]:
+    effective_status = event.effective_status
+    active = effective_status in ACTIVE_DOWNLOAD_STATUSES
+    failed = effective_status in FAILED_DOWNLOAD_STATUSES
+    eta_dt = event.eta() if active else None
+    return {
+        "id": event.pk,
+        "status": effective_status,
+        "active": active,
+        "failed": failed,
+        "progress": round(float(event.progress), 1),
+        "method": event.method,
+        "total_size": event.total_size,
+        "error_message": event.error_message,
+        "create_date": int(timestamp_or_zero(event.create_date)) if event.create_date else None,
+        "started_date": int(timestamp_or_zero(event.started_date)) if event.started_date else None,
+        "completed_date": int(timestamp_or_zero(event.completed_date)) if event.completed_date else None,
+        "eta": int(timestamp_or_zero(eta_dt)) if eta_dt else None,
+    }
+
+
+def serialize_gallery_archives(
+    archives: list[Archive],
+    *,
+    include_downloads: bool = False,
+    downloading_only: bool = False,
+    download_events_by_archive: dict[int, DownloadEvent] | None = None,
+) -> list[dict[str, Any]]:
+    if include_downloads and download_events_by_archive is None:
+        download_events_by_archive = get_latest_download_events_for_archives([archive.pk for archive in archives])
+
+    serialized: list[dict[str, Any]] = []
+    for archive in archives:
+        event = download_events_by_archive.get(archive.pk) if (include_downloads and download_events_by_archive) else None
+        is_completed = bool(archive.crc32)
+
+        if downloading_only:
+            if include_downloads:
+                if event is not None:
+                    if event.effective_status not in ACTIVE_DOWNLOAD_STATUSES:
+                        continue
+                elif is_completed or archive.is_recycled():
+                    continue
+            elif is_completed or archive.is_recycled():
+                continue
+
+        entry: dict[str, Any] = {
+            "id": archive.id,
+            "download": reverse("viewer:archive-download", args=(archive.pk,)),
+            "recycled": archive.is_recycled(),
+            "completed": is_completed,
+        }
+        if include_downloads:
+            entry["download_status"] = download_event_to_json(event) if event is not None else None
+        serialized.append(entry)
+    return serialized
+
+
+def gallery_by_gid_to_json(
+    gallery: Gallery,
+    user_is_authenticated: bool,
+    *,
+    include_downloads: bool = False,
+    downloading_only: bool = False,
+    archives: list[Archive] | None = None,
+    download_events_by_archive: dict[int, DownloadEvent] | None = None,
+) -> dict[str, Any]:
+    if archives is None:
+        archives = list(gallery.archive_set.filter_by_authenticated_status(authenticated=user_is_authenticated))
     data: dict[str, Any] = {
         "id": gallery.id,
         "gid": gallery.gid,
@@ -120,14 +219,12 @@ def gallery_by_gid_to_json(gallery: Gallery, user_is_authenticated: bool) -> dic
         "link": gallery.get_link(),
         "url": reverse("viewer:gallery", args=(gallery.pk,)),
         "tags": gallery.tag_list(),
-        "archives": [
-            {
-                "id": archive.id,
-                "download": reverse("viewer:archive-download", args=(archive.pk,)),
-                "recycled": archive.is_recycled(),
-            }
-            for archive in gallery.archive_set.filter_by_authenticated_status(authenticated=user_is_authenticated)
-        ],
+        "archives": serialize_gallery_archives(
+            archives,
+            include_downloads=include_downloads,
+            downloading_only=downloading_only,
+            download_events_by_archive=download_events_by_archive,
+        ),
     }
     if user_is_authenticated:
         data.update(

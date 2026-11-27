@@ -45,6 +45,7 @@ from viewer.views.head.search import (
 )
 from viewer.views.head.submission import (
     url_submit,
+    url_submit_check,
 )
 
 __all__ = [
@@ -90,4 +91,5 @@ __all__ = [
     "search",
     # Submission
     "url_submit",
+    "url_submit_check",
 ]

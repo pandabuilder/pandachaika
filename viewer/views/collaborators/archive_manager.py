@@ -17,10 +17,10 @@ from django.urls import reverse
 from core.base.utilities import thread_exists_in_db, clamp
 from core.matching.engine import available_offline_methods
 from viewer.utils.functions import (
+    archive_manage_json_prefetches,
     archive_manage_results_to_json,
 )
 from viewer.utils.general import PAGE_SIZE_OPTIONS, page_size, safe_redirect_back
-from viewer.utils.actions import event_log
 from workers import client
 from viewer.forms import (
     ArchiveSearchForm,
@@ -35,15 +35,15 @@ from viewer.models import (
     ArchiveMatches,
     Tag,
     ArchiveGroup,
-    ArchiveGroupEntry,
-    ArchiveRecycleEntry,
     ArchiveTag,
     ArchiveManageEntry
 )
 from viewer.utils.requests import double_check_auth
 from viewer.services import cold_storage
 from viewer.services.archive_selection import filter_archives
+from viewer.services.elasticsearch_index import ElasticsearchIndexService
 from viewer.views.api.handlers.tasks import tasks_reference
+from viewer.views.archive_picker import AUTOCOMPLETE_URL_NAMES
 from viewer.views.head import (
     archive_filter_keys,
     filter_archives_simple,
@@ -85,6 +85,7 @@ def queue_cold_storage_transfers(
     return task_ids, total - len(eligible_ids)
 
 
+@ElasticsearchIndexService.batch_indexing()
 def manage_archives(request: HttpRequest) -> HttpResponse:
     authenticated, actual_user = double_check_auth(request)
 
@@ -149,152 +150,123 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
             preserved = Case(*[When(pk=pk, then=pos) for pos, pk in enumerate(pks)])
             archives = Archive.objects.filter(id__in=pks).order_by(preserved)
         if "publish_archives" in p and actual_user.has_perm("viewer.publish_archive"):
-            for archive in archives:
-                message = "Publishing archive: {}, link: {}".format(archive.title, archive.get_absolute_url())
-                if "reason" in p and p["reason"] != "":
-                    message += ", reason: {}".format(p["reason"])
-                logger.info("User {}: {}".format(actual_user.username, message))
-                if not json_request:
-                    messages.success(request, message)
-                archive.set_public(reason=user_reason)
-                event_log(
-                    actual_user, "PUBLISH_ARCHIVE", reason=user_reason, content_object=archive, result="published"
-                )
-        elif "unpublish_archives" in p and actual_user.has_perm("viewer.publish_archive"):
-            for archive in archives:
-                message = "Unpublishing archive: {}, link: {}".format(archive.title, archive.get_absolute_url())
-                if "reason" in p and p["reason"] != "":
-                    message += ", reason: {}".format(p["reason"])
-                logger.info("User {}: {}".format(actual_user.username, message))
-                if not json_request:
-                    messages.success(request, message)
-                archive.set_private(reason=user_reason)
-                event_log(
-                    actual_user, "UNPUBLISH_ARCHIVE", reason=user_reason, content_object=archive, result="unpublished"
-                )
-        elif "change_archive_reason" in p and actual_user.has_perm("viewer.change_archive"):
-            for archive in archives:
-                archive_reason = p.get("archive_reason", "")
-                message = "Changing archive reason: {}, link: {}, new reason: {}".format(archive.title, archive.get_absolute_url(), archive_reason)
-                if "reason" in p and p["reason"] != "":
-                    message += ", reason: {}".format(p["reason"])
-                logger.info("User {}: {}".format(actual_user.username, message))
-                if not json_request:
-                    messages.success(request, message)
-                archive.set_reason(archive_reason)
-                event_log(
-                    actual_user, "CHANGE_ARCHIVE_REASON", reason=user_reason, content_object=archive, result="changed"
-                )
-        elif "release_gallery" in p:
-            for archive in archives:
-                if archive.gallery:
-                    message = "Releasing associated gallery: {} for archive: {}, link: {}".format(
-                        archive.gallery.get_absolute_url(), archive.title, archive.get_absolute_url()
-                    )
-                    if "reason" in p and p["reason"] != "":
-                        message += ", reason: {}".format(p["reason"])
-                    logger.info("User {}: {}".format(actual_user.username, message))
-                    if not json_request:
-                        messages.success(request, message)
-                    archive.release_gallery()
-                    event_log(
-                        actual_user,
-                        "RELEASE_GALLERY_FROM_ARCHIVE",
-                        reason=user_reason,
-                        content_object=archive,
-                        result="success",
-                    )
-        elif "gallery_to_alternative" in p:
-            for archive in archives:
-                if archive.gallery:
-
-                    message = "Moving associated gallery to alternative source: {} for archive: {}, link: {}".format(
-                        archive.gallery.get_absolute_url(), archive.title, archive.get_absolute_url()
-                    )
-                    if "reason" in p and p["reason"] != "":
-                        message += ", reason: {}".format(p["reason"])
-                    logger.info("User {}: {}".format(actual_user.username, message))
-                    if not json_request:
-                        messages.success(request, message)
-
-                    archive.move_gallery_to_alternative()
-                    event_log(
-                        actual_user,
-                        "GALLERY_TO_ALTERNATIVE",
-                        reason=user_reason,
-                        content_object=archive,
-                        result="success",
-                    )
-        elif "delete_archives" in p and actual_user.has_perm("viewer.delete_archive"):
-            for archive in archives:
-                message = "Deleting archive: {}, link: {}, with its file: {}".format(
-                    archive.title, archive.get_absolute_url(), archive.zipped.path
-                )
-                gallery = archive.gallery
-                archive_report = archive.delete_text_report()
-                if archive.gallery:
-                    if (
-                        "mark_delete_galleries" in p
-                        and p["mark_delete_galleries"]
-                        and actual_user.has_perm("viewer.mark_delete_gallery")
-                    ):
-                        archive.gallery.mark_as_deleted()
-                        message += ", gallery: {} will be marked as deleted".format(archive.gallery.get_absolute_url())
-                        archive.gallery = None
-                        event_log(
-                            actual_user,
-                            "MARK_DELETE_GALLERY",
-                            data=archive_report,
-                            reason=user_reason,
-                            content_object=gallery,
-                            result="success",
-                        )
-                    elif (
-                        "deny_galleries" in p
-                        and p["deny_galleries"]
-                        and actual_user.has_perm("viewer.approve_gallery")
-                    ):
-                        archive.gallery.mark_as_denied()
-                        message += ", gallery: {} will be marked as denied".format(archive.gallery.get_absolute_url())
-                        archive.gallery = None
-                        event_log(
-                            actual_user,
-                            "DENY_GALLERY",
-                            data=archive_report,
-                            reason=user_reason,
-                            content_object=gallery,
-                            result="success",
-                        )
-                    elif (
-                        "delete_galleries" in p
-                        and p["delete_galleries"]
-                        and actual_user.has_perm("viewer.delete_gallery")
-                    ):
-                        old_gallery_link = archive.gallery.get_link()
-                        archive.gallery.delete()
-                        archive.gallery = None
-                        event_log(
-                            actual_user,
-                            "DELETE_GALLERY",
-                            reason=user_reason,
-                            data=old_gallery_link,
-                            result="success",
-                        )
-                        message += ", gallery: {} will be deleted".format(old_gallery_link)
-                    else:
-                        message += ", gallery: {} will be kept".format(archive.gallery.get_absolute_url())
-                archive.delete_all_files()
-                archive.delete()
-                event_log(
-                    actual_user,
-                    "DELETE_ARCHIVE",
-                    content_object=gallery,
+            eligible_pks = list(archives.filter(binned=False).values_list("pk", flat=True))
+            if eligible_pks:
+                task = client.enqueue(
+                    args=eligible_pks,
+                    task_type="publish_worker",
+                    user=actual_user,
                     reason=user_reason,
-                    result="deleted",
-                    data=archive_report,
+                    event_action="PUBLISH_ARCHIVE",
                 )
-                if "reason" in p and p["reason"] != "":
-                    message += ", reason: {}".format(p["reason"])
+                queued_task_ids.append(task.pk)
+                message = "Queued publishing for {} archive(s)".format(len(eligible_pks))
+                if user_reason:
+                    message += ", reason: {}".format(user_reason)
+                logger.info("User {}: {}".format(actual_user.username, message))
+                if not json_request:
+                    messages.success(request, message)
+        elif "unpublish_archives" in p and actual_user.has_perm("viewer.publish_archive"):
+            archive_pks = list(archives.values_list("pk", flat=True))
+            if archive_pks:
+                task = client.enqueue(
+                    args=archive_pks,
+                    task_type="archive_batch_worker",
+                    override_options={"operation": "unpublish"},
+                    user=actual_user,
+                    reason=user_reason,
+                    event_action="UNPUBLISH_ARCHIVE",
+                )
+                queued_task_ids.append(task.pk)
+                message = "Queued unpublishing for {} archive(s)".format(len(archive_pks))
+                if user_reason:
+                    message += ", reason: {}".format(user_reason)
+                logger.info("User {}: {}".format(actual_user.username, message))
+                if not json_request:
+                    messages.success(request, message)
+        elif "change_archive_reason" in p and actual_user.has_perm("viewer.change_archive"):
+            archive_reason = p.get("archive_reason", "")
+            archive_pks = list(archives.values_list("pk", flat=True))
+            if archive_pks:
+                task = client.enqueue(
+                    args=archive_pks,
+                    task_type="archive_batch_worker",
+                    override_options={"operation": "change_reason", "archive_reason": archive_reason},
+                    user=actual_user,
+                    reason=user_reason,
+                    event_action="CHANGE_ARCHIVE_REASON",
+                )
+                queued_task_ids.append(task.pk)
+                message = "Queued reason change to '{}' for {} archive(s)".format(archive_reason, len(archive_pks))
+                if user_reason:
+                    message += ", reason: {}".format(user_reason)
+                logger.info("User {}: {}".format(actual_user.username, message))
+                if not json_request:
+                    messages.success(request, message)
+        elif "release_gallery" in p:
+            eligible_pks = list(archives.filter(gallery__isnull=False).values_list("pk", flat=True))
+            if eligible_pks:
+                task = client.enqueue(
+                    args=eligible_pks,
+                    task_type="archive_batch_worker",
+                    override_options={"operation": "release_gallery"},
+                    user=actual_user,
+                    reason=user_reason,
+                    event_action="RELEASE_GALLERY_FROM_ARCHIVE",
+                )
+                queued_task_ids.append(task.pk)
+                message = "Queued releasing associated gallery for {} archive(s)".format(len(eligible_pks))
+                if user_reason:
+                    message += ", reason: {}".format(user_reason)
+                logger.info("User {}: {}".format(actual_user.username, message))
+                if not json_request:
+                    messages.success(request, message)
+        elif "gallery_to_alternative" in p:
+            eligible_pks = list(archives.filter(gallery__isnull=False).values_list("pk", flat=True))
+            if eligible_pks:
+                task = client.enqueue(
+                    args=eligible_pks,
+                    task_type="archive_batch_worker",
+                    override_options={"operation": "gallery_to_alternative"},
+                    user=actual_user,
+                    reason=user_reason,
+                    event_action="GALLERY_TO_ALTERNATIVE",
+                )
+                queued_task_ids.append(task.pk)
+                message = "Queued moving associated gallery to alternative source for {} archive(s)".format(
+                    len(eligible_pks)
+                )
+                if user_reason:
+                    message += ", reason: {}".format(user_reason)
+                logger.info("User {}: {}".format(actual_user.username, message))
+                if not json_request:
+                    messages.success(request, message)
+        elif "delete_archives" in p and actual_user.has_perm("viewer.delete_archive"):
+            archive_pks = list(archives.values_list("pk", flat=True))
+            if archive_pks:
+                delete_options = {
+                    "delete_zipped": False,
+                    "delete_archive": True,
+                    "delete_file": True,
+                    "delete_gallery": bool(p.get("delete_galleries")) and actual_user.has_perm("viewer.delete_gallery"),
+                    "mark_gallery_deleted": bool(p.get("mark_delete_galleries"))
+                    and actual_user.has_perm("viewer.mark_delete_gallery"),
+                    "mark_gallery_denied": bool(p.get("deny_galleries"))
+                    and actual_user.has_perm("viewer.approve_gallery"),
+                    "user_reason": user_reason,
+                }
+                task = client.enqueue(
+                    args=archive_pks,
+                    task_type="delete_archive_worker",
+                    override_options=delete_options,
+                    user=actual_user,
+                    reason=user_reason,
+                    event_action="DELETE_ARCHIVE",
+                )
+                queued_task_ids.append(task.pk)
+                message = "Queued deletion for {} archive(s) and their files".format(len(archive_pks))
+                if user_reason:
+                    message += ", reason: {}".format(user_reason)
                 logger.info("User {}: {}".format(actual_user.username, message))
                 if not json_request:
                     messages.success(request, message)
@@ -357,113 +329,107 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
                 queued_task_ids.append(task.pk)
 
         elif "recalc_fileinfo" in p and actual_user.has_perm("viewer.recalc_fileinfo"):
-            for archive in archives:
-                message = "Recalculating file information for archive: {}, link: {}".format(
-                    archive.title, archive.get_absolute_url()
+            archive_pks = list(archives.values_list("pk", flat=True))
+            if archive_pks:
+                task = client.enqueue(
+                    args=archive_pks,
+                    task_type="fileinfo_worker",
+                    user=actual_user,
+                    reason=user_reason,
+                    event_action="RECALC_ARCHIVE",
                 )
-                if "reason" in p and p["reason"] != "":
-                    message += ", reason: {}".format(p["reason"])
+                queued_task_ids.append(task.pk)
+                message = "Queued file info recalculation for {} archive(s)".format(len(archive_pks))
+                if user_reason:
+                    message += ", reason: {}".format(user_reason)
                 logger.info("User {}: {}".format(actual_user.username, message))
                 if not json_request:
                     messages.success(request, message)
-                archive.recalc_fileinfo()
-                event_log(actual_user, "RECALC_ARCHIVE", reason=user_reason, content_object=archive, result="success")
         elif "add_to_group" in p and actual_user.has_perm("viewer.change_archivegroup"):
-
             if "archive_group" in p:
-                archive_group_ids = p.getlist("archive_group")
-
-                preserved = Case(*[When(pk=pk, then=pos) for pos, pk in enumerate(archive_group_ids)])
-
-                archive_groups = ArchiveGroup.objects.filter(pk__in=archive_group_ids).order_by(preserved)
-
-                for archive in archives:
-                    for archive_group in archive_groups:
-                        if not ArchiveGroupEntry.objects.filter(archive=archive, archive_group=archive_group).exists():
-
-                            archive_group_entry = ArchiveGroupEntry(archive=archive, archive_group=archive_group)
-                            archive_group_entry.save()
-
-                            message = "Adding archive: {}, link: {}, to group: {}, link {}".format(
-                                archive.title,
-                                archive.get_absolute_url(),
-                                archive_group.title,
-                                archive_group.get_absolute_url(),
-                            )
-                            if "reason" in p and p["reason"] != "":
-                                message += ", reason: {}".format(p["reason"])
-                            logger.info("User {}: {}".format(actual_user.username, message))
-                            if not json_request:
-                                messages.success(request, message)
-                            event_log(
-                                actual_user,
-                                "ADD_ARCHIVE_TO_GROUP",
-                                content_object=archive,
-                                reason=user_reason,
-                                result="added",
-                            )
+                archive_group_ids = [int(gid) for gid in p.getlist("archive_group") if str(gid).isdigit()]
+                archive_pks = list(archives.values_list("pk", flat=True))
+                if archive_pks and archive_group_ids:
+                    task = client.enqueue(
+                        args=archive_pks,
+                        task_type="archive_batch_worker",
+                        override_options={"operation": "add_to_group", "archive_group_ids": archive_group_ids},
+                        user=actual_user,
+                        reason=user_reason,
+                        event_action="ADD_ARCHIVE_TO_GROUP",
+                    )
+                    queued_task_ids.append(task.pk)
+                    message = "Queued adding {} archive(s) to {} group(s)".format(
+                        len(archive_pks), len(archive_group_ids)
+                    )
+                    if user_reason:
+                        message += ", reason: {}".format(user_reason)
+                    logger.info("User {}: {}".format(actual_user.username, message))
+                    if not json_request:
+                        messages.success(request, message)
         elif (
             "recycle_archives" in p
             and actual_user.is_authenticated
             and actual_user.has_perm("viewer.recycle_archive")
         ):
-            for archive in archives:
-                if not archive.is_recycled():
-                    message = "Moving to Recycle Bin archive: {}, link: {}".format(
-                        archive.title, archive.get_absolute_url()
-                    )
-                    if "reason" in p and p["reason"] != "":
-                        message += ", reason: {}".format(p["reason"])
-                    logger.info("User {}: {}".format(actual_user.username, message))
-                    if not json_request:
-                        messages.success(request, message)
-                    r = ArchiveRecycleEntry(
-                        archive=archive,
-                        reason=user_reason,
-                        user=actual_user,
-                        origin=ArchiveRecycleEntry.ORIGIN_USER,
-                    )
-
-                    r.save()
-                    archive.binned = True
-                    archive.simple_save()
-                    event_log(
-                        actual_user,
-                        "MOVE_TO_RECYCLE_BIN",
-                        reason=user_reason,
-                        content_object=archive,
-                        result="recycled",
-                    )
+            eligible_pks = list(archives.filter(binned=False).values_list("pk", flat=True))
+            if eligible_pks:
+                task = client.enqueue(
+                    args=eligible_pks,
+                    task_type="archive_batch_worker",
+                    override_options={"operation": "recycle"},
+                    user=actual_user,
+                    reason=user_reason,
+                    event_action="MOVE_TO_RECYCLE_BIN",
+                )
+                queued_task_ids.append(task.pk)
+                message = "Queued moving {} archive(s) to Recycle Bin".format(len(eligible_pks))
+                if user_reason:
+                    message += ", reason: {}".format(user_reason)
+                logger.info("User {}: {}".format(actual_user.username, message))
+                if not json_request:
+                    messages.success(request, message)
         elif (
             "reduce_archives" in p and actual_user.is_authenticated and actual_user.has_perm("viewer.expand_archive")
         ):
-            for archive in archives:
-                if archive.extracted:
-                    message = "Reducing Archive: {}, link: {}".format(archive.title, archive.get_absolute_url())
-                    if "reason" in p and p["reason"] != "":
-                        message += ", reason: {}".format(p["reason"])
-                    logger.info("User {}: {}".format(actual_user.username, message))
-                    if not json_request:
-                        messages.success(request, message)
-
-                    archive.reduce()
-                    event_log(
-                        actual_user, "REDUCE_ARCHIVE", reason=user_reason, content_object=archive, result="success"
-                    )
+            eligible_pks = list(archives.filter(extracted=True).values_list("pk", flat=True))
+            if eligible_pks:
+                task = client.enqueue(
+                    args=eligible_pks,
+                    task_type="reduce_worker",
+                    user=actual_user,
+                    reason=user_reason,
+                    event_action="REDUCE_ARCHIVE",
+                )
+                queued_task_ids.append(task.pk)
+                message = "Queued reduction for {} archive(s)".format(len(eligible_pks))
+                if user_reason:
+                    message += ", reason: {}".format(user_reason)
+                logger.info("User {}: {}".format(actual_user.username, message))
+                if not json_request:
+                    messages.success(request, message)
         elif (
             "mark_similar" in p
             and actual_user.is_authenticated
             and actual_user.has_perm("viewer.mark_similar_archive")
         ):
-            for archive in archives:
-                message = "Creating similar info as marks for Archive: {}".format(archive.get_absolute_url())
-                if "reason" in p and p["reason"] != "":
-                    message += ", reason: {}".format(p["reason"])
+            archive_pks = list(archives.values_list("pk", flat=True))
+            if archive_pks:
+                task = client.enqueue(
+                    args=archive_pks,
+                    task_type="mark_similar_worker",
+                    override_options={"use_recycled": False},
+                    user=actual_user,
+                    reason=user_reason,
+                    event_action="MARK_SIMILAR",
+                )
+                queued_task_ids.append(task.pk)
+                message = "Queued marking similar archives for {} archive(s)".format(len(archive_pks))
+                if user_reason:
+                    message += ", reason: {}".format(user_reason)
                 logger.info("User {}: {}".format(actual_user.username, message))
                 if not json_request:
                     messages.success(request, message)
-
-                archive.create_marks_for_similar_archives()
         elif (
             "extract_contextual_info" in p
             and actual_user.is_authenticated
@@ -575,7 +541,7 @@ def manage_archives(request: HttpRequest) -> HttpResponse:
         ).filter(num_galleries_in_submit__gt=0)
 
     if json_request:
-        results = results.prefetch_related("tags")
+        results = results.prefetch_related("tags", *archive_manage_json_prefetches())
         if can_view_recycled:
             results = results.select_related("recycle_entry", "recycle_entry__user")
 
@@ -693,9 +659,8 @@ def archive_manager(request: HttpRequest) -> HttpResponse:
                     return response
                 data = json.loads(body)
                 if isinstance(data, dict) and "results" in data:
-                    groups_list = []
-                    if actual_user.has_perm("viewer.change_archivegroup"):
-                        groups_list = list(ArchiveGroup.objects.all().order_by("title").values("id", "title"))
+                    # For the "Archive group" filter, and the "Add to Group" action (change_archivegroup).
+                    groups_list = list(ArchiveGroup.objects.all().order_by("title").values("id", "title"))
 
                     permissions = {
                         "publish_archive": actual_user.has_perm("viewer.publish_archive"),
@@ -717,6 +682,9 @@ def archive_manager(request: HttpRequest) -> HttpResponse:
                     data["permissions"] = permissions
                     data["manga_extractor"] = manga_extractor_info(permissions["extract_contextual_info"])
                     data["cold_storage"] = cold_storage_info(actual_user)
+                    data["autocomplete"] = {
+                        key: reverse(url_name) for key, url_name in AUTOCOMPLETE_URL_NAMES.items()
+                    }
 
                 new_content = json.dumps(data, ensure_ascii=False)
                 return HttpResponse(new_content, content_type="application/json; charset=utf-8")
@@ -808,40 +776,28 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
                 'using provider filter "{}" and method filter: {}'.format(cutoff, max_matches, provider, method),
             )
         elif "clear_possible_matches" in p:
-
-            for archive in archives:
-                archive.possible_matches.clear()
-
+            ArchiveMatches.objects.filter(archive__in=archives).delete()
             logger.info("User {}: Clearing possible matches for archives".format(request.user.username))
             messages.success(request, "Clearing possible matches.")
         elif "auto_select_first_match" in p:
-            for archive in archives:
-                try:
-                    possible_gallery = archive.possible_matches.first()
-                    if possible_gallery:
-                        archive.select_as_match(possible_gallery.id)
-                        if archive.gallery:
-                            logger.info(
-                                "User: {}: Archive {} ({}) was matched with gallery {} ({}).".format(
-                                    request.user.username,
-                                    archive,
-                                    reverse("viewer:archive", args=(archive.pk,)),
-                                    archive.gallery,
-                                    reverse("viewer:gallery", args=(archive.gallery.pk,)),
-                                )
-                            )
-                            event_log(
-                                request.user,
-                                "MATCH_ARCHIVE",
-                                # reason=user_reason,
-                                data=reverse("viewer:gallery", args=(archive.gallery.pk,)),
-                                content_object=archive,
-                                result="matched",
-                            )
-                except ValueError:
-                    return safe_redirect_back(request, request.get_full_path())
-
-            messages.success(request, "Matching with first possible match.")
+            archive_pks = list(archives.values_list("pk", flat=True))
+            if archive_pks:
+                client.enqueue(
+                    args=archive_pks,
+                    task_type="archive_batch_worker",
+                    override_options={"operation": "auto_select_first_match"},
+                    user=request.user,
+                    event_action="MATCH_ARCHIVE",
+                )
+                logger.info(
+                    "User %s: Queued auto-selecting first match for %d archive(s).",
+                    request.user.username,
+                    len(archive_pks),
+                )
+                messages.success(
+                    request,
+                    "Queued matching {} archive(s) with their first possible match.".format(len(archive_pks)),
+                )
 
         # Post/redirect/get: reloading the page must not repeat the action.
         return HttpResponseRedirect(request.get_full_path())
@@ -966,89 +922,28 @@ def archives_similar_by_fields(request: HttpRequest) -> HttpResponse:
 
         user_reason = p.get("reason", "")
 
-        if "delete_archives" in p and request.user.has_perm("viewer.delete_archive"):
-            for archive in archives:
-                message = "Removing archive: {} and deleting file: {}".format(
-                    archive.get_absolute_url(), archive.zipped.path
-                )
-                logger.info(message)
-                messages.success(request, message)
-
-                gallery = archive.gallery
-                archive_report = archive.delete_text_report()
-
-                if gallery:
-                    for group_id in groups[archive.pk]:
-                        if group_id in group_mains:
-                            for main_id in group_mains[group_id]:
-                                try:
-                                    main_archive = Archive.objects.get(pk=main_id)
-                                except Archive.DoesNotExist:
-                                    continue
-                                main_archive.alternative_sources.add(gallery)
-                                message = "Adding to archive: {}, gallery as alternative source: {}".format(
-                                    main_archive.get_absolute_url(), gallery.get_absolute_url()
-                                )
-                                if main_archive.public and not gallery.public:
-                                    gallery.set_public()
-                                logger.info(message)
-                                messages.success(request, message)
-
-                if gallery and gallery.archive_set.count() <= 1 and gallery.alternative_sources.count() < 1:
-                    gallery.mark_as_deleted()
-                archive.delete_all_files()
-                archive.delete()
-
-                event_log(
-                    request.user,
-                    "DELETE_ARCHIVE",
+        if ("delete_archives" in p or "delete_objects" in p) and request.user.has_perm("viewer.delete_archive"):
+            delete_files = "delete_archives" in p
+            archive_pks = list(archives.values_list("pk", flat=True))
+            if archive_pks:
+                client.enqueue(
+                    args=archive_pks,
+                    task_type="archive_batch_worker",
+                    override_options={
+                        "operation": "delete_similar_archives",
+                        "delete_files": delete_files,
+                        "groups": {str(k): v for k, v in groups.items()},
+                        "group_mains": {str(k): v for k, v in group_mains.items()},
+                    },
+                    user=request.user,
                     reason=user_reason,
-                    content_object=gallery,
-                    result="deleted",
-                    data=archive_report,
+                    event_action="DELETE_ARCHIVE",
                 )
-
-        elif "delete_objects" in p and request.user.has_perm("viewer.delete_archive"):
-            for archive in archives:
-                message = "Removing archive: {}, keeping file: {}".format(
-                    archive.get_absolute_url(), archive.zipped.path
+                message = "Queued deleting {} archive(s) ({})".format(
+                    len(archive_pks), "deleting files" if delete_files else "keeping files"
                 )
-                logger.info(message)
+                logger.info("User %s: %s", request.user.username, message)
                 messages.success(request, message)
-
-                gallery = archive.gallery
-                archive_report = archive.delete_text_report()
-
-                if gallery:
-                    for group_id in groups[archive.pk]:
-                        if group_id in group_mains:
-                            for main_id in group_mains[group_id]:
-                                try:
-                                    main_archive = Archive.objects.get(pk=main_id)
-                                except Archive.DoesNotExist:
-                                    continue
-                                main_archive.alternative_sources.add(gallery)
-                                message = "Adding to archive: {}, gallery as alternative source: {}".format(
-                                    main_archive.get_absolute_url(), gallery.get_absolute_url()
-                                )
-                                if main_archive.public and not gallery.public:
-                                    gallery.set_public()
-                                logger.info(message)
-                                messages.success(request, message)
-
-                if gallery and gallery.archive_set.count() <= 1 and gallery.alternative_sources.count() < 1:
-                    gallery.mark_as_deleted()
-                archive.delete_files_but_archive()
-                archive.delete()
-
-                event_log(
-                    request.user,
-                    "DELETE_ARCHIVE",
-                    reason=user_reason,
-                    content_object=gallery,
-                    result="deleted",
-                    data=archive_report,
-                )
 
         return safe_redirect_back(request, request.get_full_path())
 

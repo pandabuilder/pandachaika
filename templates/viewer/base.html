@@ -113,6 +113,9 @@
                 {% if perms.viewer.read_private_stats %}
                 <a class="dropdown-item" href="{% url 'viewer:stats-collection' %}">General Stats</a>
                 {% endif %}
+                {% if perms.viewer.read_private_stats or perms.viewer.view_wantedgallery %}
+                <a class="dropdown-item" href="{% url 'viewer:stats-wanted' %}">Wanted Funnel</a>
+                {% endif %}
                 {% if perms.viewer.compare_archives %}
                 <a class="dropdown-item" href="{% url 'viewer:compare-archives-viewer' %}">Compare archives</a>
                 {% endif %}
@@ -191,6 +194,7 @@
                 aria-haspopup="true" aria-expanded="false">Stats</a>
               <ul class="dropdown-menu" aria-labelledby="statsDropdown">
                 <li><a class="dropdown-item" href="{% url 'viewer:stats-collection' %}">Collection</a></li>
+                <li><a class="dropdown-item" href="{% url 'viewer:stats-wanted' %}">Wanted funnel</a></li>
                 <li><a class="dropdown-item" href="{% url 'viewer:stats-visualizations' %}">Visualizations</a></li>
                 <li><a class="dropdown-item" href="{% url 'viewer:public-stats' %}">Public / Backup stats</a></li>
               </ul>

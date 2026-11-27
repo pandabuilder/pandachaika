@@ -244,6 +244,20 @@ def discard_zipfile_extra_files_info(fileinfo: zipfile.ZipInfo) -> zipfile.ZipIn
 
 
 # Allows 1 nested zip level, returns tuple: filename, containing zip(nested), extracted_name (adds nested zipfile)
+def split_crawler_options(items: Iterable[str]) -> tuple[list[str], list[str]]:
+    """Split user supplied links into (links, rejected). The web crawler parses its task args as a command line, so
+    an item starting with "-" would be read as an option (``-f <path>`` reads a file on the server, for instance)
+    instead of a link. Callers queue only the links, with their own options added separately."""
+    links: list[str] = []
+    rejected: list[str] = []
+    for item in items:
+        if item.lstrip().startswith("-"):
+            rejected.append(item)
+        else:
+            links.append(item)
+    return links, rejected
+
+
 def get_images_from_zip(current_zip: zipfile.ZipFile) -> list[tuple[str, str | None, str]]:
     filtered_files = list(filter(discard_zipfile_extra_files, sorted(current_zip.namelist(), key=zfill_to_four)))
 
@@ -1059,6 +1073,16 @@ MAX_INLINE_BAN_WAIT = 900.0
 PROVIDER_RATE_LIMIT_CONFIG: dict[str, tuple[int, float]] = {}
 PROVIDER_COOLDOWN_UNTIL: dict[str, float] = {}
 
+# The Panda ban page is a single short sentence or two, without any page around it. Anything longer is a regular
+# page (a gallery with comments, a search result) that only quotes a ban message, and must not pause the provider.
+PANDA_BAN_PAGE_MAX_CHARS = 2048
+
+
+def is_panda_rate_limit_key(provider_name: str) -> bool:
+    """Whether a request_by_provider() key belongs to Panda ("panda", "panda_web", ...), the only provider whose
+    responses are checked for ban pages."""
+    return provider_name == "panda" or provider_name.startswith("panda_")
+
 
 def parse_panda_ban_duration(text: str) -> float | None:
     """Parse temporary rate-limit ban duration in seconds from Panda/E-Hentai response text.
@@ -1066,11 +1090,15 @@ def parse_panda_ban_duration(text: str) -> float | None:
     Example messages:
     - 'This IP address has been temporarily banned due to an excessive request rate. ... The ban expires in 4 minutes and 51 seconds'
     - 'Your IP address has been temporarily banned for excessive pageloads. ... The ban expires in 1 days'
+
+    Only a body that is the ban message itself counts: it must mention both the ban and its expiry, and be short.
     """
     if not text or not isinstance(text, str):
         return None
+    if len(text.strip()) > PANDA_BAN_PAGE_MAX_CHARS:
+        return None
     lowered = text.lower()
-    if "temporarily banned" not in lowered and "the ban expires in" not in lowered:
+    if "temporarily banned" not in lowered or "the ban expires in" not in lowered:
         return None
     match = re.search(r"The ban expires in\s+([^.\n]+)", text, re.IGNORECASE)
     if not match:
@@ -1239,6 +1267,7 @@ def _may_contain_ban_page(response: Any) -> bool:
 def request_by_provider(provider_name: str, provider_calls: int, provider_limit: float):
     PROVIDER_RATE_LIMIT_CONFIG[provider_name] = (int(provider_calls), float(provider_limit))
     if provider_name not in REQUESTER_BY_PROVIDER:
+        check_ban_pages = is_panda_rate_limit_key(provider_name)
 
         def call_requests():
             @sleep_log_and_retry
@@ -1275,7 +1304,12 @@ def request_by_provider(provider_name: str, provider_calls: int, provider_limit:
                         or (isinstance(kwargs.get("request_dict"), dict) and kwargs["request_dict"].get("stream"))
                     )
 
-                    if not is_stream and response is not None and _may_contain_ban_page(response):
+                    if (
+                        check_ban_pages
+                        and not is_stream
+                        and response is not None
+                        and _may_contain_ban_page(response)
+                    ):
                         ban_duration = parse_panda_ban_duration(response.text)
                         if ban_duration is not None:
                             cooldown_wait = ban_duration + 5.0

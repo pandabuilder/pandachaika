@@ -363,11 +363,11 @@ def _activity_progress(
     cancelled), at most every ``interval`` seconds."""
     if activity_cb is None:
         return None
-    last = [0.0]
+    last: list[float | None] = [None]
 
     def progress(_: int) -> None:
         now = time.monotonic()
-        if now - last[0] >= interval:
+        if last[0] is None or now - last[0] >= interval:
             last[0] = now
             ping_activity(activity_cb)
 

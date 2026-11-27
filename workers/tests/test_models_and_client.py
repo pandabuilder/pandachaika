@@ -274,6 +274,62 @@ class WorkersModelAndClientTests(TestCase):
         self.assertEqual(hydrated.downloaders["panda_info"], 10)
         self.assertEqual(getattr(hydrated, "custom_flag"), "test_value")
 
+    def test_enqueue_deduplication_compares_options_and_user(self):
+        """Tasks with the same args are only duplicates when they were queued with the same options too."""
+        links = ["https://example.com/dedup_options"]
+        base = client.enqueue(args=links, task_type="web_crawler", override_options={"downloaders": ["panda_archive"]})
+
+        same = client.enqueue(args=links, task_type="web_crawler", override_options={"downloaders": ["panda_archive"]})
+        self.assertEqual(same.pk, base.pk)
+
+        other_options = client.enqueue(
+            args=links, task_type="web_crawler", override_options={"downloaders": ["panda_torrent"]}
+        )
+        self.assertNotEqual(other_options.pk, base.pk)
+
+        preserving = client.enqueue(
+            args=links,
+            task_type="web_crawler",
+            override_options={"downloaders": ["panda_archive"], "preserve_user_favorites": [{"user": 1}]},
+        )
+        self.assertNotIn(preserving.pk, (base.pk, other_options.pk))
+
+        user = get_user_model().objects.create_user(username="dedup_user", password="x")
+        other_user = client.enqueue(
+            args=links, task_type="web_crawler", override_options={"downloaders": ["panda_archive"]}, user=user
+        )
+        self.assertNotEqual(other_user.pk, base.pk)
+
+        # The task's reason is only a label; crawler tasks carry their archive reason in the options.
+        other_label = client.enqueue(
+            args=links, task_type="web_crawler", override_options={"downloaders": ["panda_archive"]}, reason="x"
+        )
+        self.assertEqual(other_label.pk, base.pk)
+        other_archive_reason = client.enqueue(
+            args=links,
+            task_type="web_crawler",
+            override_options={"downloaders": ["panda_archive"], "archive_reason": "x"},
+            reason="x",
+        )
+        self.assertNotEqual(other_archive_reason.pk, base.pk)
+
+    def test_options_hash_is_kept_when_options_change_while_running(self):
+        task = client.enqueue(args=["https://example.com/stats"], task_type="web_crawler", override_options={"a": 1})
+        original_hash = task.options_hash
+        self.assertEqual(len(original_hash), 64)
+        task.options = {"a": 1, "crawl_batch_stats": {"found": 3}}
+        task.save(update_fields=["options"])
+        task.refresh_from_db()
+        self.assertEqual(task.options_hash, original_hash)
+        again = client.enqueue(args=["https://example.com/stats"], task_type="web_crawler", override_options={"a": 1})
+        self.assertEqual(again.pk, task.pk)
+
+    def test_tasks_created_directly_get_an_options_hash(self):
+        task = TaskQueue.objects.create(task_type="web_crawler", args=["https://example.com/direct"], options={"a": 1})
+        self.assertEqual(task.options_hash, TaskQueue.compute_options_hash({"a": 1}, None))
+        same = client.enqueue(args=["https://example.com/direct"], task_type="web_crawler", override_options={"a": 1})
+        self.assertEqual(same.pk, task.pk)
+
     def test_enqueue_deduplication(self):
         """Verify client.enqueue deduplicates active tasks with identical args."""
         task1 = client.enqueue(

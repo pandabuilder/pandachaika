@@ -14,9 +14,8 @@ from django.http import HttpRequest, HttpResponse
 from django.urls import reverse
 
 from core.base.setup import Settings
-from core.base.utilities import timestamp_or_zero
+from core.base.utilities import split_crawler_options, timestamp_or_zero
 from viewer.models import Archive, UserArchivePrefs
-from viewer.utils.matching import generate_possible_matches_for_archives
 from viewer.views.api.errors import ApiError, json_response
 from viewer.views.api.filters import filter_galleries_no_request
 from viewer.views.api.handlers.tasks import task_reference
@@ -111,7 +110,9 @@ def _operation_webcrawler(request: HttpRequest, data: dict[str, Any], args: Any,
     if isinstance(args, (list, tuple)):
         args = {"links": list(args)}
 
-    links = _webcrawler_links(args)
+    links, options = split_crawler_options(_webcrawler_links(args))
+    if options:
+        raise ApiError.bad_request("Links can't start with '-': {}".format(", ".join(options)))
     if not links:
         raise ApiError.bad_request("No links provided")
 
@@ -165,17 +166,13 @@ def _operation_webcrawler(request: HttpRequest, data: dict[str, Any], args: Any,
             parent_link = parent_archive.gallery.get_link()
             link_label = links[0] if len(links) == 1 else f"{len(links)} links"
             if args.get("action") == "replaceFound":
-                # Preserve old archive extra data
+                # Preserve old archive extra data; deletion of parent archive and files happens in the worker
+                # right before crawling the replacement link.
                 old_user_favorites = list(
                     UserArchivePrefs.objects.filter(archive=parent_archive).values("user", "favorite_group")
                 )
                 old_extracted = parent_archive.extracted
 
-                parent_archive.gallery.mark_as_deleted()
-                parent_archive.gallery = None
-                parent_archive.delete_all_files()
-                parent_archive.delete_files_but_archive()
-                parent_archive.delete()
                 response["message"] = f"Crawling: {link_label}, deleting parent: {parent_link}"
                 response["result"] = str(len(links))
 
@@ -186,6 +183,7 @@ def _operation_webcrawler(request: HttpRequest, data: dict[str, Any], args: Any,
                     args=links + extra_args,
                     task_type="web_crawler",
                     override_options=current_settings,
+                    extra_options={"replace_parent_archive_id": parent_archive.pk},
                     user=user,
                     reason=reason,
                 )
@@ -228,21 +226,25 @@ def _archive_from_args(args: Any) -> Archive:
         raise ApiError.not_found("Archive does not exist.") from None
 
 
-def _operation_match_archive(args: Any) -> HttpResponse:
+def _operation_match_archive(request: HttpRequest, args: Any, user: User) -> HttpResponse:
     archive = _archive_from_args(args)
     if "match_filter" not in args:
         raise ApiError.bad_request("Wrong format: args.match_filter is required.")
-    generate_possible_matches_for_archives(
-        Archive.objects.filter(pk=archive.pk),
-        filters=(args["match_filter"],),
-        match_local=False,
-        match_web=True,
-        auto_link=bool(args.get("auto_link")),
+    task = client.enqueue_matching_task(
+        task_type="web_match_worker",
+        args=[archive.pk],
+        matching_kwargs={
+            "filters": (args["match_filter"],),
+            "match_local": False,
+            "match_web": True,
+            "auto_link": bool(args.get("auto_link")),
+        },
+        user=user,
     )
-    return json_response({"message": "web matcher done, check the logs for results"})
+    return _with_task(request, {"message": "Web matcher queued, check the logs or task status for results."}, task)
 
 
-def _operation_match_archive_internally(request: HttpRequest, args: Any) -> HttpResponse:
+def _operation_match_archive_internally(request: HttpRequest, args: Any, user: User) -> HttpResponse:
     archive = _archive_from_args(args)
     clear_title = "clear" in args
     provider_filter = args.get("provider", "")
@@ -255,14 +257,20 @@ def _operation_match_archive_internally(request: HttpRequest, args: Any) -> Http
     except ValueError:
         max_matches = 10
 
-    archive.generate_possible_matches(
-        clear_title=clear_title,
-        provider_filter=provider_filter,
-        cutoff=cutoff,
-        max_matches=max_matches,
-        auto_link=bool(args.get("auto_link")),
+    task = client.enqueue(
+        args=[archive.pk],
+        task_type="match_unmatched_worker",
+        override_options={
+            "clear_title": clear_title,
+            "provider_filter": provider_filter,
+            "cutoff": cutoff,
+            "max_matches": max_matches,
+            "auto_link": bool(args.get("auto_link")),
+        },
+        user=user,
+        event_action="GENERATE_MATCHES",
     )
-    return json_response({"message": "internal matcher done, check the archive for results"})
+    return _with_task(request, {"message": "Internal matcher queued, check the archive or task status for results."}, task)
 
 
 def handle_remote_post(request: HttpRequest, user: User) -> HttpResponse:
@@ -282,9 +290,9 @@ def handle_remote_post(request: HttpRequest, user: User) -> HttpResponse:
         return _operation_webcrawler(request, data, args, user)
     # Used by archive page
     if operation == "match_archive":
-        return _operation_match_archive(args)
+        return _operation_match_archive(request, args, user)
     if operation == "match_archive_internally":
-        return _operation_match_archive_internally(request, args)
+        return _operation_match_archive_internally(request, args, user)
     raise ApiError.unknown_command(f"Unknown operation: {operation}")
 
 

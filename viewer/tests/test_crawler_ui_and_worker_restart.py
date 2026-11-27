@@ -513,6 +513,23 @@ class WebCrawlerViewTests(TestCase):
         self.assertTrue(kwargs["override_options"].ignore_global_filters)
 
     @patch("workers.client.enqueue")
+    def test_user_crawler_drops_entries_that_are_crawler_options(self, mock_enqueue):
+        from django.contrib.auth.models import Permission
+        perm = Permission.objects.get(codename="crawler_adder")
+        self.non_staff_user.user_permissions.add(perm)
+        self.client.login(username="normal_user", password="testpassword")
+        resp = self.client.post(
+            reverse("viewer:user-crawler"),
+            data={"urls": "https://example.com/g/123/abc\r\n-f\r\n/etc/passwd\r\n --retry-failed"},
+            HTTP_REFERER="/upload/",
+        )
+        self.assertEqual(resp.status_code, 302)
+        mock_enqueue.assert_called_once()
+        args = mock_enqueue.call_args.kwargs["args"]
+        self.assertFalse([arg for arg in args if arg.lstrip().startswith("-")])
+        self.assertIn("https://example.com/g/123/abc", args)
+
+    @patch("workers.client.enqueue")
     def test_crawler_enqueue_with_silent_processing(self, mock_enqueue):
         self.client.login(username="admin_crawler", password="testpassword")
         resp = self.client.post(

@@ -84,7 +84,8 @@ test-all:
   script:
     - python --version
     - uv sync --locked --active --group ci --group dev
-    - uv run --no-sync manage.py migrate
+    # No `manage.py migrate` here: pytest-django creates and migrates its own
+    # test_<DATABASE_NAME> database, so migrating the main DB was wasted work.
     - uv run --no-sync pytest --durations=20 --junitxml=test-results/TEST-pytest.xml
     - uv cache prune --ci
   tags:
@@ -96,6 +97,34 @@ test-all:
       - test-results/TEST-*.xml
     reports:
       junit: test-results/TEST-*.xml
+
+deploy-prod:
+  stage: deploy
+  image: alpine:3
+  dependencies: []
+  environment:
+    name: production
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+      allow_failure: true
+  before_script:
+    - apk add --no-cache openssh-client
+    - mkdir -p ~/.ssh && chmod 700 ~/.ssh
+    - install -m 600 "$PROD_DEPLOY_SSH_KEY" ~/.ssh/deploy_key
+    - install -m 644 "$PROD_DEPLOY_KNOWN_HOSTS" ~/.ssh/known_hosts
+  script:
+    - >-
+      ssh -T
+      -i ~/.ssh/deploy_key
+      -o IdentitiesOnly=yes
+      -o BatchMode=yes
+      -o StrictHostKeyChecking=yes
+      -o UserKnownHostsFile=~/.ssh/known_hosts
+      "$PROD_DEPLOY_TARGET"
+  tags:
+    - django
+    - panda
 
 build-image:
   stage: build

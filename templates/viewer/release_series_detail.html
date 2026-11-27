@@ -195,6 +195,8 @@
     </div>
   </div>
 
+  {% include "viewer/include/release_series_group.html" %}
+
   <!-- Missing -->
   <div class="dm-card" id="missing">
     <div class="dm-card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
@@ -322,6 +324,7 @@
 
 {% block afterJQ %}
   {% include "viewer/include/release_series_backlog.html" %}
+  {% if not result.error %}{% include "viewer/include/release_series_group_js.html" %}{% endif %}
   <script>
     (function () {
       const all = document.getElementById('missing-all');

@@ -9,7 +9,7 @@ from django.contrib.auth.decorators import permission_required, login_required
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator, InvalidPage, EmptyPage
-from django.db.models import Count, Q
+from django.db.models import Count, Q, QuerySet
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import render
 from django.urls import reverse
@@ -42,44 +42,103 @@ logger = logging.getLogger(__name__)
 
 
 
-@login_required
-def my_event_log(request: AuthenticatedHttpRequest) -> HttpResponse:
+def _filter_events(request: HttpRequest, results: QuerySet[EventLog]) -> QuerySet[EventLog]:
+    """Filters shared by the event log pages: dates, data/result text and the object (type and id)."""
     get = request.GET
+    event_date_from = get.get("event_date_from", "")
+    event_date_to = get.get("event_date_to", "")
+    data_field = get.get("data_field", "")
+    result_field = get.get("result_field", "")
+    event_content_type = get.get("content_type", "")
+    event_content_id = get.get("content_id", "")
 
+    try:
+        if event_date_from:
+            results = results.filter(create_date__date__gte=event_date_from)
+        if event_date_to:
+            results = results.filter(create_date__date__lte=event_date_to)
+    except ValidationError:
+        messages.error(request, "Invalid date, use YYYY-MM-DD.", extra_tags="danger")
+        results = results.none()
+
+    if data_field:
+        results = results.filter(data__contains=data_field)
+
+    if result_field:
+        results = results.filter(result__contains=result_field)
+
+    if event_content_type == "archive":
+        results = results.filter(content_type=ContentType.objects.get_for_model(Archive))
+    elif event_content_type == "gallery":
+        results = results.filter(content_type=ContentType.objects.get_for_model(Gallery))
+
+    if event_content_id:
+        if event_content_id.isdigit():
+            results = results.filter(object_id=event_content_id)
+        else:
+            results = results.none()
+
+    return results
+
+
+def _event_activity(events: QuerySet[EventLog], distinct_actions: int) -> tuple[dict[str, int], list[typing.Any]]:
+    """Counts for the overview tiles, and the most frequent actions of the last 7 days."""
+    now = timezone.now()
+    recent = events.filter(create_date__gte=now - datetime.timedelta(days=7))
+    top_actions = list(recent.values("action").annotate(count=Count("id")).order_by("-count", "action")[:12])
+    activity = {
+        "last_day": recent.filter(create_date__gte=now - datetime.timedelta(days=1)).count(),
+        "last_week": recent.count(),
+        "distinct_actions": distinct_actions,
+    }
+    return activity, top_actions
+
+
+def _page(results: QuerySet[EventLog], get: typing.Any, limit: int) -> typing.Any:
     try:
         page = int(get.get("page", "1"))
     except ValueError:
         page = 1
+    paginator = Paginator(results, limit)
+    try:
+        return paginator.page(page)
+    except (InvalidPage, EmptyPage):
+        return paginator.page(paginator.num_pages)
 
+
+@login_required
+def my_event_log(request: AuthenticatedHttpRequest) -> HttpResponse:
+    """The events the current user did, with the same filters as the activity event log (minus users)."""
+    get = request.GET
     selected_actions = get.getlist("actions")
 
+    own_events = EventLog.objects.filter(user=request.user)
+
+    results = own_events.prefetch_related("content_object", "content_type")
     if selected_actions:
-        results = EventLog.objects.filter(action__in=selected_actions)
-    else:
-        results = EventLog.objects.all()
+        results = results.filter(action__in=selected_actions)
+    results = _filter_events(request, results)
 
-    results = results.filter(user=request.user).prefetch_related("content_object")
+    actions = list(own_events.order_by("action").values_list("action", flat=True).distinct())
 
-    actions = EventLog.objects.filter(user=request.user).order_by().values_list("action", flat=True).distinct()
+    limit = page_size(get, default=100)
+    activity, top_actions = _event_activity(own_events, len(actions))
 
-    paginator = Paginator(results, 100)
-    try:
-        results_page = paginator.page(page)
-    except (InvalidPage, EmptyPage):
-        results_page = paginator.page(paginator.num_pages)
-
-    d = {"results": results_page, "actions": actions}
+    d = {
+        "results": _page(results, get, limit),
+        "actions": actions,
+        "selected_actions": selected_actions,
+        "top_actions": top_actions,
+        "activity": activity,
+        "limit": limit,
+        "per_page_options": PAGE_SIZE_OPTIONS,
+    }
     return render(request, "viewer/collaborators/event_log.html", d)
 
 
 @permission_required("viewer.read_activity_logs")
 def activity_event_log(request: HttpRequest) -> HttpResponse:
     get = request.GET
-
-    try:
-        page = int(get.get("page", "1"))
-    except ValueError:
-        page = 1
 
     selected_actions = get.getlist("actions")
 
@@ -130,31 +189,7 @@ def activity_event_log(request: HttpRequest) -> HttpResponse:
     if user_filter:
         results = results.filter(user__username=user_filter)
 
-    try:
-        if event_date_from:
-            results = results.filter(create_date__date__gte=event_date_from)
-        if event_date_to:
-            results = results.filter(create_date__date__lte=event_date_to)
-    except ValidationError:
-        messages.error(request, "Invalid date, use YYYY-MM-DD.", extra_tags="danger")
-        results = results.none()
-
-    if data_field:
-        results = results.filter(data__contains=data_field)
-
-    if result_field:
-        results = results.filter(result__contains=result_field)
-
-    if event_content_type in ("archive", "gallery"):
-        if event_content_type == "archive":
-            event_type = ContentType.objects.get_for_model(Archive)
-            results = results.filter(content_type=event_type)
-        elif event_content_type == "gallery":
-            event_type = ContentType.objects.get_for_model(Gallery)
-            results = results.filter(content_type=event_type)
-
-    if event_content_id:
-        results = results.filter(object_id=event_content_id)
+    results = _filter_events(request, results)
 
     if (title or tags) and not (filter_galleries or filter_archives):
         # Searching by title or tags without choosing where: look in both.
@@ -204,24 +239,13 @@ def activity_event_log(request: HttpRequest) -> HttpResponse:
     actions = EventLog.objects.order_by("action").values_list("action", flat=True).distinct()
 
     limit = page_size(get, default=100)
-    paginator = Paginator(results, limit)
-    try:
-        results_page = paginator.page(page)
-    except (InvalidPage, EmptyPage):
-        results_page = paginator.page(paginator.num_pages)
+    results_page = _page(results, get, limit)
 
-    now = timezone.now()
-    recent = EventLog.objects.filter(create_date__gte=now - datetime.timedelta(days=7))
-    top_actions = list(recent.values("action").annotate(count=Count("id")).order_by("-count", "action")[:12])
-    activity = {
-        "last_day": recent.filter(create_date__gte=now - datetime.timedelta(days=1)).count(),
-        "last_week": recent.count(),
-        "distinct_actions": len(actions),
-    }
+    activity, top_actions = _event_activity(EventLog.objects.all(), len(actions))
     top_users: list[typing.Any] = []
     if can_see_users:
         top_users = list(
-            recent.filter(user__isnull=False)
+            EventLog.objects.filter(create_date__gte=timezone.now() - datetime.timedelta(days=7), user__isnull=False)
             .values("user__username")
             .annotate(count=Count("id"))
             .order_by("-count", "user__username")[:8]

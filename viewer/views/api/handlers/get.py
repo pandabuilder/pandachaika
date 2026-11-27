@@ -36,11 +36,32 @@ from viewer.views.head import (
     wanted_gallery_filter_keys,
     filter_wanted_galleries_simple,
 )
+from viewer.views.api.auth import get_api_context
 from viewer.views.api.errors import ApiError
-from viewer.views.api.common import _get_int, _get_str, gallery_by_gid_to_json, get_galleries_from_request
+from viewer.views.api.common import (
+    _get_int,
+    _get_str,
+    gallery_by_gid_to_json,
+    get_galleries_from_request,
+    get_latest_download_events_for_archives,
+    parse_bool_from_data_or_body,
+    serialize_gallery_archives,
+)
 from viewer.views.api.filters import filter_galleries_no_request, simple_archive_filter
 
 ACCEPTED_PER_PAGE = [24, 48, 100, 200, 300]
+
+# Anonymous callers can ask for at most this many items in one request (gids, wanted gallery ids, wanted tags),
+# and get at most this many results from the unpaginated wanted gallery search.
+ANONYMOUS_MAX_ITEMS = 100
+ANONYMOUS_MAX_RESULTS = 200
+
+
+def _check_anonymous_list_size(items: list[Any], name: str, user_is_authenticated: bool) -> None:
+    if not user_is_authenticated and len(items) > ANONYMOUS_MAX_ITEMS:
+        raise ApiError.bad_request(
+            f"Too many {name}: {len(items)} (at most {ANONYMOUS_MAX_ITEMS} per request without authentication)."
+        )
 
 def handle_get_archive(request: HttpRequest, data: QueryDict, user_is_authenticated: bool):
     try:
@@ -221,7 +242,20 @@ def handle_get_aid(request: HttpRequest, data: QueryDict, user_is_authenticated:
 # Get fields from a specific gallery.
 
 
+def _parse_archive_download_options(request: HttpRequest, data: QueryDict) -> tuple[bool, bool]:
+    include_downloads, _ = parse_bool_from_data_or_body(data, {}, "include_downloads")
+    downloading_only, _ = parse_bool_from_data_or_body(data, {}, "downloading_only")
+    if include_downloads:
+        context = get_api_context(request)
+        if not context.authenticated or context.user is None:
+            raise ApiError.not_authenticated()
+        if not context.user.has_perm("viewer.download_history"):
+            raise ApiError.forbidden("You don't have permission to view download status.")
+    return include_downloads, downloading_only
+
+
 def handle_get_gallery(request: HttpRequest, data: QueryDict, user_is_authenticated: bool):
+    include_downloads, downloading_only = _parse_archive_download_options(request, data)
     try:
         gallery_id = _get_int(data, "gallery")
     except ValueError:
@@ -232,6 +266,7 @@ def handle_get_gallery(request: HttpRequest, data: QueryDict, user_is_authentica
         raise ApiError.not_found("Gallery does not exist.")
     if not gallery.public and not user_is_authenticated:
         raise ApiError.not_found("Gallery does not exist.")
+    archives = list(gallery.archive_set.filter_by_authenticated_status(authenticated=user_is_authenticated))
     response = json.dumps(
         {
             "id": gallery.id,
@@ -250,14 +285,11 @@ def handle_get_gallery(request: HttpRequest, data: QueryDict, user_is_authentica
             "link": gallery.get_link(),
             "url": reverse("viewer:gallery", args=(gallery.pk,)),
             "tags": gallery.tag_list(),
-            "archives": [
-                {
-                    "id": archive.id,
-                    "download": reverse("viewer:archive-download", args=(archive.pk,)),
-                    "recycled": archive.is_recycled(),
-                }
-                for archive in gallery.archive_set.filter_by_authenticated_status(authenticated=user_is_authenticated)
-            ],
+            "archives": serialize_gallery_archives(
+                archives,
+                include_downloads=include_downloads,
+                downloading_only=downloading_only,
+            ),
         },
         # indent=2,
         sort_keys=True,
@@ -269,8 +301,23 @@ def handle_get_gallery(request: HttpRequest, data: QueryDict, user_is_authentica
 # Get fields from a specific gallery (Using gid).
 
 
-def _gallery_by_gid_to_json(gallery: Gallery, user_is_authenticated: bool) -> dict[str, Any]:
-    return gallery_by_gid_to_json(gallery, user_is_authenticated)
+def _gallery_by_gid_to_json(
+    gallery: Gallery,
+    user_is_authenticated: bool,
+    *,
+    include_downloads: bool = False,
+    downloading_only: bool = False,
+    archives: list[Archive] | None = None,
+    download_events_by_archive: dict[int, Any] | None = None,
+) -> dict[str, Any]:
+    return gallery_by_gid_to_json(
+        gallery,
+        user_is_authenticated,
+        include_downloads=include_downloads,
+        downloading_only=downloading_only,
+        archives=archives,
+        download_events_by_archive=download_events_by_archive,
+    )
 
 
 def _gallery_for_gid(data: QueryDict, gallery_gid: str | list[object]) -> Gallery | None:
@@ -280,13 +327,19 @@ def _gallery_for_gid(data: QueryDict, gallery_gid: str | list[object]) -> Galler
 
 
 def handle_get_gid(request: HttpRequest, data: QueryDict, user_is_authenticated: bool):
+    include_downloads, downloading_only = _parse_archive_download_options(request, data)
     gallery = _gallery_for_gid(data, data["gid"])
     if not gallery:
         raise ApiError.not_found("Gallery does not exist.")
     if not gallery.public and not user_is_authenticated:
         raise ApiError.not_found("Gallery does not exist.")
     response = json.dumps(
-        _gallery_by_gid_to_json(gallery, user_is_authenticated),
+        _gallery_by_gid_to_json(
+            gallery,
+            user_is_authenticated,
+            include_downloads=include_downloads,
+            downloading_only=downloading_only,
+        ),
         # indent=2,
         sort_keys=True,
         ensure_ascii=False,
@@ -295,15 +348,45 @@ def handle_get_gid(request: HttpRequest, data: QueryDict, user_is_authenticated:
 
 
 def handle_get_gids(request: HttpRequest, data: QueryDict, user_is_authenticated: bool):
+    include_downloads, downloading_only = _parse_archive_download_options(request, data)
     gallery_gids = data.getlist("gids", [])
     if not gallery_gids:
         return HttpResponse(json.dumps([]), content_type="application/json; charset=utf-8")
+    _check_anonymous_list_size(gallery_gids, "gids", user_is_authenticated)
 
-    galleries = []
+    matched_galleries: list[Gallery] = []
     for gallery_gid in gallery_gids:
         gallery = _gallery_for_gid(data, gallery_gid)
         if gallery and (gallery.public or user_is_authenticated):
-            galleries.append(_gallery_by_gid_to_json(gallery, user_is_authenticated))
+            matched_galleries.append(gallery)
+
+    archives_by_gallery: dict[int, list[Archive]] = defaultdict(list)
+    download_events_by_archive = None
+    if matched_galleries:
+        gallery_ids = [g.pk for g in matched_galleries]
+        all_archives = list(
+            Archive.objects.filter_by_authenticated_status(
+                authenticated=user_is_authenticated,
+                gallery_id__in=gallery_ids,
+            )
+        )
+        for archive in all_archives:
+            if archive.gallery_id is not None:
+                archives_by_gallery[archive.gallery_id].append(archive)
+        if include_downloads:
+            download_events_by_archive = get_latest_download_events_for_archives([a.pk for a in all_archives])
+
+    galleries = [
+        _gallery_by_gid_to_json(
+            gallery,
+            user_is_authenticated,
+            include_downloads=include_downloads,
+            downloading_only=downloading_only,
+            archives=archives_by_gallery[gallery.pk],
+            download_events_by_archive=download_events_by_archive,
+        )
+        for gallery in matched_galleries
+    ]
 
     response = json.dumps(
         galleries,
@@ -477,7 +560,7 @@ def handle_get_match(request: HttpRequest, data: QueryDict, user_is_authenticate
                 "thumbnail_url": gallery.get_thumbnail_url(),
                 "gallery_container": gallery.gallery_container.gid if gallery.gallery_container else "",
                 "parent_gid": gallery.parent_gallery.gid if gallery.parent_gallery else "",
-                "first_gid": gallery.first_gallery.gid if gallery.first_gallery else "",
+                "first_gid": gallery.first_gallery_gid or (gallery.first_gallery.gid if gallery.first_gallery else ""),
                 "magazine": gallery.magazine.gid if gallery.magazine else "",
             }
             for gallery in galleries_matcher
@@ -955,6 +1038,7 @@ def handle_get_wanted_galleries(request: HttpRequest, data: QueryDict, user_is_a
         raise ApiError.not_found("WantedGallery does not exist.")
     if not wanted_gallery_ids:
         return HttpResponse(json.dumps([]), content_type="application/json; charset=utf-8")
+    _check_anonymous_list_size(wanted_gallery_ids, "wanted gallery ids", user_is_authenticated)
 
     try:
         [int(x) for x in wanted_gallery_ids]
@@ -1017,6 +1101,8 @@ def handle_get_wanted_galleries_search(request: HttpRequest, data: QueryDict, us
             )
         )
     results = results.prefetch_related(*prefetches)
+    if not user_is_authenticated:
+        results = results[:ANONYMOUS_MAX_RESULTS]
 
     if not results:
         return HttpResponse(json.dumps([]), content_type="application/json; charset=utf-8")
@@ -1056,6 +1142,7 @@ def handle_get_wanted_tags(request: HttpRequest, data: QueryDict, user_is_authen
 
     if not queried_tags:
         return HttpResponse(json.dumps({}), content_type="application/json; charset=utf-8")
+    _check_anonymous_list_size(queried_tags, "tags", user_is_authenticated)
 
     tag_q = Q()
     tag_lookup_map: dict[tuple[str, str], list[str]] = {}

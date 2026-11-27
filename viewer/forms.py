@@ -1319,10 +1319,9 @@ class ProfileChangeForm(forms.ModelForm):
 
     class Meta:
         model = Profile
-        fields = ["notify_new_submissions", "notify_new_private_archive", "notify_wanted_gallery_found"]
+        fields = ["notify_new_submissions", "notify_wanted_gallery_found"]
         widgets = {
             "notify_new_submissions": forms.widgets.CheckboxInput(attrs={"class": "form-check-input"}),
-            "notify_new_private_archive": forms.widgets.CheckboxInput(attrs={"class": "form-check-input"}),
             "notify_wanted_gallery_found": forms.widgets.CheckboxInput(attrs={"class": "form-check-input"}),
         }
 

@@ -11,7 +11,7 @@ from collections.abc import Mapping
 
 from django.db.models import Count, Exists, F, OuterRef, Q, QuerySet
 
-from viewer.models import Archive, ArchiveManageEntry, ArchiveTag, UserArchivePrefs
+from viewer.models import Archive, ArchiveGroupEntry, ArchiveManageEntry, ArchiveTag, Gallery, UserArchivePrefs
 from viewer.services import cold_storage
 from viewer.views.head import archive_filter_keys, archive_order_fields, filter_archives_simple
 
@@ -36,6 +36,7 @@ TEXT_FILTERS = [
     "mark_extra",
     "origin",
     "storage",
+    "archive_group",
 ]
 NUMBER_FILTERS = [
     "filecount_from",
@@ -56,6 +57,7 @@ FLAG_FILTERS = [
     "downloading",
     "diff-filesize",
     "gallery-other-archives",
+    "gallery-has-child",
     "no-custom-tags",
     "with-custom-tags",
     "with-scopeless-tags",
@@ -83,6 +85,8 @@ STORAGE_CHOICES = ("local", "cold")
 # Three-way filters: "1" (only these archives), "any" (ignore the filter); anything else excludes them (the default).
 TRISTATE_FILTERS = {"recycled", "file_deleted"}
 TRISTATE_ANY = "any"
+# "archive_group": an archive group id, or "none" for the archives that aren't in any group.
+ARCHIVE_GROUP_NONE = "none"
 
 ALL_FILTERS = TEXT_FILTERS + NUMBER_FILTERS + DATE_FILTERS + FLAG_FILTERS
 MAX_TEXT_LENGTH = 500
@@ -148,6 +152,9 @@ def clean_filter(params: Mapping[str, typing.Any], user: "User | AnonymousUser |
         elif key == "storage":
             if value not in STORAGE_CHOICES:
                 raise ValueError(f"Filter 'storage' must be one of {', '.join(STORAGE_CHOICES)}, got '{value}'.")
+        elif key == "archive_group":
+            if value != ARCHIVE_GROUP_NONE and not value.isdigit():
+                raise ValueError(f"Filter 'archive_group' must be an archive group id or 'none', got '{value}'.")
         elif key in DATE_FILTERS:
             try:
                 datetime.date.fromisoformat(value)
@@ -280,6 +287,18 @@ def filter_recycled_and_file_deleted(
     return archives
 
 
+def filter_by_archive_group(archives: QuerySet[Archive], value: typing.Any) -> QuerySet[Archive]:
+    """Keep the archives in the archive group with this id, or the ones in no group for "none". Other values (empty,
+    not an id) don't filter."""
+    value = str(value or "").strip()
+    in_group = ArchiveGroupEntry.objects.filter(archive=OuterRef("pk"))
+    if value == ARCHIVE_GROUP_NONE:
+        return archives.exclude(Exists(in_group))
+    if value.isdigit():
+        return archives.filter(Exists(in_group.filter(archive_group_id=int(value))))
+    return archives
+
+
 def filter_archives(
     params: Mapping[str, typing.Any],
     can_view_recycled: bool = False,
@@ -291,7 +310,9 @@ def filter_archives(
     Binned and file deleted archives are excluded unless ``can_view_recycled``. Users who can view them choose with
     "recycled" and "file_deleted": "1" for only those archives, "any" to ignore the filter, absent or "0" to exclude
     them. ``flags`` receives whether mark and extra file filters were used. "only_favorites" keeps the archives that
-    ``favorites_user_id`` marked as favorite, and is ignored without it. "storage" keeps the "local" or the "cold"
+    ``favorites_user_id`` marked as favorite, and is ignored without it. "archive_group" keeps the archives in that
+    group (by id), or the ones in no group with "none". "gallery-has-child" keeps the archives whose gallery has a child
+    gallery (a newer version, ``Gallery.parent_gallery``). "storage" keeps the "local" or the "cold"
     (offloaded) archives; it doesn't check who asks, callers drop it for users who can't use the cold storage.
     """
     query: dict[str, typing.Any] = {"sort": "create_date", "asc_desc": "desc"}
@@ -321,8 +342,14 @@ def filter_archives(
         other_archives = Archive.objects.filter(gallery=OuterRef("gallery"), binned=False).exclude(pk=OuterRef("pk"))
         results = results.filter(gallery__isnull=False).filter(Exists(other_archives))
 
+    if "gallery-has-child" in params:
+        # A newer version of the gallery is known (a gallery whose parent is this one): the archive may be replaceable.
+        children = Gallery.objects.filter(parent_gallery=OuterRef("gallery")).exclude(pk=OuterRef("gallery"))
+        results = results.filter(gallery__isnull=False).filter(Exists(children))
+
     results = filter_recycled_and_file_deleted(results, params, can_view_recycled)
     results = cold_storage.filter_by_storage(results, params.get("storage"))
+    results = filter_by_archive_group(results, params.get("archive_group"))
 
     if params.get("only_favorites") and favorites_user_id is not None:
         favorites = UserArchivePrefs.objects.filter(user_id=favorites_user_id, favorite_group__gt=0).values("archive")

@@ -17,11 +17,13 @@ RUN apt update && apt install -y libpq-dev
 # Upgrade pip and install dependencies
 RUN pip install uv
 
-# Copy the requirements file first (better caching)
-COPY requirements.txt /app/
+# Copy dependency files first (better caching)
+COPY pyproject.toml uv.lock /app/
 
-# Install Python dependencies
-RUN uv pip install --system --no-cache-dir -r requirements.txt
+# Install Python dependencies from the lockfile
+RUN uv export --frozen --no-dev --no-emit-project -o /tmp/requirements.txt && \
+    uv pip install --system --no-cache-dir -r /tmp/requirements.txt && \
+    rm -f /tmp/requirements.txt
 
 # Stage 2: Production stage
 FROM python:3.14-slim

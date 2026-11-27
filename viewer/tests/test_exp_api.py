@@ -49,12 +49,19 @@ class ExpApiTests(TestCase):
 
     @patch.object(Archive, "extract")
     def test_post_extract_archive_success(self, mock_extract):
+        from workers.models import TaskQueue
+
         response = self.admin_client.post(f"/r-api/archive/{self.archive.pk}/extract_archive/")
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.content)
-        self.assertEqual(data["result"], "ok")
-        self.assertEqual(data["message"], "Extraction successful.")
-        mock_extract.assert_called_once()
+        self.assertEqual(data["result"], "queued")
+        self.assertEqual(data["message"], "Extraction queued.")
+        self.assertIsNotNone(data["task_id"])
+        self.assertIsNotNone(data["status_url"])
+        mock_extract.assert_not_called()
+        task = TaskQueue.objects.get(pk=data["task_id"])
+        self.assertEqual(task.task_type, "extract_worker")
+        self.assertEqual(task.args, [self.archive.pk])
 
     def test_post_extract_archive_already_extracted_warning(self):
         self.archive.extracted = True
@@ -68,27 +75,39 @@ class ExpApiTests(TestCase):
 
     @patch.object(Archive, "reduce")
     def test_post_reduce_archive_success(self, mock_reduce):
+        from workers.models import TaskQueue
+
         self.archive.extracted = True
         self.archive.save()
 
         response = self.admin_client.post(f"/r-api/archive/{self.archive.pk}/reduce_archive/")
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.content)
-        self.assertEqual(data["result"], "ok")
-        self.assertEqual(data["message"], "Reduction successful.")
-        mock_reduce.assert_called_once()
+        self.assertEqual(data["result"], "queued")
+        self.assertEqual(data["message"], "Reduction queued.")
+        self.assertIsNotNone(data["task_id"])
+        mock_reduce.assert_not_called()
+        task = TaskQueue.objects.get(pk=data["task_id"])
+        self.assertEqual(task.task_type, "reduce_worker")
+        self.assertEqual(task.args, [self.archive.pk])
 
     @patch.object(Archive, "reduce")
     def test_delete_reduce_archive_success(self, mock_reduce):
+        from workers.models import TaskQueue
+
         self.archive.extracted = True
         self.archive.save()
 
         response = self.admin_client.delete(f"/r-api/archive/{self.archive.pk}/reduce_archive/")
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.content)
-        self.assertEqual(data["result"], "ok")
-        self.assertEqual(data["message"], "Reduction successful.")
-        mock_reduce.assert_called_once()
+        self.assertEqual(data["result"], "queued")
+        self.assertEqual(data["message"], "Reduction queued.")
+        self.assertIsNotNone(data["task_id"])
+        mock_reduce.assert_not_called()
+        task = TaskQueue.objects.get(pk=data["task_id"])
+        self.assertEqual(task.task_type, "reduce_worker")
+        self.assertEqual(task.args, [self.archive.pk])
 
     def test_post_reduce_archive_already_reduced_warning(self):
         self.archive.extracted = False

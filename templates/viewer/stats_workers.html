@@ -309,6 +309,91 @@
     white-space: nowrap;
   }
 
+  /* Split Crawler Batch Cards */
+  .crawl-batch-card {
+    background-color: #002046;
+    border: 1px solid var(--pg-border);
+    border-left-width: 4px;
+    border-radius: 8px;
+    margin-bottom: 0.75rem;
+    overflow: hidden;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .crawl-batch-card:last-child {
+    margin-bottom: 0;
+  }
+  .crawl-batch-card.status-processing {
+    border-left-color: var(--pg-accent-blue);
+    box-shadow: 0 0 10px rgba(54, 176, 249, 0.18);
+  }
+  .crawl-batch-card.status-pending {
+    border-left-color: #ffc107;
+  }
+  .crawl-batch-card.status-completed {
+    border-left-color: var(--pg-accent-green);
+  }
+  .crawl-batch-card.status-partial {
+    border-left-color: #fd7e14;
+  }
+  .crawl-batch-card.status-failed {
+    border-left-color: #dc3545;
+  }
+  .crawl-batch-card.status-cancelled {
+    border-left-color: #6c757d;
+    opacity: 0.85;
+  }
+  .crawl-batch-header {
+    padding: 0.75rem 0.9rem;
+    background-color: #002450;
+  }
+  .crawl-batch-toggle-area {
+    cursor: pointer;
+    user-select: none;
+  }
+  .crawl-batch-toggle-area:hover .crawl-batch-chevron {
+    color: var(--pg-accent-blue) !important;
+  }
+  .crawl-batch-chevron {
+    transition: transform 0.15s ease;
+    display: inline-block;
+    width: 1rem;
+    text-align: center;
+  }
+  .crawl-batch-card.expanded .crawl-batch-chevron {
+    transform: rotate(90deg);
+  }
+  .crawl-batch-progress {
+    height: 9px;
+    background-color: #00142c;
+    border: 1px solid var(--pg-border);
+    border-radius: 5px;
+    overflow: hidden;
+  }
+  .crawl-batch-provider-chip {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.45rem;
+    background-color: #001633;
+    border: 1px solid var(--pg-border-subtle);
+    border-radius: 6px;
+    padding: 0.22rem 0.55rem;
+    font-size: 0.78rem;
+    color: var(--pg-text-primary);
+  }
+  .crawl-batch-body {
+    border-top: 1px solid var(--pg-border);
+    background-color: #00193b;
+    padding: 0.75rem 0.9rem;
+  }
+  .badge-batch-ref {
+    font-family: monospace;
+    font-size: 0.72rem;
+    background-color: #002e63 !important;
+    color: #8fd3ff !important;
+    border: 1px solid #1e56a0 !important;
+  }
+
   /* --- Legacy Tab Overrides (ensuring full visibility on dark backgrounds) --- */
   #tab-legacy {
     color: var(--pg-text-primary) !important;
@@ -486,6 +571,9 @@
         </div>
         <div class="small text-secondary mt-1">
           <span id="kpi-tasks-failed" class="text-danger fw-semibold">{{ dashboard.summary.failed_tasks_24h_count|default:"0" }} failed</span> / <span id="kpi-tasks-completed" class="text-success fw-semibold">{{ dashboard.summary.completed_tasks_24h_count|default:"0" }} finished</span> (24h)
+          <span id="kpi-crawl-batches-badge" class="{% if not dashboard.summary.active_crawl_batches_count %}d-none{% endif %}">
+            &bull; <a href="#tab-queues" id="kpi-crawl-batches-link" class="text-info text-decoration-none fw-semibold"><i class="fas fa-layer-group me-1"></i><span id="kpi-crawl-batches-count">{{ dashboard.summary.active_crawl_batches_count|default:"0" }}</span> split batch{% if dashboard.summary.active_crawl_batches_count != 1 %}es{% endif %}</a>
+          </span>
         </div>
       </div>
     </div>
@@ -897,6 +985,102 @@
         {% endfor %}
       </div>
 
+      <!-- Split Crawler Batches (Collapsible Batch Cards) -->
+      <div class="card card-dark shadow-sm mb-4 {% if not dashboard.crawl_batches %}d-none{% endif %}" id="crawl-batches-section">
+        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2 py-2">
+          <h5 class="mb-0 fw-bold fs-6 text-light">
+            <i class="fas fa-layer-group text-info me-2"></i>Split Crawler Batches
+          </h5>
+          <span class="badge bg-info text-dark" id="crawl-batches-badge">
+            {% if dashboard.summary.active_crawl_batches_count %}
+              {{ dashboard.summary.active_crawl_batches_count }} active / {{ dashboard.crawl_batches|length }} total
+            {% else %}
+              {{ dashboard.crawl_batches|length }} recent
+            {% endif %}
+          </span>
+        </div>
+        <div class="card-body p-3" id="crawl-batches-list">
+          {% for b in dashboard.crawl_batches %}
+          <div class="crawl-batch-card status-{{ b.status }}" id="crawl-batch-card-{{ b.batch_id }}" data-batch-id="{{ b.batch_id }}">
+            <div class="crawl-batch-header">
+              <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+                <div class="crawl-batch-toggle-area flex-grow-1" data-batch-id="{{ b.batch_id }}" role="button" tabindex="0" aria-expanded="false">
+                  <div class="d-flex flex-wrap align-items-center gap-2">
+                    <i class="fas fa-chevron-right text-secondary crawl-batch-chevron"></i>
+                    <strong class="text-light">Batch <span class="font-monospace text-info">{{ b.batch_id }}</span></strong>
+                    {% if b.status == 'processing' %}
+                      <span class="badge bg-primary"><i class="fas fa-spinner fa-spin me-1"></i>RUNNING</span>
+                    {% elif b.status == 'pending' %}
+                      <span class="badge bg-warning text-dark">QUEUED</span>
+                    {% elif b.status == 'completed' %}
+                      <span class="badge bg-success"><i class="fas fa-check me-1"></i>COMPLETED</span>
+                    {% elif b.status == 'failed' %}
+                      <span class="badge bg-danger"><i class="fas fa-times-circle me-1"></i>FAILED</span>
+                    {% elif b.status == 'cancelled' %}
+                      <span class="badge bg-secondary">CANCELLED</span>
+                    {% else %}
+                      <span class="badge bg-warning text-dark">PARTIAL</span>
+                    {% endif %}
+                    <span class="badge badge-dark-subtle">
+                      <strong>{{ b.completed_blocks }} / {{ b.total_blocks }}</strong> blocks
+                    </span>
+                    {% if b.processing_blocks %}<span class="badge bg-primary">{{ b.processing_blocks }} running</span>{% endif %}
+                    {% if b.pending_blocks %}<span class="badge bg-warning text-dark">{{ b.pending_blocks }} pending</span>{% endif %}
+                    {% if b.failed_blocks %}<span class="badge bg-danger">{{ b.failed_blocks }} failed</span>{% endif %}
+                    {% if b.cancelled_blocks %}<span class="badge bg-secondary">{{ b.cancelled_blocks }} cancelled</span>{% endif %}
+                    <span class="badge badge-dark-subtle">P{{ b.priority }}</span>
+                    <span class="small text-secondary">{{ b.total_links }} links &bull; {{ b.user }} &bull; {{ b.elapsed_formatted }}</span>
+                  </div>
+                  {% if b.reason %}
+                  <div class="small text-secondary mt-1 ms-4">Reason: {{ b.reason }}</div>
+                  {% endif %}
+                </div>
+                <div class="crawl-batch-controls-zone d-flex flex-wrap align-items-center gap-2">
+                  {% if b.pending_blocks > 0 %}
+                  <div class="input-group input-group-sm" style="width: auto;">
+                    <span class="input-group-text input-group-text-dark" title="Priority (1 highest, 10 lowest)">P</span>
+                    <select class="form-select form-select-sm form-select-dark batch-priority-select" data-batch-id="{{ b.batch_id }}" style="width: 72px;" aria-label="Batch priority">
+                      {% for p_val in "123456789" %}
+                        <option value="{{ p_val }}"{% if b.priority == forloop.counter %} selected{% endif %}>{{ p_val }}</option>
+                      {% endfor %}
+                      <option value="10"{% if b.priority == 10 %} selected{% endif %}>10</option>
+                    </select>
+                    <button type="button" class="btn btn-sm btn-outline-info btn-reprioritize-batch" data-batch-id="{{ b.batch_id }}" title="Update priority for all pending blocks in this batch">
+                      <i class="fas fa-sort-amount-up me-1"></i>Reprioritize batch
+                    </button>
+                  </div>
+                  {% endif %}
+                  {% if b.remaining_blocks > 0 %}
+                  <button type="button" class="btn btn-sm btn-outline-danger btn-cancel-batch" data-batch-id="{{ b.batch_id }}" data-remaining="{{ b.remaining_blocks }}" title="Cancel all remaining pending/running blocks in this batch">
+                    <i class="fas fa-ban me-1"></i>Cancel remaining blocks
+                  </button>
+                  {% endif %}
+                </div>
+              </div>
+              <div class="crawl-batch-summary-zone mt-2">
+                <div class="progress crawl-batch-progress mb-2">
+                  <div class="progress-bar bg-success" role="progressbar" style="width: {{ b.progress_percent }}%;" title="{{ b.completed_blocks }} completed"></div>
+                </div>
+                <div class="d-flex flex-wrap gap-2 align-items-center">
+                  {% for prov_name, pstats in b.providers.items %}
+                    <span class="crawl-batch-provider-chip">
+                      <strong class="text-info">{{ prov_name }}</strong>
+                      {% if pstats.db_total %}<span>DB: <strong class="text-light">{{ pstats.db_total }}</strong> ({{ pstats.db_new }} new, {{ pstats.db_existing }} existing)</span>{% endif %}
+                      {% if pstats.meta_evaluated %}<span>Meta: <strong class="text-light">{{ pstats.meta_accepted }}</strong>/{{ pstats.meta_evaluated }} ok{% if pstats.meta_banned %}, <span class="text-warning">{{ pstats.meta_banned }} banned</span>{% endif %}{% if pstats.meta_errors %}, <span class="text-danger">{{ pstats.meta_errors }} err</span>{% endif %}</span>{% endif %}
+                      {% if pstats.to_download or pstats.dispatched_galleries %}<span>DL: <strong class="text-success">{{ pstats.to_download }}</strong>{% if pstats.dispatched_galleries %} ({{ pstats.dispatched_galleries }} dispatched){% endif %}</span>{% endif %}
+                    </span>
+                  {% empty %}
+                    <span class="small text-secondary">Waiting for crawler stats...</span>
+                  {% endfor %}
+                </div>
+              </div>
+            </div>
+            <div class="crawl-batch-body d-none" id="crawl-batch-body-{{ b.batch_id }}"></div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
       <!-- Active Tasks (Processing) Table -->
       <div class="card card-dark shadow-sm mb-4">
         <div class="card-header d-flex justify-content-between align-items-center py-2">
@@ -921,7 +1105,10 @@
               {% for t in dashboard.active_tasks %}
               <tr id="row-task-{{ t.id }}">
                 <td><strong class="font-monospace text-light">#{{ t.id }}</strong></td>
-                <td><span class="badge badge-task">{{ t.task_type }}</span></td>
+                <td>
+                  <span class="badge badge-task">{{ t.task_type }}</span>
+                  {% if t.batch_id %}<span class="badge badge-batch-ref ms-1" title="Split crawl batch {{ t.batch_id }}">Batch {{ t.batch_id }} ({{ t.batch_index }}/{{ t.batch_total }})</span>{% endif %}
+                </td>
                 <td>
                   <div class="small font-monospace text-light">{{ t.args|join:", "|truncatechars:80 }}</div>
                   {% if t.reason %}<div class="text-secondary small">Reason: {{ t.reason }}</div>{% endif %}
@@ -948,9 +1135,13 @@
 
       <!-- Pending Tasks Table -->
       <div class="card card-dark shadow-sm mb-4">
-        <div class="card-header d-flex justify-content-between align-items-center py-2">
+        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2 py-2">
           <h5 class="mb-0 fw-bold fs-6 text-light"><i class="fas fa-hourglass-half text-warning me-2"></i>Pending Queue (Next in line)</h5>
-          <div class="d-flex align-items-center gap-2">
+          <div class="d-flex flex-wrap align-items-center gap-2">
+            <div class="form-check form-switch mb-0 small text-secondary" id="pending-hide-batch-wrap" title="Hide individual pending blocks that are already grouped into Split Crawler Batches above">
+              <input class="form-check-input" type="checkbox" role="switch" id="toggle-hide-batch-pending" checked>
+              <label class="form-check-label" for="toggle-hide-batch-pending">Hide batch blocks</label>
+            </div>
             <span class="badge bg-warning text-dark" id="pending-tasks-badge">{{ dashboard.pending_tasks|length }} of {{ dashboard.summary.pending_tasks_count }} queued</span>
             <button class="btn btn-sm btn-outline-danger" id="btn-clear-pending-tasks" title="Clear all pending tasks from the queue">
               <i class="fas fa-trash-alt"></i> Clear Pending Tasks
@@ -974,7 +1165,10 @@
               {% for t in dashboard.pending_tasks %}
               <tr id="row-task-{{ t.id }}">
                 <td><strong class="font-monospace text-light">#{{ t.id }}</strong></td>
-                <td><span class="badge badge-dark-subtle badge-task">{{ t.task_type }}</span></td>
+                <td>
+                  <span class="badge badge-dark-subtle badge-task">{{ t.task_type }}</span>
+                  {% if t.batch_id %}<span class="badge badge-batch-ref ms-1" title="Split crawl batch {{ t.batch_id }}">Batch {{ t.batch_id }} ({{ t.batch_index }}/{{ t.batch_total }})</span>{% endif %}
+                </td>
                 <td>
                   <div class="small font-monospace text-light">{{ t.args|join:", "|truncatechars:80 }}</div>
                   {% if t.reason %}<div class="text-secondary small">Reason: {{ t.reason }}</div>{% endif %}
@@ -1067,7 +1261,10 @@
               {% for t in dashboard.recent_tasks %}
               <tr id="row-recent-{{ t.id }}">
                 <td><strong class="font-monospace text-light">#{{ t.id }}</strong></td>
-                <td><span class="badge badge-dark-subtle badge-task">{{ t.task_type }}</span></td>
+                <td>
+                  <span class="badge badge-dark-subtle badge-task">{{ t.task_type }}</span>
+                  {% if t.batch_id %}<span class="badge badge-batch-ref ms-1" title="Split crawl batch {{ t.batch_id }}">Batch {{ t.batch_id }} ({{ t.batch_index }}/{{ t.batch_total }})</span>{% endif %}
+                </td>
                 <td>
                   {% if t.status == 'completed' %}
                     <span class="badge bg-success"><i class="fas fa-check"></i> SUCCESS</span>
@@ -1350,9 +1547,13 @@
 
   const LIMIT_STORAGE_KEY = 'pg.workersDashboard.listLimit';
   const DL_FILTER_STORAGE_KEY = 'pg.workersDashboard.downloadTypeFilter';
+  const HIDE_BATCH_PENDING_KEY = 'pg.workersDashboard.hideBatchPending';
   const MAX_LIST_LIMIT = parseInt('{{ dashboard.limits.max_limit|default:500 }}', 10) || 500;
   let listLimit = parseInt('{{ dashboard.limits.limit|default:25 }}', 10) || 25;
   let downloadTypeFilter = localStorage.getItem(DL_FILTER_STORAGE_KEY) || 'all';
+  let hideBatchPending = localStorage.getItem(HIDE_BATCH_PENDING_KEY) !== 'false';
+  const expandedBatches = new Set();
+  const batchPriorityDrafts = new Map();
 
   function esc(value) {
     return String(value === null || value === undefined ? '' : value)
@@ -1501,6 +1702,18 @@
     if (tf) tf.textContent = `${s.failed_tasks_24h_count} failed`;
     if (tc) tc.textContent = `${s.completed_tasks_24h_count} finished`;
 
+    const kpiBatchesWrap = document.getElementById('kpi-crawl-batches-badge');
+    const kpiBatchesLink = document.getElementById('kpi-crawl-batches-link');
+    if (kpiBatchesWrap && kpiBatchesLink) {
+      const activeBatches = Number(s.active_crawl_batches_count || 0);
+      if (activeBatches > 0) {
+        kpiBatchesWrap.classList.remove('d-none');
+        kpiBatchesLink.innerHTML = `<i class="fas fa-layer-group me-1"></i><span id="kpi-crawl-batches-count">${activeBatches}</span> split batch${activeBatches === 1 ? '' : 'es'}`;
+      } else {
+        kpiBatchesWrap.classList.add('d-none');
+      }
+    }
+
     const sa = document.getElementById('kpi-schedulers-active');
     const st = document.getElementById('kpi-schedulers-total');
     if (sa) sa.textContent = s.active_schedulers_count;
@@ -1546,6 +1759,7 @@
 
     // 5. Render Tasks & Queues
     renderQueuesBreakdown(data.queues || []);
+    renderCrawlBatches(data.crawl_batches || []);
     renderActiveTasksTable(data.active_tasks || []);
     renderPendingTasksTable(data.pending_tasks || [], s.pending_tasks_count);
     renderRecentTasksTable(data.recent_tasks || []);
@@ -1972,6 +2186,387 @@
     row.innerHTML = html;
   }
 
+  function batchRefBadge(t) {
+    if (!t || !t.batch_id) return '';
+    const idxPart = (t.batch_index !== null && t.batch_index !== undefined && t.batch_total)
+      ? ` (${t.batch_index}/${t.batch_total})`
+      : '';
+    return `<span class="badge badge-batch-ref ms-1" title="Split crawl batch ${esc(t.batch_id)}">Batch ${esc(t.batch_id)}${esc(idxPart)}</span>`;
+  }
+
+  function batchStatusBadge(status) {
+    if (status === 'processing') {
+      return '<span class="badge bg-primary"><i class="fas fa-spinner fa-spin me-1"></i>RUNNING</span>';
+    }
+    if (status === 'pending') {
+      return '<span class="badge bg-warning text-dark">QUEUED</span>';
+    }
+    if (status === 'completed') {
+      return '<span class="badge bg-success"><i class="fas fa-check me-1"></i>COMPLETED</span>';
+    }
+    if (status === 'failed') {
+      return '<span class="badge bg-danger"><i class="fas fa-times-circle me-1"></i>FAILED</span>';
+    }
+    if (status === 'cancelled') {
+      return '<span class="badge bg-secondary">CANCELLED</span>';
+    }
+    return '<span class="badge bg-warning text-dark">PARTIAL</span>';
+  }
+
+  function blockStatusBadge(blk) {
+    if (blk.status === 'processing') {
+      return '<span class="badge bg-primary"><i class="fas fa-spinner fa-spin me-1"></i>RUNNING</span>';
+    }
+    if (blk.status === 'pending') {
+      if (blk.is_delayed) {
+        return '<span class="badge bg-warning text-dark" title="Delayed due to provider cooldown">DELAYED</span>';
+      }
+      return '<span class="badge bg-warning text-dark">PENDING</span>';
+    }
+    if (blk.status === 'completed') {
+      return '<span class="badge bg-success"><i class="fas fa-check"></i> OK</span>';
+    }
+    if (blk.status === 'failed') {
+      return '<span class="badge bg-danger"><i class="fas fa-times-circle"></i> FAILED</span>';
+    }
+    if (blk.status === 'cancelled') {
+      return '<span class="badge bg-secondary">CANCELLED</span>';
+    }
+    return `<span class="badge badge-dark-subtle">${esc(blk.status)}</span>`;
+  }
+
+  function renderBatchProviderChips(providers) {
+    const names = Object.keys(providers || {});
+    if (names.length === 0) {
+      return '<span class="small text-secondary">Waiting for crawler stats...</span>';
+    }
+    return names.map(name => {
+      const p = providers[name] || {};
+      const segments = [];
+      if (p.db_total > 0) {
+        const dbDetails = [`${p.db_new || 0} new`, `${p.db_existing || 0} existing`];
+        if (p.db_to_update > 0) dbDetails.push(`${p.db_to_update} update`);
+        if (p.db_discarded > 0) dbDetails.push(`${p.db_discarded} discarded`);
+        segments.push(`<span>DB: <strong class="text-light">${p.db_total}</strong> (${dbDetails.join(', ')})</span>`);
+      }
+      if (p.meta_evaluated > 0) {
+        const metaExtra = [];
+        if (p.meta_matched_wanted > 0) metaExtra.push(`<span class="text-info">${p.meta_matched_wanted} wanted</span>`);
+        if (p.meta_banned > 0) metaExtra.push(`<span class="text-warning">${p.meta_banned} banned</span>`);
+        if (p.meta_errors > 0) metaExtra.push(`<span class="text-danger">${p.meta_errors} err</span>`);
+        const extraHtml = metaExtra.length ? `, ${metaExtra.join(', ')}` : '';
+        segments.push(`<span>Meta: <strong class="text-light">${p.meta_accepted || 0}</strong>/${p.meta_evaluated} ok${extraHtml}</span>`);
+      }
+      if (p.to_download > 0 || p.dispatched_galleries > 0) {
+        const disp = p.dispatched_galleries > 0 ? ` (${p.dispatched_galleries} dispatched / ${p.dispatched_tasks || 0} task${(p.dispatched_tasks || 0) === 1 ? '' : 's'})` : '';
+        segments.push(`<span>DL: <strong class="text-success">${p.to_download || 0}</strong>${disp}</span>`);
+      }
+      if (segments.length === 0) {
+        segments.push('<span class="text-secondary">0 processed</span>');
+      }
+      return `<span class="crawl-batch-provider-chip"><strong class="text-info">${esc(name)}</strong>${segments.join('<span class="text-secondary">&bull;</span>')}</span>`;
+    }).join('');
+  }
+
+  function renderBatchControlsHtml(b) {
+    const parts = [];
+    if (b.pending_blocks > 0) {
+      const selectedVal = batchPriorityDrafts.has(b.batch_id)
+        ? String(batchPriorityDrafts.get(b.batch_id))
+        : String(b.priority || 10);
+      let optsHtml = '';
+      for (let p = 1; p <= 10; p++) {
+        const label = p === 1 ? '1 (High)' : (p === 10 ? '10 (Low)' : String(p));
+        optsHtml += `<option value="${p}"${String(p) === selectedVal ? ' selected' : ''}>${label}</option>`;
+      }
+      parts.push(`
+        <div class="input-group input-group-sm" style="width: auto;">
+          <span class="input-group-text input-group-text-dark" title="Priority (1 highest, 10 lowest)">P</span>
+          <select class="form-select form-select-sm form-select-dark batch-priority-select" data-batch-id="${esc(b.batch_id)}" style="width: 96px;" aria-label="Batch priority">
+            ${optsHtml}
+          </select>
+          <button type="button" class="btn btn-sm btn-outline-info btn-reprioritize-batch" data-batch-id="${esc(b.batch_id)}" title="Update priority for all pending blocks in this batch">
+            <i class="fas fa-sort-amount-up me-1"></i>Reprioritize batch
+          </button>
+        </div>
+      `);
+    }
+    if (b.remaining_blocks > 0) {
+      parts.push(`
+        <button type="button" class="btn btn-sm btn-outline-danger btn-cancel-batch" data-batch-id="${esc(b.batch_id)}" data-remaining="${b.remaining_blocks}" title="Cancel all remaining pending/running blocks in this batch">
+          <i class="fas fa-ban me-1"></i>Cancel remaining blocks
+        </button>
+      `);
+    }
+    return parts.join('');
+  }
+
+  function renderBatchProgressBar(b) {
+    const total = Math.max(1, Number(b.total_blocks) || 1);
+    const pctCompleted = Math.min(100, (Number(b.completed_blocks || 0) / total) * 100);
+    const pctProcessing = Math.min(100 - pctCompleted, (Number(b.processing_blocks || 0) / total) * 100);
+    const pctFailed = Math.min(100 - pctCompleted - pctProcessing, (Number(b.failed_blocks || 0) / total) * 100);
+    const pctCancelled = Math.min(100 - pctCompleted - pctProcessing - pctFailed, (Number(b.cancelled_blocks || 0) / total) * 100);
+    return `
+      <div class="progress crawl-batch-progress mb-2" title="${b.completed_blocks} completed / ${b.total_blocks} total blocks">
+        ${pctCompleted > 0 ? `<div class="progress-bar bg-success" role="progressbar" style="width: ${pctCompleted.toFixed(1)}%;"></div>` : ''}
+        ${pctProcessing > 0 ? `<div class="progress-bar bg-primary progress-bar-striped progress-bar-animated" role="progressbar" style="width: ${pctProcessing.toFixed(1)}%;"></div>` : ''}
+        ${pctFailed > 0 ? `<div class="progress-bar bg-danger" role="progressbar" style="width: ${pctFailed.toFixed(1)}%;"></div>` : ''}
+        ${pctCancelled > 0 ? `<div class="progress-bar bg-secondary" role="progressbar" style="width: ${pctCancelled.toFixed(1)}%;"></div>` : ''}
+      </div>
+    `;
+  }
+
+  function renderBatchBodyHtml(b) {
+    const providers = b.providers || {};
+    const provNames = Object.keys(providers);
+    let providersTableHtml = '';
+    if (provNames.length > 0) {
+      const provRows = provNames.map(name => {
+        const p = providers[name] || {};
+        return `
+          <tr>
+            <td><strong class="text-info">${esc(name)}</strong></td>
+            <td>${p.db_total || 0}</td>
+            <td><span class="text-success">${p.db_new || 0}</span> / <span class="text-secondary">${p.db_existing || 0}</span>${p.db_to_update ? ` <span class="text-info">(${p.db_to_update} upd)</span>` : ''}</td>
+            <td>${p.meta_evaluated || 0}</td>
+            <td><span class="text-light">${p.meta_accepted || 0}</span>${p.wanted_galleries_matched ? ` <span class="text-info">(${p.wanted_galleries_matched} wanted)</span>` : ''}</td>
+            <td>${p.meta_banned ? `<span class="text-warning">${p.meta_banned} banned</span>` : '<span class="text-secondary">0</span>'} / ${p.meta_errors ? `<span class="text-danger">${p.meta_errors} err</span>` : '<span class="text-secondary">0</span>'}</td>
+            <td><strong class="text-success">${p.to_download || 0}</strong>${p.dispatched_galleries ? ` <span class="text-secondary">(${p.dispatched_galleries} in ${p.dispatched_tasks || 0} task${(p.dispatched_tasks || 0) === 1 ? '' : 's'})</span>` : ''}</td>
+          </tr>
+        `;
+      }).join('');
+      providersTableHtml = `
+        <div class="mb-3">
+          <div class="small fw-semibold text-uppercase text-secondary mb-1">
+            <i class="fas fa-chart-bar me-1 text-info"></i>Live Aggregated Provider Counters
+          </div>
+          <div class="table-responsive">
+            <table class="table table-sm table-dashboard align-middle mb-0">
+              <thead>
+                <tr>
+                  <th>Provider</th>
+                  <th>DB Checked</th>
+                  <th>New / Existing</th>
+                  <th>Meta Eval</th>
+                  <th>Accepted / Wanted</th>
+                  <th>Banned / Errors</th>
+                  <th>To Download</th>
+                </tr>
+              </thead>
+              <tbody>${provRows}</tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    }
+
+    const blocks = b.blocks || [];
+    const blockRows = blocks.map(blk => {
+      const argsPreview = (blk.args || []).join(', ').substring(0, 75);
+      const blkProvNames = Object.keys(blk.providers || {});
+      let detailHtml = '<span class="text-secondary small">-</span>';
+      if (blk.error_message) {
+        detailHtml = `<div class="text-danger small fw-semibold text-truncate" style="max-width: 240px;" title="${esc(blk.error_message)}">${esc(blk.error_message)}</div>`;
+      } else if (blkProvNames.length > 0) {
+        detailHtml = blkProvNames.map(pn => {
+          const ps = blk.providers[pn] || {};
+          return `<span class="small text-secondary"><strong class="text-info">${esc(pn)}</strong>: ${ps.db_total || 0} db, ${ps.to_download || 0} dl</span>`;
+        }).join(' &bull; ');
+      }
+      const actions = [];
+      if (blk.status === 'pending' || blk.status === 'processing') {
+        actions.push(`<button class="btn btn-outline-danger btn-cancel-task" data-task-id="${blk.id}" title="Cancel Block"><i class="fas fa-times"></i></button>`);
+      }
+      if (blk.has_traceback) {
+        actions.push(`<button class="btn btn-outline-danger btn-view-traceback" data-task-id="${blk.id}" title="View Traceback"><i class="fas fa-bug"></i></button>`);
+      }
+      if (blk.status === 'failed') {
+        actions.push(`<button class="btn btn-outline-primary btn-retry-task" data-task-id="${blk.id}" title="Retry Block"><i class="fas fa-redo"></i></button>`);
+      }
+      return `
+        <tr>
+          <td><span class="badge badge-dark-subtle font-monospace">${blk.index}/${blk.total}</span></td>
+          <td><strong class="font-monospace text-light">#${blk.id}</strong></td>
+          <td>${blockStatusBadge(blk)}</td>
+          <td>
+            <div class="small font-monospace text-light">${esc(argsPreview)}</div>
+            <div class="text-secondary small">${blk.links_count || 0} link${(blk.links_count || 0) === 1 ? '' : 's'}</div>
+          </td>
+          <td><span class="badge badge-dark-subtle">${blk.priority}</span></td>
+          <td><span class="small text-secondary">${esc(blk.elapsed_formatted)}</span></td>
+          <td>${blk.worker_pid ? `<span class="badge badge-dark-subtle font-monospace">${blk.worker_pid}</span>` : '<span class="text-secondary">-</span>'}</td>
+          <td>${detailHtml}</td>
+          <td class="text-end"><div class="btn-group btn-group-sm">${actions.join('')}</div></td>
+        </tr>
+      `;
+    }).join('');
+
+    return `
+      ${providersTableHtml}
+      <div class="small fw-semibold text-uppercase text-secondary mb-1">
+        <i class="fas fa-cubes me-1 text-primary"></i>Batch Blocks (${blocks.length})
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm table-dashboard align-middle mb-0">
+          <thead>
+            <tr>
+              <th style="width: 72px;">Block</th>
+              <th style="width: 78px;">Task ID</th>
+              <th style="width: 110px;">Status</th>
+              <th>Links / Arguments</th>
+              <th style="width: 66px;">Priority</th>
+              <th style="width: 90px;">Elapsed</th>
+              <th style="width: 90px;">Worker PID</th>
+              <th>Details</th>
+              <th class="text-end" style="width: 105px;">Action</th>
+            </tr>
+          </thead>
+          <tbody>${blockRows}</tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  function renderBatchToggleHtml(b) {
+    const prioLabel = (b.priorities && b.priorities.length > 1)
+      ? `P${b.priorities[0]}–${b.priorities[b.priorities.length - 1]}`
+      : `P${b.priority}`;
+    return `
+      <div class="d-flex flex-wrap align-items-center gap-2">
+        <i class="fas fa-chevron-right text-secondary crawl-batch-chevron"></i>
+        <strong class="text-light">Batch <span class="font-monospace text-info">${esc(b.batch_id)}</span></strong>
+        ${batchStatusBadge(b.status)}
+        <span class="badge badge-dark-subtle"><strong>${b.completed_blocks} / ${b.total_blocks}</strong> blocks</span>
+        ${b.processing_blocks > 0 ? `<span class="badge bg-primary">${b.processing_blocks} running</span>` : ''}
+        ${b.pending_blocks > 0 ? `<span class="badge bg-warning text-dark">${b.pending_blocks} pending</span>` : ''}
+        ${b.failed_blocks > 0 ? `<span class="badge bg-danger">${b.failed_blocks} failed</span>` : ''}
+        ${b.cancelled_blocks > 0 ? `<span class="badge bg-secondary">${b.cancelled_blocks} cancelled</span>` : ''}
+        <span class="badge badge-dark-subtle">${esc(prioLabel)}</span>
+        <span class="small text-secondary">${b.total_links} links &bull; ${esc(b.user)} &bull; ${esc(b.elapsed_formatted)}</span>
+      </div>
+      ${b.reason ? `<div class="small text-secondary mt-1 ms-4">Reason: ${esc(b.reason)}</div>` : ''}
+    `;
+  }
+
+  function renderCrawlBatches(batches) {
+    const section = document.getElementById('crawl-batches-section');
+    const container = document.getElementById('crawl-batches-list');
+    const badge = document.getElementById('crawl-batches-badge');
+    if (!section || !container) return;
+
+    const list = batches || [];
+    if (list.length === 0) {
+      section.classList.add('d-none');
+      container.innerHTML = '';
+      expandedBatches.clear();
+      batchPriorityDrafts.clear();
+      return;
+    }
+
+    section.classList.remove('d-none');
+    const activeCount = list.filter(b => b.is_active).length;
+    if (badge) {
+      badge.textContent = activeCount > 0
+        ? `${activeCount} active / ${list.length} total`
+        : `${list.length} recent`;
+    }
+
+    const activeIds = new Set(list.map(b => b.batch_id));
+    for (const bid of [...expandedBatches]) {
+      if (!activeIds.has(bid)) expandedBatches.delete(bid);
+    }
+    for (const bid of [...batchPriorityDrafts.keys()]) {
+      if (!activeIds.has(bid)) batchPriorityDrafts.delete(bid);
+    }
+
+    const existingCards = Array.from(container.querySelectorAll('.crawl-batch-card'));
+    const sameOrder = existingCards.length === list.length &&
+      list.every((b, idx) => existingCards[idx].getAttribute('data-batch-id') === b.batch_id);
+
+    if (!sameOrder) {
+      container.innerHTML = list.map(b => {
+        const isExpanded = expandedBatches.has(b.batch_id);
+        return `
+          <div class="crawl-batch-card status-${esc(b.status)}${isExpanded ? ' expanded' : ''}" id="crawl-batch-card-${esc(b.batch_id)}" data-batch-id="${esc(b.batch_id)}">
+            <div class="crawl-batch-header">
+              <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+                <div class="crawl-batch-toggle-area flex-grow-1" data-batch-id="${esc(b.batch_id)}" role="button" tabindex="0" aria-expanded="${isExpanded ? 'true' : 'false'}">
+                  ${renderBatchToggleHtml(b)}
+                </div>
+                <div class="crawl-batch-controls-zone d-flex flex-wrap align-items-center gap-2">
+                  ${renderBatchControlsHtml(b)}
+                </div>
+              </div>
+              <div class="crawl-batch-summary-zone mt-2">
+                ${renderBatchProgressBar(b)}
+                <div class="d-flex flex-wrap gap-2 align-items-center crawl-batch-provider-chips">
+                  ${renderBatchProviderChips(b.providers)}
+                </div>
+              </div>
+            </div>
+            <div class="crawl-batch-body${isExpanded ? '' : ' d-none'}" id="crawl-batch-body-${esc(b.batch_id)}">
+              ${isExpanded ? renderBatchBodyHtml(b) : ''}
+            </div>
+          </div>
+        `;
+      }).join('');
+      return;
+    }
+
+    // In-place update: preserves focused priority dropdowns and expanded state without flicker.
+    list.forEach((b, idx) => {
+      const card = existingCards[idx];
+      const isExpanded = expandedBatches.has(b.batch_id);
+      card.className = `crawl-batch-card status-${b.status}${isExpanded ? ' expanded' : ''}`;
+
+      const toggleArea = card.querySelector('.crawl-batch-toggle-area');
+      if (toggleArea) {
+        toggleArea.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
+        const toggleHtml = renderBatchToggleHtml(b);
+        if (toggleArea.innerHTML !== toggleHtml) toggleArea.innerHTML = toggleHtml;
+      }
+
+      const controlsZone = card.querySelector('.crawl-batch-controls-zone');
+      if (controlsZone) {
+        const activeInsideControls = document.activeElement && controlsZone.contains(document.activeElement);
+        if (!activeInsideControls) {
+          const controlsHtml = renderBatchControlsHtml(b);
+          if (controlsZone.innerHTML !== controlsHtml) controlsZone.innerHTML = controlsHtml;
+        }
+      }
+
+      const summaryZone = card.querySelector('.crawl-batch-summary-zone');
+      if (summaryZone) {
+        const summaryHtml = `${renderBatchProgressBar(b)}<div class="d-flex flex-wrap gap-2 align-items-center crawl-batch-provider-chips">${renderBatchProviderChips(b.providers)}</div>`;
+        if (summaryZone.innerHTML !== summaryHtml) summaryZone.innerHTML = summaryHtml;
+      }
+
+      const bodyEl = card.querySelector('.crawl-batch-body');
+      if (bodyEl) {
+        if (isExpanded) {
+          bodyEl.classList.remove('d-none');
+          const bodyHtml = renderBatchBodyHtml(b);
+          if (bodyEl.innerHTML !== bodyHtml) bodyEl.innerHTML = bodyHtml;
+        } else {
+          bodyEl.classList.add('d-none');
+        }
+      }
+    });
+  }
+
+  function toggleBatchExpanded(batchId) {
+    if (!batchId) return;
+    if (expandedBatches.has(batchId)) {
+      expandedBatches.delete(batchId);
+    } else {
+      expandedBatches.add(batchId);
+    }
+    if (localData && localData.crawl_batches) {
+      renderCrawlBatches(localData.crawl_batches);
+    }
+  }
+
   function renderActiveTasksTable(tasks) {
     const tbody = document.getElementById('active-tasks-tbody');
     const badge = document.getElementById('active-tasks-badge');
@@ -1987,14 +2582,14 @@
       html += `
         <tr id="row-task-${t.id}">
           <td><strong class="font-monospace text-light">#${t.id}</strong></td>
-          <td><span class="badge badge-task">${t.task_type}</span></td>
+          <td><span class="badge badge-task">${esc(t.task_type)}</span>${batchRefBadge(t)}</td>
           <td>
-            <div class="small font-monospace text-light">${argsPreview}</div>
-            ${t.reason ? `<div class="text-secondary small">Reason: ${t.reason}</div>` : ''}
+            <div class="small font-monospace text-light">${esc(argsPreview)}</div>
+            ${t.reason ? `<div class="text-secondary small">Reason: ${esc(t.reason)}</div>` : ''}
           </td>
-          <td>${t.user}</td>
+          <td>${esc(t.user)}</td>
           <td><span class="badge badge-dark-subtle">${t.priority}</span></td>
-          <td><strong class="text-info">${t.elapsed_formatted}</strong></td>
+          <td><strong class="text-info">${esc(t.elapsed_formatted)}</strong></td>
           <td><span class="badge badge-dark-subtle font-monospace">${t.worker_pid || '-'}</span></td>
           <td class="text-end">
             <button class="btn btn-sm btn-outline-danger btn-cancel-task" data-task-id="${t.id}" title="Cancel Task">
@@ -2011,26 +2606,46 @@
     const tbody = document.getElementById('pending-tasks-tbody');
     const badge = document.getElementById('pending-tasks-badge');
     const total = (totalCount === undefined || totalCount === null) ? tasks.length : totalCount;
-    if (badge) badge.textContent = `${tasks.length} of ${total} queued`;
+    const batchRowsCount = tasks.filter(t => Boolean(t.batch_id)).length;
+    const hideWrap = document.getElementById('pending-hide-batch-wrap');
+    const hideInput = document.getElementById('toggle-hide-batch-pending');
+    if (hideInput) hideInput.checked = hideBatchPending;
+    if (hideWrap) {
+      const hasBatches = batchRowsCount > 0 || Boolean(localData && localData.crawl_batches && localData.crawl_batches.some(b => b.pending_blocks > 0));
+      hideWrap.classList.toggle('d-none', !hasBatches);
+    }
+
+    const visibleTasks = hideBatchPending ? tasks.filter(t => !t.batch_id) : tasks;
+    const hiddenCount = tasks.length - visibleTasks.length;
+
+    if (badge) {
+      badge.textContent = hiddenCount > 0
+        ? `${visibleTasks.length} shown (${hiddenCount} in batches) / ${total} queued`
+        : `${tasks.length} of ${total} queued`;
+    }
     if (!tbody) return;
-    if (tasks.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-secondary">Queue is empty! All caught up.</td></tr>';
+    if (visibleTasks.length === 0) {
+      if (hiddenCount > 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center py-4 text-secondary">${hiddenCount} pending task(s) are grouped in Split Crawler Batches above. Uncheck <em>Hide batch blocks</em> to view them here.</td></tr>`;
+      } else {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-secondary">Queue is empty! All caught up.</td></tr>';
+      }
       return;
     }
     let html = '';
-    tasks.forEach(t => {
+    visibleTasks.forEach(t => {
       const argsPreview = (t.args || []).join(', ').substring(0, 80);
       html += `
         <tr id="row-task-${t.id}">
           <td><strong class="font-monospace text-light">#${t.id}</strong></td>
-          <td><span class="badge badge-dark-subtle badge-task">${t.task_type}</span></td>
+          <td><span class="badge badge-dark-subtle badge-task">${esc(t.task_type)}</span>${batchRefBadge(t)}</td>
           <td>
-            <div class="small font-monospace text-light">${argsPreview}</div>
-            ${t.reason ? `<div class="text-secondary small">Reason: ${t.reason}</div>` : ''}
+            <div class="small font-monospace text-light">${esc(argsPreview)}</div>
+            ${t.reason ? `<div class="text-secondary small">Reason: ${esc(t.reason)}</div>` : ''}
           </td>
-          <td>${t.user}</td>
+          <td>${esc(t.user)}</td>
           <td><span class="badge badge-dark-subtle">${t.priority}</span></td>
-          <td><span class="text-secondary">${t.wait_formatted}</span></td>
+          <td><span class="text-secondary">${esc(t.wait_formatted)}</span></td>
           <td class="text-end">
             <button class="btn btn-sm btn-outline-danger btn-cancel-task" data-task-id="${t.id}" title="Cancel Task">
               <i class="fas fa-times"></i> Cancel
@@ -2061,12 +2676,12 @@
       } else if (t.status === 'cancelled') {
         statusBadge = '<span class="badge bg-secondary">CANCELLED</span>';
       } else {
-        statusBadge = `<span class="badge bg-info">${t.status}</span>`;
+        statusBadge = `<span class="badge bg-info">${esc(t.status)}</span>`;
       }
 
       const argsPreview = (t.args || []).join(', ').substring(0, 60);
       const errorSnippet = t.error_message
-        ? `<div class="text-danger small fw-semibold text-truncate" style="max-width: 250px;" title="${t.error_message}">${t.error_message}</div>`
+        ? `<div class="text-danger small fw-semibold text-truncate" style="max-width: 250px;" title="${esc(t.error_message)}">${esc(t.error_message)}</div>`
         : '<span class="text-secondary small">OK</span>';
 
       let traceBtn = '';
@@ -2081,15 +2696,15 @@
       html += `
         <tr id="row-recent-${t.id}">
           <td><strong class="font-monospace text-light">#${t.id}</strong></td>
-          <td><span class="badge badge-dark-subtle badge-task">${t.task_type}</span></td>
+          <td><span class="badge badge-dark-subtle badge-task">${esc(t.task_type)}</span>${batchRefBadge(t)}</td>
           <td>${statusBadge}</td>
           <td>
-            <div class="small font-monospace text-light">${argsPreview}</div>
-            ${t.reason ? `<div class="text-secondary small">Reason: ${t.reason}</div>` : ''}
+            <div class="small font-monospace text-light">${esc(argsPreview)}</div>
+            ${t.reason ? `<div class="text-secondary small">Reason: ${esc(t.reason)}</div>` : ''}
           </td>
-          <td>${t.user}</td>
-          <td>${t.duration_formatted}</td>
-          <td><span class="text-secondary small">${t.finished_at ? t.finished_at.substring(0, 19).replace('T', ' ') : '-'}</span></td>
+          <td>${esc(t.user)}</td>
+          <td>${esc(t.duration_formatted)}</td>
+          <td><span class="text-secondary small">${t.finished_at ? esc(t.finished_at.substring(0, 19).replace('T', ' ')) : '-'}</span></td>
           <td>${errorSnippet}</td>
           <td class="text-end">
             <div class="btn-group btn-group-sm">
@@ -2375,8 +2990,93 @@
       });
     }
 
+    // Hide grouped batch blocks toggle in Pending Queue
+    const hideBatchToggle = document.getElementById('toggle-hide-batch-pending');
+    if (hideBatchToggle) {
+      hideBatchToggle.checked = hideBatchPending;
+      hideBatchToggle.addEventListener('change', (e) => {
+        hideBatchPending = Boolean(e.target.checked);
+        localStorage.setItem(HIDE_BATCH_PENDING_KEY, String(hideBatchPending));
+        if (localData) {
+          renderPendingTasksTable(
+            localData.pending_tasks || [],
+            localData.summary ? localData.summary.pending_tasks_count : undefined
+          );
+        }
+      });
+    }
+
+    // Track unsaved priority dropdown changes per batch across polling cycles
+    document.addEventListener('change', (e) => {
+      const prioSelect = e.target.closest('.batch-priority-select');
+      if (prioSelect) {
+        const batchId = prioSelect.getAttribute('data-batch-id');
+        if (batchId) {
+          batchPriorityDrafts.set(batchId, prioSelect.value);
+        }
+      }
+    });
+
+    // Keyboard toggle support for collapsible crawl batch headers
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        const toggleArea = e.target.closest('.crawl-batch-toggle-area');
+        if (toggleArea) {
+          e.preventDefault();
+          toggleBatchExpanded(toggleArea.getAttribute('data-batch-id'));
+        }
+      }
+    });
+
     // Event delegation for dynamically updated tables
     document.addEventListener('click', (e) => {
+      // Jump to Task Queues tab from KPI split batches link
+      const kpiBatchesLink = e.target.closest('#kpi-crawl-batches-link');
+      if (kpiBatchesLink) {
+        e.preventDefault();
+        const queuesTabBtn = document.getElementById('tab-queues-btn');
+        if (queuesTabBtn && window.bootstrap && window.bootstrap.Tab) {
+          bootstrap.Tab.getOrCreateInstance(queuesTabBtn).show();
+        } else if (queuesTabBtn) {
+          queuesTabBtn.click();
+        }
+        const batchSection = document.getElementById('crawl-batches-section');
+        if (batchSection) batchSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        return;
+      }
+
+      // Reprioritize crawl batch button
+      const reprioBatchBtn = e.target.closest('.btn-reprioritize-batch');
+      if (reprioBatchBtn) {
+        const batchId = reprioBatchBtn.getAttribute('data-batch-id');
+        const card = reprioBatchBtn.closest('.crawl-batch-card');
+        const select = card ? card.querySelector('.batch-priority-select') : null;
+        const priority = select ? parseInt(select.value, 10) : 10;
+        if (batchId && !isNaN(priority)) {
+          batchPriorityDrafts.delete(batchId);
+          postAction('batch_reprioritize', { batch_id: batchId, priority });
+        }
+        return;
+      }
+
+      // Cancel remaining blocks in crawl batch button
+      const cancelBatchBtn = e.target.closest('.btn-cancel-batch');
+      if (cancelBatchBtn) {
+        const batchId = cancelBatchBtn.getAttribute('data-batch-id');
+        const remaining = cancelBatchBtn.getAttribute('data-remaining') || 'remaining';
+        if (batchId && confirm(`Cancel ${remaining} remaining block(s) in crawl batch ${batchId}?`)) {
+          postAction('batch_cancel', { batch_id: batchId });
+        }
+        return;
+      }
+
+      // Expand / collapse crawl batch card
+      const batchToggle = e.target.closest('.crawl-batch-toggle-area');
+      if (batchToggle) {
+        toggleBatchExpanded(batchToggle.getAttribute('data-batch-id'));
+        return;
+      }
+
       // Clear specific queue type button
       const clearQueueTypeBtn = e.target.closest('.btn-clear-queue-type');
       if (clearQueueTypeBtn) {
@@ -2440,8 +3140,14 @@
       const traceBtn = e.target.closest('.btn-view-traceback');
       if (traceBtn) {
         const taskId = parseInt(traceBtn.getAttribute('data-task-id'), 10);
-        if (localData && localData.recent_tasks) {
-          const task = localData.recent_tasks.find(t => t.id === taskId);
+        if (localData) {
+          let task = (localData.recent_tasks || []).find(t => t.id === taskId);
+          if (!task && localData.crawl_batches) {
+            for (const b of localData.crawl_batches) {
+              task = (b.blocks || []).find(bl => bl.id === taskId);
+              if (task) break;
+            }
+          }
           if (task) {
             document.getElementById('modal-error-message').textContent = task.error_message || 'None';
             document.getElementById('modal-traceback-content').textContent = task.traceback || 'No traceback recorded.';
@@ -2495,11 +3201,16 @@
   // Initialize
   initEvents();
 
-  // Render sections that are JS-only from the server-side snapshot right away.
+  // Render sections that are JS-only or filtered from the server-side snapshot right away.
   const initialEl = document.getElementById('initial-dashboard-data');
   if (initialEl) {
     try {
       localData = JSON.parse(initialEl.textContent);
+      renderCrawlBatches(localData.crawl_batches || []);
+      renderPendingTasksTable(
+        localData.pending_tasks || [],
+        localData.summary ? localData.summary.pending_tasks_count : undefined
+      );
       renderDownloadsSection(localData.downloads || [], localData.download_types || [], localData.summary || {});
     } catch (e) {
       console.warn('Could not parse initial dashboard data:', e);

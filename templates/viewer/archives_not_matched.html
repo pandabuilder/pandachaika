@@ -445,7 +445,28 @@
           const data = await res.json().catch(function () { return {}; });
           if (data.error) throw new Error(typeof data.error === 'object' ? data.error.message : data.error);
           if (!res.ok) throw new Error('HTTP ' + res.status);
-          note(row, '<i class="fas fa-check me-1"></i>' + DM.escapeHtml(data.message || 'Done.') + ' <a href="#" class="anm-reload">Reload</a> to see the candidates.', 'text-info');
+          if (data.status_url) {
+            note(row, '<i class="fas fa-spinner fa-spin me-1"></i>' + DM.escapeHtml(data.message || 'Queued...'), 'dm-muted');
+            const pollTask = async function () {
+              try {
+                const statusRes = await fetch(data.status_url, { headers: headers });
+                if (!statusRes.ok) throw new Error('HTTP ' + statusRes.status);
+                const statusData = await statusRes.json();
+                if (statusData.active) {
+                  setTimeout(pollTask, statusData.poll_delay_ms || 1500);
+                } else if (statusData.status === 'failed') {
+                  note(row, '<i class="fas fa-exclamation-triangle me-1"></i>' + DM.escapeHtml(statusData.error_message || 'Matching failed.'), 'text-danger');
+                } else {
+                  note(row, '<i class="fas fa-check me-1"></i>' + DM.escapeHtml(statusData.done_label || 'Done.') + ' <a href="#" class="anm-reload">Reload</a> to see the candidates.', 'text-info');
+                }
+              } catch (pollErr) {
+                note(row, '<i class="fas fa-check me-1"></i>' + DM.escapeHtml(data.message || 'Queued.') + ' <a href="#" class="anm-reload">Reload</a> to see the candidates.', 'text-info');
+              }
+            };
+            setTimeout(pollTask, 1500);
+          } else {
+            note(row, '<i class="fas fa-check me-1"></i>' + DM.escapeHtml(data.message || 'Done.') + ' <a href="#" class="anm-reload">Reload</a> to see the candidates.', 'text-info');
+          }
         } catch (err) {
           note(row, '<i class="fas fa-exclamation-triangle me-1"></i>' + DM.escapeHtml(err.message), 'text-danger');
         }

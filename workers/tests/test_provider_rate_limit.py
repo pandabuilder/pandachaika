@@ -42,35 +42,49 @@ class PandaRateLimitBanHandlingTests(TestCase):
         self.assertEqual(duration, 291.0)
 
     def test_parse_panda_ban_duration_variations(self):
+        def ban(expiry: str) -> str:
+            return "This IP address has been temporarily banned. The ban expires in " + expiry
+
         # Seconds only
-        self.assertEqual(parse_panda_ban_duration("The ban expires in 45 seconds."), 45.0)
-        self.assertEqual(parse_panda_ban_duration("The ban expires in 1 second"), 1.0)
+        self.assertEqual(parse_panda_ban_duration(ban("45 seconds.")), 45.0)
+        self.assertEqual(parse_panda_ban_duration(ban("1 second")), 1.0)
 
         # Minutes only
-        self.assertEqual(parse_panda_ban_duration("The ban expires in 5 minutes"), 300.0)
-        self.assertEqual(parse_panda_ban_duration("The ban expires in 1 minute"), 60.0)
+        self.assertEqual(parse_panda_ban_duration(ban("5 minutes")), 300.0)
+        self.assertEqual(parse_panda_ban_duration(ban("1 minute")), 60.0)
 
         # Hours, minutes, seconds
         self.assertEqual(
-            parse_panda_ban_duration("The ban expires in 2 hours, 10 minutes and 5 seconds"),
+            parse_panda_ban_duration(ban("2 hours, 10 minutes and 5 seconds")),
             2 * 3600 + 10 * 60 + 5.0,
         )
 
         # Days
-        self.assertEqual(parse_panda_ban_duration("The ban expires in 1 days"), 86400.0)
-        self.assertEqual(parse_panda_ban_duration("The ban expires in 2 days"), 172800.0)
+        self.assertEqual(parse_panda_ban_duration(ban("1 days")), 86400.0)
+        self.assertEqual(parse_panda_ban_duration(ban("2 days")), 172800.0)
 
         # HTML formatted
-        self.assertEqual(
-            parse_panda_ban_duration("The ban expires in <b>4 minutes and 51 seconds</b>."),
-            291.0,
-        )
+        self.assertEqual(parse_panda_ban_duration(ban("<b>4 minutes and 51 seconds</b>.")), 291.0)
 
         # Non-ban messages
         self.assertIsNone(parse_panda_ban_duration('{"gmetadata": []}'))
         self.assertIsNone(parse_panda_ban_duration("An ordinary error occurred."))
         self.assertIsNone(parse_panda_ban_duration(""))
         self.assertIsNone(parse_panda_ban_duration(None))
+
+    def test_parse_panda_ban_duration_needs_both_phrases(self):
+        self.assertIsNone(parse_panda_ban_duration("The ban expires in 45 seconds."))
+        self.assertIsNone(parse_panda_ban_duration("You have been temporarily banned from the forums."))
+
+    def test_parse_panda_ban_duration_ignores_pages_quoting_a_ban(self):
+        # A gallery page whose comments quote a ban message is not a ban page.
+        page = (
+            "<html><body><div id='gd2'><h1>Some gallery</h1></div>"
+            + "<div class='c1'>" + "x" * 3000 + "</div>"
+            + "<div class='c6'>Got this today: This IP address has been temporarily banned due to an excessive "
+            "request rate. The ban expires in 1 days</div></body></html>"
+        )
+        self.assertIsNone(parse_panda_ban_duration(page))
 
     def test_set_provider_cooldown_updates_db_and_memory(self):
         cooldown_seconds = 120.0
@@ -201,7 +215,7 @@ class ProviderBanEscalationTests(TestCase):
         PROVIDER_COOLDOWN_UNTIL.clear()
         REQUESTER_BY_PROVIDER.clear()
         PROVIDER_RATE_LIMIT_CONFIG.clear()
-        ProviderRateLimit.objects.filter(name__in=["panda", "panda_web", "test_prov"]).delete()
+        ProviderRateLimit.objects.filter(name__in=["panda", "panda_web", "panda_test", "test_prov"]).delete()
         self.addCleanup(PROVIDER_COOLDOWN_UNTIL.clear)
         self.addCleanup(REQUESTER_BY_PROVIDER.clear)
         self.addCleanup(PROVIDER_RATE_LIMIT_CONFIG.clear)
@@ -220,7 +234,7 @@ class ProviderBanEscalationTests(TestCase):
         from core.base.errors import ProviderBannedError
 
         mock_request.return_value = self._response(BAN_LONG)
-        req_fn = request_by_provider("test_prov", 1, 0.01)
+        req_fn = request_by_provider("panda_test", 1, 0.01)
         with self.assertRaises(ProviderBannedError) as ctx:
             req_fn("https://example.com/x", {})
         self.assertGreater(ctx.exception.retry_after, 3600)
@@ -235,7 +249,7 @@ class ProviderBanEscalationTests(TestCase):
         mock_request.side_effect = [self._response(BAN_SHORT), self._response(BAN_SHORT)]
         current_time = [time.time()]
         mock_sleep.side_effect = lambda secs: current_time.__setitem__(0, current_time[0] + secs)
-        req_fn = request_by_provider("test_prov", 1, 0.01)
+        req_fn = request_by_provider("panda_test", 1, 0.01)
         with patch("time.time", side_effect=lambda: current_time[0]):
             with self.assertRaises(ProviderBannedError):
                 req_fn("https://example.com/x", {})
@@ -249,11 +263,21 @@ class ProviderBanEscalationTests(TestCase):
             acquire_provider_rate_limit_slot("test_prov", 1, 1.0)
 
     @patch("core.base.utilities.request_with_retries")
+    @patch("time.sleep")
+    def test_other_providers_are_not_checked_for_ban_pages(self, mock_sleep, mock_request):
+        response = self._response(BAN_LONG)
+        mock_request.return_value = response
+        req_fn = request_by_provider("test_prov", 1, 0.01)
+        self.assertIs(req_fn("https://example.com/x", {}), response)
+        self.assertNotIn("test_prov", PROVIDER_COOLDOWN_UNTIL)
+        mock_sleep.assert_not_called()
+
+    @patch("core.base.utilities.request_with_retries")
     def test_binary_responses_are_not_decoded_to_look_for_bans(self, mock_request):
         response = self._response("", content_type="image/jpeg")
         type(response).text = property(lambda _: (_ for _ in ()).throw(AssertionError("decoded binary body")))
         mock_request.return_value = response
-        req_fn = request_by_provider("test_prov", 1, 0.01)
+        req_fn = request_by_provider("panda_test", 1, 0.01)
         self.assertIs(req_fn("https://example.com/cover.jpg", {}), response)
 
     @patch("core.base.utilities.request_with_retries")
@@ -261,7 +285,7 @@ class ProviderBanEscalationTests(TestCase):
         response = self._response(BAN_LONG)
         response.headers = {"Content-Type": "text/html", "Content-Length": str(10 * 1024 * 1024)}
         mock_request.return_value = response
-        req_fn = request_by_provider("test_prov", 1, 0.01)
+        req_fn = request_by_provider("panda_test", 1, 0.01)
         self.assertIs(req_fn("https://example.com/huge", {}), response)
 
     def test_interruptible_sleep_stops_on_cancel(self):
@@ -312,3 +336,25 @@ class BannedTaskRequeueTests(TestCase):
         self.assertIn("temporarily banning", task.error_message)
         # And it isn't picked up while the ban lasts.
         self.assertIsNone(runner.claim_next_job())
+
+    def test_ban_inside_a_provider_crawl_thread_delays_the_task(self):
+        """The crawl of each provider runs in its own thread: a ban raised there must still reach the worker."""
+        from core.base.errors import ProviderBannedError
+        from workers.models import TaskQueue
+        from workers.runner import WorkerRunner
+        from workers.tests.factories import TaskQueueFactory
+
+        runner = WorkerRunner(Settings(load_from_disk=True), enable_schedulers=False)
+        task = TaskQueueFactory(args=["https://e-hentai.org/g/123/abcdef1234/"])
+        claimed = runner.claim_next_job()
+
+        with patch(
+            "core.providers.panda.parsers.Parser._crawl_urls", side_effect=ProviderBannedError("panda_web", 3600)
+        ) as crawl:
+            runner.execute_job(claimed)
+
+        crawl.assert_called_once()
+        task.refresh_from_db()
+        self.assertEqual(task.status, TaskQueue.Status.PENDING)
+        self.assertEqual(task.attempts, 0)
+        self.assertGreater((task.not_before - task.created_at).total_seconds(), 3500)

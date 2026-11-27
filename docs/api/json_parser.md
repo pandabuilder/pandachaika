@@ -96,7 +96,7 @@ token that has the `read` scope, see [Background Tasks](README.md#background-tas
 
 ## 1. Web Crawler Enqueueing (`operation: "webcrawler"`)
 
-Queues one or more gallery URLs to the Celery worker task (`task_type="web_crawler"`). This operation supports parent gallery deletion/replacement, downloader filtering, reason tracking, and global filter overrides.
+Queues one or more gallery URLs as a background worker task (`task_type="web_crawler"` in `TaskQueue`). This operation supports parent gallery deletion/replacement, downloader filtering, reason tracking, and global filter overrides.
 
 - **Method**: `POST`
 - **Operation**: `"webcrawler"`

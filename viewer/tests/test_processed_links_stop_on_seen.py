@@ -150,7 +150,7 @@ class ProcessedLinksStopOnSeenUnitTests(unittest.TestCase):
         self.parser.own_settings.stop_on_seen_links = True
 
         mock_query = MagicMock()
-        mock_query.values_list.return_value = ["1002"]
+        mock_query.values_list.return_value = [(2, "1002", "processed")]
         mock_processed_links.filter.return_value = mock_query
 
         unique_urls = set()
@@ -193,7 +193,7 @@ class ProcessedLinksStopOnSeenUnitTests(unittest.TestCase):
         # First query: checking if current page has seen links
         # Second query: fetching recent seen links within time window
         check_query = MagicMock()
-        check_query.values_list.return_value = ["1002"]
+        check_query.values_list.return_value = [(2, "1002", "processed")]
 
         window_query = MagicMock()
         window_query.values_list.return_value = [
@@ -244,7 +244,7 @@ class ProcessedLinksStopOnSeenUnitTests(unittest.TestCase):
         self.parser.own_settings.stop_on_seen_links = True
 
         check_query = MagicMock()
-        check_query.values_list.return_value = ["1002"]
+        check_query.values_list.return_value = [(2, "1002", "processed")]
         mock_processed_links.filter.return_value = check_query
 
         unique_urls = set()

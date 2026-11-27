@@ -326,9 +326,9 @@ class ArchiveExtractionService:
 
         zip_path = archive.zipped.path
         try:
+            # No testzip() here: it reads the whole archive for every image. Archives are tested when they are
+            # added, and a corrupt member makes the stream stop below instead.
             with zipfile.ZipFile(zip_path, "r") as my_zip:
-                if my_zip.testzip():
-                    return None
                 filtered_files = get_images_from_zip(my_zip)
                 if not filtered_files:
                     return None
@@ -376,17 +376,23 @@ class ArchiveExtractionService:
             return None
 
         def stream_generator() -> typing.Generator[bytes, None, None]:
-            with zipfile.ZipFile(zip_path, "r") as zf:
-                if target_tuple[1] is None:
-                    with zf.open(target_tuple[0]) as current_img:
-                        while chunk := current_img.read(chunk_size):
-                            yield chunk
-                else:
-                    with zf.open(target_tuple[1]) as current_zip:
-                        with zipfile.ZipFile(current_zip) as my_nested_zip:
-                            with my_nested_zip.open(target_tuple[0]) as current_img:
-                                while chunk := current_img.read(chunk_size):
-                                    yield chunk
+            try:
+                with zipfile.ZipFile(zip_path, "r") as zf:
+                    if target_tuple[1] is None:
+                        with zf.open(target_tuple[0]) as current_img:
+                            while chunk := current_img.read(chunk_size):
+                                yield chunk
+                    else:
+                        with zf.open(target_tuple[1]) as current_zip:
+                            with zipfile.ZipFile(current_zip) as my_nested_zip:
+                                with my_nested_zip.open(target_tuple[0]) as current_img:
+                                    while chunk := current_img.read(chunk_size):
+                                        yield chunk
+            except (zipfile.BadZipFile, zlib.error, OSError, EOFError) as e:
+                # The response has already started, so the download ends short instead of failing with an error.
+                logger.error(
+                    "Error streaming image %s from the zip file of archive %s: %s", target_tuple[0], archive.pk, e
+                )
 
         return stream_generator, filename, content_type, file_size
 

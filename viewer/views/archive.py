@@ -674,7 +674,8 @@ def image_data_list(request: HttpRequest, pk: int) -> HttpResponse:
         results = paginator.page(paginator.num_pages)
 
     has_contextual_props = False
-    if results and results.object_list:
+    # Contextual info is only shown to authenticated users.
+    if request.user.is_authenticated and results and results.object_list:
         image_ct = ContentType.objects.get_for_model(Image)
         image_pks = [img.pk for img in results.object_list if img.pk]
         props_by_img: dict[int, list[ItemProperties]] = {}
@@ -760,10 +761,8 @@ def _serve_image(request: HttpRequest, pk: int, as_attachment: bool = True) -> H
     except Image.DoesNotExist:
         raise Http404("Image does not exist")
 
+    # Every authenticated user can get the images of private archives too.
     archive = image.archive
-    if not archive.public and not is_auth:
-        raise Http404("Archive does not exist")
-
     if archive.is_recycled() or archive.is_file_deleted():
         raise Http404("Archive does not exist")
 
@@ -1140,6 +1139,8 @@ def public(request: HttpRequest, pk: int) -> HttpResponse:
             target_url = get_safe_referer(request, archive.get_absolute_url())
             if archive.public:
                 return render_error(request, "Archive is already public.")
+            if archive.binned:
+                return render_error(request, "Archive is in the Recycle Bin, restore it before publishing it.")
 
             active_task = client.get_active_archive_task(archive.pk, "publish_worker")
             if active_task:

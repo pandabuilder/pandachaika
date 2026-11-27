@@ -4,7 +4,6 @@ from typing import Any
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import permission_required, login_required
-from django.core import management
 from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator, InvalidPage, EmptyPage
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect, Http404
@@ -14,9 +13,9 @@ from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from core.base.utilities import get_schedulers_status
-from viewer.management.commands import update_provider_wanted
 from viewer.utils.general import PAGE_SIZE_OPTIONS, page_size, safe_redirect_back
 from viewer.utils.actions import event_log
+from workers import client
 from viewer.forms import (
     WantedGalleryCreateOrEditForm,
     WantedGalleryCommand,
@@ -36,6 +35,7 @@ from viewer.models import (
 )
 from viewer.services.monitored_link_stats import is_gap, monitored_link_report
 from viewer.utils.types import AuthenticatedHttpRequest
+from viewer.views.head.auth import NEW_TOKEN_SESSION_KEY
 
 crawler_settings = settings.CRAWLER_SETTINGS
 logger = logging.getLogger(__name__)
@@ -96,11 +96,22 @@ def create_wanted_galleries_from_command(request: HttpRequest) -> HttpResponse:
         categories = list(Category.objects.filter(pk__in=categories_pk).values_list('name', flat=True))
 
         command = "wanted_publisher: {}, artist_or_group_tag: {}, wanted_providers: {}, categories: {}".format(wanted_publisher, artist_or_group_tag, wanted_providers, categories)
-        management.call_command(update_provider_wanted.Command(), wanted_publisher, wanted_providers=wanted_providers, categories=categories, artist_list=artist_or_group_tag, should_search=True)
-        message = "WantedGallery command successfully run: {}".format(command)
+        client.enqueue(
+            args=[],
+            task_type="update_provider_wanted_worker",
+            override_options={
+                "wanted_publisher": wanted_publisher,
+                "artist_or_group_tag": artist_or_group_tag,
+                "wanted_providers": wanted_providers,
+                "categories": categories,
+                "should_search": True,
+            },
+            user=request.user,
+            event_action="CREATE_WANTED_GALLERY_FROM_COMMAND",
+        )
+        message = "Queued WantedGallery command: {}".format(command)
         messages.success(request, message)
         logger.info("User {}: {}".format(request.user.username, message))
-        event_log(request.user, "CREATE_WANTED_GALLERY_FROM_COMMAND", data=command, result="run")
         wanted_gallery_command_form = WantedGalleryCommand()
     else:
 
@@ -570,12 +581,9 @@ def user_token(request: AuthenticatedHttpRequest, operation: str) -> HttpRespons
             result=f"created {token.name}",
             content_object=token,
         )
-        messages.success(
-            request,
-            "Token with name: {} created successfully. Write down the token itself it will be only shown here (everything inside <>): <{}>.".format(
-                token.name, secret_key
-            ),
-        )
+        # Handed to the profile page through the session (not a message, which can end up in a cookie); the page
+        # pops it, so the secret is shown once, in its own panel.
+        request.session[NEW_TOKEN_SESSION_KEY] = {"id": token.pk, "name": token.name, "secret": secret_key}
     elif operation == "delete":
         token_id = request.POST.get("id", "")
 

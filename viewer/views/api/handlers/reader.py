@@ -10,7 +10,6 @@ from typing import Any
 
 from django.contrib.auth.models import AnonymousUser, User
 from django.core.paginator import EmptyPage, Paginator
-from django.db import transaction
 from django.db.models import Q, QuerySet
 from django.http import HttpRequest, HttpResponse
 from django.http.request import QueryDict
@@ -19,12 +18,13 @@ from django.urls import reverse
 from core.base.types import DataDict
 from core.base.utilities import str_to_int, timestamp_or_zero
 from viewer.models import Archive, Image, UserArchivePrefs
-from viewer.utils.actions import event_log
 from viewer.views.api.auth import get_api_context, require_user
-from viewer.views.api.common import _get_int
+from viewer.views.api.common import _get_int, parse_bool_from_data_or_body
 from viewer.views.api.errors import ApiError, json_response
 from viewer.views.api.filters import simple_archive_filter
+from viewer.views.api.handlers.tasks import task_reference
 from viewer.views.head import archive_filter_keys, filter_archives
+from workers import client
 
 
 def _archive_id(data: QueryDict, key: str) -> int:
@@ -324,29 +324,67 @@ def handle_get_me(request: HttpRequest, data: QueryDict, user_is_authenticated: 
 
 
 def _toggle_extraction(
-    data: QueryDict, key: str, user: User | AnonymousUser | None, extract: bool
+    request: HttpRequest,
+    data: QueryDict,
+    body: dict,
+    key: str,
+    user: User | AnonymousUser | None,
+    extract: bool,
 ) -> HttpResponse:
     archive_id = _archive_id(data, key)
-    with transaction.atomic():
-        try:
-            archive = Archive.objects.select_for_update().get(pk=archive_id)
-        except Archive.DoesNotExist:
-            raise ApiError.not_found("Archive does not exist.") from None
-        if archive.extracted == extract:
-            state = "extracted" if extract else "reduced"
-            return json_response({"result": "warning", "message": f"Archive: {archive_id} is already {state}."})
-        if extract:
-            archive.extract()
-            event_log(user, "EXPAND_ARCHIVE", content_object=archive, result="success")
-        else:
-            archive.reduce()
-            event_log(user, "REDUCE_ARCHIVE", content_object=archive, result="success")
+    try:
+        archive = Archive.objects.get(pk=archive_id)
+    except Archive.DoesNotExist:
+        raise ApiError.not_found("Archive does not exist.") from None
+
+    if archive.extracted == extract:
+        state = "extracted" if extract else "reduced"
+        return json_response(
+            {
+                "result": "warning",
+                "message": f"Archive: {archive_id} is already {state}.",
+                "change": {"field": "extracted", "value": archive.extracted},
+                "task_id": None,
+                "status_url": None,
+            }
+        )
+
+    task_type = "extract_worker" if extract else "reduce_worker"
+    active_task = client.get_active_archive_task(archive.pk, task_type)
+    if active_task is not None:
+        action_word = "Extraction" if extract else "Reduction"
+        return json_response(
+            {
+                "result": "queued",
+                "message": f"{action_word} is already queued.",
+                **task_reference(request, active_task),
+            }
+        )
+
+    if extract:
+        resized, _ = parse_bool_from_data_or_body(data, body, "resized")
+        task = client.enqueue(
+            args=[archive.pk],
+            task_type="extract_worker",
+            override_options={"resized": resized},
+            user=user,
+            event_action="EXPAND_ARCHIVE",
+        )
+        message = "Extraction queued (resized)." if resized else "Extraction queued."
+    else:
+        task = client.enqueue(
+            args=[archive.pk],
+            task_type="reduce_worker",
+            user=user,
+            event_action="REDUCE_ARCHIVE",
+        )
+        message = "Reduction queued."
 
     return json_response(
         {
-            "result": "ok",
-            "message": "Extraction successful." if extract else "Reduction successful.",
-            "change": {"field": "extracted", "value": archive.extracted},
+            "result": "queued",
+            "message": message,
+            **task_reference(request, task),
         }
     )
 
@@ -354,13 +392,13 @@ def _toggle_extraction(
 def handle_post_extract_archive(
     request: HttpRequest, data: QueryDict, body: dict, user: User | AnonymousUser | None
 ) -> HttpResponse:
-    return _toggle_extraction(data, "extract-archive", user, extract=True)
+    return _toggle_extraction(request, data, body, "extract-archive", user, extract=True)
 
 
 def handle_post_reduce_archive(
     request: HttpRequest, data: QueryDict, body: dict, user: User | AnonymousUser | None
 ) -> HttpResponse:
-    return _toggle_extraction(data, "reduce-archive", user, extract=False)
+    return _toggle_extraction(request, data, body, "reduce-archive", user, extract=False)
 
 
 def handle_legacy_me(request: HttpRequest) -> HttpResponse:

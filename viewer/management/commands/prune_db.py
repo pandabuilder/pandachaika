@@ -1,7 +1,7 @@
 from django.conf import settings
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 
-from viewer.services.retention import prune_database
+from viewer.services.retention import prune_database, resolve_prune_targets
 
 crawler_settings = settings.CRAWLER_SETTINGS
 
@@ -21,7 +21,7 @@ class Command(BaseCommand):
             "--entities",
             type=str,
             default="all",
-            help="Comma-separated list of entities to prune (task_queue, download_event, event_log, processed_links, monitored_link_runs, status_log, sessions, history, or all).",
+            help="Comma-separated list of entities to prune (task_queue, download_event, event_log, processed_links, monitored_link_runs, status_log, sessions, history, or all). Entities without a days override below use their configured retention.",
         )
         parser.add_argument(
             "--task-queue-days",
@@ -104,20 +104,18 @@ class Command(BaseCommand):
             days_override["sessions"] = options["session_days"]
             days_override["session_days"] = options["session_days"]
 
-        # Parse entities
-        target_entities = [e.strip() for e in entities_arg.split(",") if e.strip()]
-        if not target_entities or "all" in target_entities:
-            target_entity = "all"
-        elif len(target_entities) == 1:
-            target_entity = target_entities[0]
-        else:
-            target_entity = "all"
+        target_entities = [e.strip() for e in entities_arg.split(",") if e.strip()] or ["all"]
+        try:
+            resolve_prune_targets(target_entities)
+        except ValueError as e:
+            raise CommandError(str(e))
+        target_entity = ",".join(target_entities)
 
         self.stdout.write(f"Initiating pruning (target: {target_entity}, dry_run: {dry_run})...")
 
         results = prune_database(
             settings_obj=crawler_settings,
-            entity=target_entity,
+            entity=target_entities,
             days_override=days_override or None,
             dry_run=dry_run,
             chunk_size=chunk_size,

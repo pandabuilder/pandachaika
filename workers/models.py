@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 from datetime import timedelta, datetime
+import hashlib
+import json
 import logging
 import time
 from typing import Any
@@ -66,6 +68,15 @@ class TaskQueue(models.Model):
         blank=True,
         help_text="Do not start the task before this time (used to delay a task, e.g. during a provider ban).",
     )
+    options_hash = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        help_text=(
+            "Hash of the options and user the task was queued with. Two tasks with the same type and args are only "
+            "duplicates when this matches too."
+        ),
+    )
 
     class Meta:
         ordering = ["priority", "created_at", "id"]
@@ -90,6 +101,32 @@ class TaskQueue(models.Model):
 
     def __str__(self) -> str:
         return f"TaskQueue #{self.pk} ({self.task_type}) - {self.status}"
+
+    @staticmethod
+    def compute_options_hash(options: Any, user_id: int | None) -> str:
+        """Hash of what, besides its type and args, changes what a task does: its options (which also carry the
+        archive reason of crawler tasks) and its user. The task's own reason is only a label.
+
+        Keep in sync with the backfill in migration 0011_taskqueue_options_hash.
+        """
+        payload = json.dumps(
+            {"options": options or {}, "user": user_id},
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            default=str,
+        )
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        # Computed once, from what the task was queued with: options written while it runs (batch stats, results)
+        # don't change it.
+        if not self.options_hash:
+            self.options_hash = self.compute_options_hash(self.options, self.user_id)
+            update_fields = kwargs.get("update_fields")
+            if update_fields is not None and "options_hash" not in update_fields:
+                kwargs["update_fields"] = [*update_fields, "options_hash"]
+        super().save(*args, **kwargs)
 
     @classmethod
     def startable(cls, now: datetime | None = None) -> QuerySet["TaskQueue"]:

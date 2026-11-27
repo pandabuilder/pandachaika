@@ -28,8 +28,6 @@ from viewer.models import (
     GalleryMatch,
     FoundGallery,
     ArchiveTag,
-    GalleryMatchGroup,
-    GalleryMatchGroupEntry,
 )
 from viewer.utils.actions import event_log
 from viewer.utils.general import PAGE_SIZE_OPTIONS, page_size, safe_redirect_back
@@ -49,7 +47,7 @@ logger = logging.getLogger(__name__)
 
 
 def _delete_selected_archives(request: HttpRequest, delete_files: bool) -> None:
-    """Delete the archives checked as ``del-<pk>``, with or without their files."""
+    """Queue deletion of the archives checked as ``del-<pk>``, with or without their files."""
     p = request.POST
     pks: list[str] = []
     for k in p.keys():
@@ -58,15 +56,29 @@ def _delete_selected_archives(request: HttpRequest, delete_files: bool) -> None:
     if not pks:
         messages.warning(request, "No archives were selected.")
         return
-    for archive in Archive.objects.filter(id__in=pks).order_by("-pk"):
-        if delete_files:
-            message = "Removing archive: {} and deleting its file: {}".format(archive.title, archive.zipped.name)
-            archive.delete_all_files()
-        else:
-            message = "Removing archive: {} and keeping its file: {}".format(archive.title, archive.zipped.name)
-        logger.info("User {}: {}".format(request.user.username, message))
-        messages.success(request, message)
-        archive.delete()
+    archive_pks = list(Archive.objects.filter(id__in=pks).order_by("-pk").values_list("pk", flat=True))
+    if not archive_pks:
+        messages.warning(request, "No archives were selected.")
+        return
+    client.enqueue(
+        args=archive_pks,
+        task_type="delete_archive_worker",
+        override_options={
+            "delete_zipped": False,
+            "delete_archive": True,
+            "delete_file": delete_files,
+            "delete_gallery": False,
+            "mark_gallery_deleted": False,
+            "mark_gallery_denied": False,
+        },
+        user=request.user,
+        event_action="DELETE_ARCHIVE",
+    )
+    message = "Queued deleting {} archive(s) ({})".format(
+        len(archive_pks), "deleting files" if delete_files else "keeping files"
+    )
+    logger.info("User %s: %s", request.user.username, message)
+    messages.success(request, message)
 
 
 def _galleries_with_archive_details(results_page) -> None:
@@ -175,29 +187,27 @@ def repeated_galleries_by_field(request: HttpRequest) -> HttpResponse:
             pks = []
             for k in p:
                 if k.startswith("sel-"):
-                    # k, pk = k.split('-')
-                    # results[pk][k] = v
                     v_keys = [int(x) for x in p.getlist(k)]
                     pks.extend(v_keys)
-            results_gallery = Gallery.objects.filter(id__in=pks).order_by("-create_date")
-
-            for gallery in results_gallery:
-                message = "Removing gallery: {}, link: {}".format(gallery.title, gallery.get_link())
-                logger.info(message)
-                messages.success(request, message)
-                gallery.mark_as_deleted()
-
-                event_log(
-                    request.user, "MARK_DELETE_GALLERY", reason=user_reason, content_object=gallery, result="deleted"
+            gallery_pks = list(Gallery.objects.filter(id__in=pks).order_by("-create_date").values_list("pk", flat=True))
+            if gallery_pks:
+                client.enqueue(
+                    args=gallery_pks,
+                    task_type="gallery_batch_worker",
+                    override_options={"operation": "mark_deleted", "event_result": "deleted"},
+                    user=request.user,
+                    reason=user_reason,
+                    event_action="MARK_DELETE_GALLERY",
                 )
+                message = "Queued marking {} gallery(ies) as deleted".format(len(gallery_pks))
+                logger.info("User %s: %s", request.user.username, message)
+                messages.success(request, message)
         elif "create_gallery_match_groups" in p:
             groups = []
             pks = []
             order_by_pk = {}
             for k in p:
                 if k.startswith("sel-"):
-                    # k, pk = k.split('-')
-                    # results[pk][k] = v
                     v_keys = [int(x) for x in p.getlist(k)]
                     groups.append(v_keys)
                     pks.extend(v_keys)
@@ -206,26 +216,23 @@ def repeated_galleries_by_field(request: HttpRequest) -> HttpResponse:
                     if k_value is not None:
                         order_by_pk[int(k.replace("ord-", ""))] = int(k_value)
 
-            results_gallery = Gallery.objects.filter(id__in=pks)
-            gallery_mappings = {x.pk: x for x in results_gallery}
-
-            gallery_groups = [sorted([gallery_mappings[y] for y in x], key=lambda x: order_by_pk[x.pk]) for x in groups]
-
-            for gallery_group in gallery_groups:
-                GalleryMatchGroup.objects.filter(galleries__in=gallery_group).delete()
-                gallery_match_group = GalleryMatchGroup()
-                gallery_match_group.save()
-                for count, gallery in enumerate(gallery_group, start=1):
-                    gallery_match_group_entry, _ = GalleryMatchGroupEntry.objects.update_or_create(
-                        gallery=gallery,
-                        defaults={"gallery_match_group": gallery_match_group, "gallery_position": count}
-                    )
-                message = "Created gallery match group: {}, galleries: {}".format(gallery_match_group.pk, [x.get_absolute_url() for x in gallery_match_group.galleries.all()])
-                logger.info(message)
-                messages.success(request, message)
-                event_log(
-                    request.user, "CREATE_GALLERY_MATCH_GROUP", reason=user_reason, content_object=gallery_match_group, result="created"
+            ordered_groups = [
+                sorted(group, key=lambda gid: order_by_pk.get(gid, 0))
+                for group in groups
+                if group
+            ]
+            if ordered_groups:
+                client.enqueue(
+                    args=list(dict.fromkeys(pks)),
+                    task_type="gallery_batch_worker",
+                    override_options={"operation": "create_match_groups", "groups": ordered_groups},
+                    user=request.user,
+                    reason=user_reason,
+                    event_action="CREATE_GALLERY_MATCH_GROUP",
                 )
+                message = "Queued creating {} gallery match group(s)".format(len(ordered_groups))
+                logger.info("User %s: %s", request.user.username, message)
+                messages.success(request, message)
 
 
     params: dict[str, list[str] | str] = {
@@ -408,27 +415,31 @@ def archives_not_matched_with_gallery(request: HttpRequest) -> HttpResponse:
             max_matches = int(p.get("max-matches", "10") or "10")
         except ValueError:
             max_matches = 10
-        if "delete_archives" in p:
-            for archive in archives:
-                message = "Removing archive not matched: {} and deleting file: {}".format(
-                    archive.title, archive.zipped.path
+        if "delete_archives" in p or "delete_objects" in p:
+            delete_files = "delete_archives" in p
+            archive_pks = list(archives.values_list("pk", flat=True))
+            if archive_pks:
+                client.enqueue(
+                    args=archive_pks,
+                    task_type="delete_archive_worker",
+                    override_options={
+                        "delete_zipped": False,
+                        "delete_archive": True,
+                        "delete_file": delete_files,
+                        "delete_gallery": False,
+                        "mark_gallery_deleted": False,
+                        "mark_gallery_denied": False,
+                    },
+                    user=request.user,
+                    event_action="DELETE_ARCHIVE",
                 )
-                logger.info(message)
-                messages.success(request, message)
-                archive.delete_all_files()
-                archive.delete()
-        elif "delete_objects" in p:
-            for archive in archives:
-                message = "Removing archive not matched: {}, keeping file: {}".format(
-                    archive.title, archive.zipped.path
+                message = "Queued deleting {} unmatched archive(s) ({})".format(
+                    len(archive_pks), "deleting files" if delete_files else "keeping files"
                 )
-                logger.info(message)
+                logger.info("User %s: %s", request.user.username, message)
                 messages.success(request, message)
-                archive.delete_files_but_archive()
-                archive.delete()
         elif "clear_possible_matches" in p:
-            for archive in archives:
-                archive.possible_matches.clear()
+            ArchiveMatches.objects.filter(archive__in=archives).delete()
             logger.info("User {}: Clearing possible matches for archives".format(request.user.username))
             messages.success(request, "Cleared the possible matches of {} archive(s).".format(len(pks)))
         elif "create_possible_matches" in p:

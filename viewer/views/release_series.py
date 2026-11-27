@@ -16,8 +16,9 @@ from django.views.decorators.http import require_POST
 
 from core.base.setup import Settings
 from viewer.forms import ReleaseSeriesForm
-from viewer.models import Archive, ReleaseSeries, ReleaseSeriesDismissal
+from viewer.models import Archive, ArchiveGroup, ReleaseSeries, ReleaseSeriesDismissal
 from viewer.services import release_series as rs
+from viewer.services import release_series_group as rsg
 from viewer.utils.actions import event_log
 from workers import client
 
@@ -377,3 +378,86 @@ def release_series_backlog_add(request: HttpRequest) -> JsonResponse:
         event_log(request.user, "CRAWL_URL", reason=reason, data=url, result="queued")
     task_id = getattr(task, "pk", None)
     return JsonResponse({"queued": len(urls), "task_id": task_id})
+
+
+# --- Archive group ---
+
+
+@staff_member_required(login_url="viewer:login")
+def release_series_archive_group(request: HttpRequest, pk: int) -> JsonResponse:
+    """Put the series' archives in an archive group. Answers JSON.
+
+    GET: the series' archives in issue order, the groups (suggested: those with some of them), and with ``group``,
+    that group's entries.
+    POST: action ``create`` (title, public) or ``update`` (group, mode: add, merge or replace), with the chosen
+    archives (``archive``, several). Archives that aren't the series' are ignored.
+    """
+    series = _series_or_404(pk)
+    try:
+        archives = rsg.series_archives(series)
+    except rs.ConfigError as e:
+        return JsonResponse({"error": str(e)}, status=400)
+    if request.method == "POST":
+        return _archive_group_action(request, series, archives)
+
+    data: dict[str, typing.Any] = {
+        "series": series.name,
+        "archives": [a.as_dict() for a in archives],
+        "groups": list(ArchiveGroup.objects.order_by("title").values("id", "title")),
+        "suggested": rsg.suggested_groups([a.pk for a in archives]),
+        "can_create": request.user.has_perm("viewer.add_archivegroup"),
+        "can_change": request.user.has_perm("viewer.change_archivegroup"),
+    }
+    group_id = request.GET.get("group", "")
+    if group_id:
+        group = ArchiveGroup.objects.filter(pk=group_id).first() if group_id.isdigit() else None
+        if group is None:
+            return JsonResponse({"error": "Archive group not found."}, status=404)
+        data["group"] = {
+            "id": group.pk,
+            "title": group.title,
+            "url": group.get_absolute_url(),
+            "public": group.public,
+            "entries": [
+                {"id": e.archive_id, "title": e.title or e.archive.title, "url": e.archive.get_absolute_url()}
+                for e in rsg.group_entries(group)
+            ],
+        }
+    return JsonResponse(data)
+
+
+def _archive_group_action(
+    request: HttpRequest, series: ReleaseSeries, archives: list[rsg.SeriesArchive]
+) -> JsonResponse:
+    p = request.POST
+    action = p.get("action", "")
+    wanted = {int(x) for x in p.getlist("archive") if x.isdigit()}
+    chosen = [a for a in archives if a.pk in wanted]
+    try:
+        if action == "create":
+            if not request.user.has_perm("viewer.add_archivegroup"):
+                return JsonResponse({"error": "You don't have permission to create archive groups."}, status=403)
+            if not chosen:
+                return JsonResponse({"error": "No archives selected."}, status=400)
+            change = rsg.create_group(p.get("title", ""), chosen, public=p.get("public") == "1")
+            event_log(request.user, "ADD_ARCHIVE_GROUP", content_object=change.group, result="added")
+        elif action == "update":
+            if not request.user.has_perm("viewer.change_archivegroup"):
+                return JsonResponse({"error": "You don't have permission to change archive groups."}, status=403)
+            group_id = p.get("group", "")
+            group = ArchiveGroup.objects.filter(pk=group_id).first() if group_id.isdigit() else None
+            if group is None:
+                return JsonResponse({"error": "Archive group not found."}, status=404)
+            mode = p.get("mode", rsg.GroupMode.ADD)
+            if mode == rsg.GroupMode.REPLACE and not chosen:
+                return JsonResponse({"error": "No archives selected: replacing would empty the group."}, status=400)
+            change = rsg.update_group(group, archives, {a.pk for a in chosen}, mode)
+            event_log(request.user, "CHANGE_ARCHIVE_GROUP", content_object=group, result="changed")
+        else:
+            return JsonResponse({"error": f"Unknown action '{action}'."}, status=400)
+    except rs.ConfigError as e:
+        return JsonResponse({"error": str(e)}, status=400)
+    logger.info(
+        "User %s: release series '%s' archive group: %s", request.user.username, series.name, change.summary()
+    )
+    return JsonResponse(change.as_dict())

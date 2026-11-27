@@ -36,7 +36,7 @@ class RetentionConfigurationTests(TestCase):
         self.assertEqual(retention.event_log_days, 90)
         self.assertEqual(retention.status_log_days, 30)
         self.assertEqual(retention.processed_links_days, 180)
-        self.assertEqual(retention.history_days, 90)
+        self.assertEqual(retention.history_days, 0)
         self.assertEqual(retention.session_days, 1)
         self.assertEqual(retention.chunk_size, 5000)
 
@@ -308,7 +308,10 @@ class DatabaseMaintenanceViewTests(TestCase):
     def setUp(self):
         self.client = Client()
         self.staff_user = User.objects.create_user(
-            username="staff_admin", password="password", is_staff=True
+            username="staff_admin", password="password", is_staff=True, is_superuser=True
+        )
+        self.staff_only_user = User.objects.create_user(
+            username="staff_only", password="password", is_staff=True
         )
         self.regular_user = User.objects.create_user(
             username="regular_user", password="password", is_staff=False
@@ -354,7 +357,39 @@ class DatabaseMaintenanceViewTests(TestCase):
             follow=True,
         )
         self.assertEqual(resp.status_code, 200)
-        self.assertIn(b"Dry run: would delete", resp.content)
+        self.assertIn(b"Enqueued background task", resp.content)
+        task = TaskQueue.objects.filter(task_type="database_prune").latest("id")
+        self.assertEqual(task.override_options.get("entity"), "status_log")
+        self.assertEqual(task.override_options.get("days"), 30)
+        self.assertTrue(task.override_options.get("dry_run"))
+        self.assertEqual(task.priority, 5)
+
+    def test_staff_without_superuser_cannot_prune(self):
+        self.client.login(username="staff_only", password="password")
+        resp = self.client.post(
+            reverse("viewer:database-maintenance"),
+            {"action": "prune_background", "entity": "task_queue", "days": "30", "json": "1"},
+        )
+        self.assertEqual(resp.status_code, 403)
+        self.assertFalse(TaskQueue.objects.filter(task_type="database_prune").exists())
+
+    def test_days_override_for_all_entities_is_rejected(self):
+        self.client.login(username="staff_admin", password="password")
+        for action in ("prune_background", "prune_immediate"):
+            resp = self.client.post(
+                reverse("viewer:database-maintenance"),
+                {"action": action, "entity": "all", "days": "1", "json": "1"},
+            )
+            self.assertEqual(resp.status_code, 400)
+        self.assertFalse(TaskQueue.objects.filter(task_type="database_prune").exists())
+
+    def test_unknown_entity_is_rejected(self):
+        self.client.login(username="staff_admin", password="password")
+        resp = self.client.post(
+            reverse("viewer:database-maintenance"),
+            {"action": "prune_immediate", "entity": "task_queu", "json": "1"},
+        )
+        self.assertEqual(resp.status_code, 400)
 
     def test_staff_post_scheduler_control(self):
         self.client.login(username="staff_admin", password="password")
@@ -446,3 +481,71 @@ class ChangeLogRetentionTests(TestCase):
         remaining = GalleryChange.objects.filter(gallery=gallery)
         self.assertEqual(remaining.count(), 1)
         self.assertEqual(remaining.get().changes, {"title": ["v2", "v3"]})
+
+
+class PruneScopeTests(TestCase):
+    """A prune only touches the entities asked for, and each keeps its configured retention unless overridden."""
+
+    def setUp(self):
+        old = timezone.now() - datetime.timedelta(days=400)
+        self.event = EventLog.objects.create(action="OLD_EVENT", data="old")
+        EventLog.objects.filter(pk=self.event.pk).update(create_date=old)
+        self.status = StatusLog.objects.create(logger_name="test", level=20, msg="old")
+        StatusLog.objects.filter(pk=self.status.pk).update(create_datetime=old)
+        self.processed = ProcessedLinks.objects.create(url="https://example.com/old", source_id="old")
+        ProcessedLinks.objects.filter(pk=self.processed.pk).update(create_date=old)
+        self.settings = Settings(load_from_disk=False)
+
+    def test_several_entities_only_prune_those(self):
+        result = prune_database(settings_obj=self.settings, entity=["event_log", "status_log"])
+        self.assertEqual(set(result["entities"]), {"event_log", "status_log"})
+        self.assertFalse(EventLog.objects.filter(pk=self.event.pk).exists())
+        self.assertFalse(StatusLog.objects.filter(pk=self.status.pk).exists())
+        self.assertTrue(ProcessedLinks.objects.filter(pk=self.processed.pk).exists())
+
+    def test_command_with_several_models_only_prunes_those(self):
+        call_command("prune_db", "--models", "event_log,status_log", stdout=StringIO())
+        self.assertFalse(EventLog.objects.filter(pk=self.event.pk).exists())
+        self.assertFalse(StatusLog.objects.filter(pk=self.status.pk).exists())
+        self.assertTrue(ProcessedLinks.objects.filter(pk=self.processed.pk).exists())
+
+    def test_command_rejects_unknown_models(self):
+        from django.core.management.base import CommandError
+
+        with self.assertRaises(CommandError):
+            call_command("prune_db", "--models", "event_log,typo", stdout=StringIO())
+        self.assertTrue(EventLog.objects.filter(pk=self.event.pk).exists())
+
+    def test_overrides_dict_keeps_configured_retention_for_other_entities(self):
+        self.settings.retention.status_log_days = 0
+        result = prune_database(
+            settings_obj=self.settings, entity=["event_log", "status_log"], days_override={"event_log": 500}
+        )
+        self.assertEqual(result["entities"]["event_log"]["days"], 500)
+        self.assertTrue(EventLog.objects.filter(pk=self.event.pk).exists())
+        # status_log has no override and its configured retention is 0: skipped, not pruned with another value.
+        self.assertEqual(result["entities"]["status_log"]["days"], 0)
+        self.assertTrue(StatusLog.objects.filter(pk=self.status.pk).exists())
+
+        self.settings.retention.status_log_days = 30
+        result = prune_database(
+            settings_obj=self.settings, entity=["event_log", "status_log"], days_override={"event_log": 500}
+        )
+        self.assertEqual(result["entities"]["status_log"]["days"], 30)
+        self.assertFalse(StatusLog.objects.filter(pk=self.status.pk).exists())
+
+    def test_single_days_value_for_all_entities_is_refused(self):
+        with self.assertRaises(ValueError):
+            prune_database(settings_obj=self.settings, entity="all", days_override=1)
+        self.assertTrue(EventLog.objects.filter(pk=self.event.pk).exists())
+
+    def test_change_log_is_kept_by_default(self):
+        from viewer.models import Gallery, GalleryChange
+
+        gallery = Gallery.objects.create(gid="keep1", provider="panda", title="v1")
+        gallery.title = "v2"
+        gallery.save()
+        GalleryChange.objects.filter(gallery=gallery).update(changed_at=timezone.now() - datetime.timedelta(days=4000))
+        result = prune_database(settings_obj=self.settings, entity="all")
+        self.assertEqual(result["entities"]["history_gallery"]["pruned"], 0)
+        self.assertEqual(GalleryChange.objects.filter(gallery=gallery).count(), 1)

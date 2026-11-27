@@ -7,6 +7,7 @@ from core.base.cancellation import TaskCancelledError, ping_activity
 from core.base.errors import ProviderBannedError
 from core.base.gallery_sync import sync_gallery_db_entry
 from core.base.utilities import chunks
+from viewer.services.elasticsearch_index import ElasticsearchIndexService
 
 if TYPE_CHECKING:
     from core.base.parsers import BaseParser
@@ -138,12 +139,13 @@ class GalleryMetadataUpdater:
 
             self.touch_activity(activity_cb)
 
-            for gallery_data in galleries_data:
-                self.check_cancelled(is_cancelled, done, total)
-                if self.apply_gallery_data(parser, gallery_data):
-                    summary.updated += 1
-                else:
-                    summary.failed += 1
+            with ElasticsearchIndexService.batch_indexing():
+                for gallery_data in galleries_data:
+                    self.check_cancelled(is_cancelled, done, total)
+                    if self.apply_gallery_data(parser, gallery_data):
+                        summary.updated += 1
+                    else:
+                        summary.failed += 1
 
             done += len(url_chunk)
             logger.info("Provider %s: processed %d of %d galleries.", parser.name, done, total)

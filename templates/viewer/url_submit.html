@@ -1,104 +1,593 @@
 {% extends "viewer/base.html" %}
-{% block title %}URL submission | {{ block.super }}{% endblock %}
+{% load static viewer_extras %}
+{% block title %}Submit URLs | {{ block.super }}{% endblock %}
 {% block sidebar %}{% endblock %}
+
+{% block extra_head %}
+  {% load compress %}
+  {% compress css %}
+    <link href="{% static 'css/dm-pages.css' %}" type="text/css" rel="stylesheet" />
+  {% endcompress %}
+  <style>
+    .us-dropzone {
+      position: relative;
+      border-radius: 6px;
+      transition: box-shadow 0.15s ease, border-color 0.15s ease;
+    }
+    .us-dropzone.us-drag-over textarea {
+      border-color: var(--pg-accent-blue) !important;
+      box-shadow: 0 0 0 0.25rem rgba(54, 176, 249, 0.28) !important;
+    }
+    .us-drop-overlay {
+      display: none;
+      position: absolute;
+      inset: 0;
+      z-index: 5;
+      background: rgba(0, 26, 76, 0.88);
+      border: 2px dashed var(--pg-accent-blue);
+      border-radius: 6px;
+      align-items: center;
+      justify-content: center;
+      color: var(--pg-text-primary);
+      font-weight: 600;
+      pointer-events: none;
+    }
+    .us-dropzone.us-drag-over .us-drop-overlay { display: flex; }
+    .us-textarea {
+      min-height: 7.5rem;
+      max-height: 22rem;
+      resize: vertical;
+      font-size: 0.86rem;
+      line-height: 1.45;
+    }
+    .us-url-line {
+      font-size: 0.8rem;
+      word-break: break-all;
+    }
+    .us-gallery-title {
+      font-weight: 600;
+    }
+    .us-meta {
+      font-size: 0.78rem;
+      color: var(--pg-text-secondary);
+    }
+    .us-archive-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      margin-top: 0.35rem;
+    }
+    .us-archive-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      padding: 0.18rem 0.55rem;
+      border-radius: 999px;
+      border: 1px solid rgba(40, 167, 69, 0.55);
+      background: rgba(40, 167, 69, 0.12);
+      color: var(--pg-text-primary);
+      font-size: 0.78rem;
+      text-decoration: none;
+      transition: border-color 0.15s ease, background-color 0.15s ease;
+    }
+    .us-archive-pill:hover {
+      border-color: var(--pg-accent-blue);
+      background: rgba(54, 176, 249, 0.18);
+      color: #fff;
+    }
+    .us-archive-pill.us-archive-private {
+      border-color: var(--pg-border);
+      background: var(--pg-bg-inset);
+    }
+    .us-callout-available {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.8rem;
+      color: #4cd964;
+      font-weight: 600;
+    }
+    .us-row-available > td {
+      background: rgba(40, 167, 69, 0.06);
+    }
+    .us-row-muted {
+      opacity: 0.72;
+    }
+    .us-banner-available {
+      border-color: var(--pg-accent-green);
+      background: rgba(40, 167, 69, 0.12);
+      color: var(--pg-text-primary);
+    }
+    .us-feedback-card {
+      border-color: var(--pg-accent-blue);
+    }
+    .us-guide-item {
+      background: var(--pg-bg-inset);
+      border: 1px solid var(--pg-border-subtle);
+      border-radius: 6px;
+      padding: 0.75rem 0.9rem;
+      height: 100%;
+    }
+    .us-remove-btn {
+      color: var(--pg-text-secondary);
+      border: 0;
+      background: transparent;
+      padding: 0.15rem 0.4rem;
+      border-radius: 4px;
+    }
+    .us-remove-btn:hover {
+      background: rgba(220, 53, 69, 0.2);
+      color: #f86c7d;
+    }
+    .us-stat-btn {
+      width: 100%;
+      text-align: left;
+      cursor: pointer;
+    }
+    .us-stat-btn:hover {
+      border-color: var(--pg-accent-blue);
+      background: #002d60;
+    }
+  </style>
+{% endblock %}
+
 {% block content %}
-  {% if messages %}
-    {% for message in messages %}
-      <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}" role="alert">{{ message }}</div>
-    {% endfor %}
-  {% endif %}
-  <!-- Tools  -->
-  <div class="page-header">
-    <h2>URLs submit form</h2>
-    <p class="lead">Paste URLs that you want to back up (from sites that allow downloading), and specify the reason.</p>
-    <p class="lead">Check URLS only allows you to check the current status URLs without being added.</p>
-    <h5>One per line, an admin will review them later.</h5>
+<div class="container-fluid py-3" style="max-width: 1400px;"
+     id="url-submit-app"
+     data-check-url="{% url 'viewer:url-submit-check' %}"
+     data-max-urls="{{ max_check_urls }}"
+     data-authenticated="{% if user.is_authenticated %}1{% else %}0{% endif %}"
+     data-no-cover="{% static 'imgs/no_cover.png' %}">
+
+  {% include "viewer/include/dm_messages.html" %}
+
+  <!-- Header -->
+  <div class="dm-page-header">
+    <div>
+      <h2 class="h3 mb-1"><i class="fas fa-paper-plane text-info me-2"></i>Submit URLs</h2>
+      <p class="mb-0 small">
+        Paste one or more gallery URLs from supported sites to check whether they are already backed up and submit missing ones for review.
+      </p>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      <a href="{% url 'viewer:public-missing-archives' %}" class="btn btn-outline-info btn-sm">
+        <i class="fas fa-box-open me-1"></i>Missing archives
+      </a>
+      <a href="{% url 'viewer:wanted-galleries' %}" class="btn btn-outline-secondary btn-sm">
+        <i class="fas fa-binoculars me-1"></i>Wanted galleries
+      </a>
+      {% if perms.viewer.view_submitted_gallery %}
+        <a href="{% url 'viewer:submit-queue' %}" class="btn btn-outline-warning btn-sm">
+          <i class="fas fa-inbox me-1"></i>Submit queue
+        </a>
+      {% endif %}
+    </div>
   </div>
-  <form action="{% url 'viewer:url-submit' %}" method="POST">{% csrf_token %}
-    <div class="mb-3">
-      <label for="urls">Urls</label>
-      <textarea name="urls" class="form-control" id="urls" rows="10">{{ request.POST.urls }}</textarea>
+
+  {% if submit_feedback %}
+    <!-- Post-submit summary card -->
+    <div class="dm-card us-feedback-card" id="submit-feedback-card">
+      <div class="dm-card-header d-flex align-items-center justify-content-between gap-2">
+        <span><i class="fas fa-clipboard-check text-info me-2"></i>Submission summary</span>
+        <button type="button" class="btn-close btn-close-white btn-sm" aria-label="Dismiss"
+                onclick="document.getElementById('submit-feedback-card')?.remove()"></button>
+      </div>
+      <div class="p-3">
+        {% if submit_feedback.already_available %}
+          <div class="mb-3">
+            <div class="us-callout-available mb-2">
+              <i class="fas fa-check-circle"></i>
+              <span>
+                {{ submit_feedback.already_available|length }} link{{ submit_feedback.already_available|length|pluralize }}
+                already publicly backed up — no need to submit:
+              </span>
+            </div>
+            <div class="table-responsive">
+              <table class="table table-dm table-sm mb-0">
+                <thead>
+                  <tr>
+                    <th style="width: 52px;"></th>
+                    <th>Gallery</th>
+                    <th>Public Archives</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for entry in submit_feedback.already_available %}
+                    <tr class="us-row-available">
+                      <td>
+                        {% if entry.gallery.thumbnail_url %}
+                          <a href="{{ entry.gallery.url }}" class="img-preview" data-image-url="{{ entry.gallery.thumbnail_url }}">
+                            <img class="dm-thumb" src="{{ entry.gallery.thumbnail_url }}" alt="" loading="lazy">
+                          </a>
+                        {% else %}
+                          <span class="dm-thumb dm-thumb-placeholder"><i class="fas fa-image"></i></span>
+                        {% endif %}
+                      </td>
+                      <td class="dm-wrap">
+                        <div>
+                          <a class="us-gallery-title" href="{{ entry.gallery.url }}" target="_blank" rel="noopener">{{ entry.gallery.title }}</a>
+                          {% if entry.provider %}<span class="badge bg-secondary ms-1">{{ entry.provider }}</span>{% endif %}
+                        </div>
+                        <div class="us-url-line dm-muted">{{ entry.url|urlize_all_rel }}</div>
+                      </td>
+                      <td>
+                        <div class="us-archive-list mt-0">
+                          {% for archive in entry.archives %}
+                            <a href="{{ archive.url }}" target="_blank" rel="noopener"
+                               class="us-archive-pill{% if archive.thumbnail_url %} img-preview{% endif %}"
+                               {% if archive.thumbnail_url %}data-image-url="{{ archive.thumbnail_url }}"{% endif %}>
+                              <i class="fas fa-archive text-success"></i>
+                              <span>Archive #{{ archive.id }}</span>
+                              <span class="badge bg-dark text-info">{{ archive.relation }}</span>
+                              {% if archive.public_date %}<span class="dm-muted">{{ archive.public_date }}</span>{% endif %}
+                            </a>
+                          {% endfor %}
+                        </div>
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        {% endif %}
+
+        {% if submit_feedback.submitted %}
+          <div>
+            <div class="small fw-semibold text-info mb-2">
+              <i class="fas fa-paper-plane me-1"></i>
+              {{ submit_feedback.submitted|length }} link{{ submit_feedback.submitted|length|pluralize }} submitted for review:
+            </div>
+            <ul class="list-unstyled mb-0 small">
+              {% for entry in submit_feedback.submitted %}
+                <li class="py-1 border-bottom" style="border-color: var(--pg-border-subtle) !important;">
+                  <span class="us-url-line">{{ entry.url|urlize_all_rel }}</span>
+                  {% if entry.provider %}<span class="badge bg-secondary ms-1">{{ entry.provider }}</span>{% endif %}
+                  {% if entry.gallery %}
+                    <span class="ms-2">
+                      <i class="fas fa-arrow-right dm-dim me-1"></i>
+                      <a href="{{ entry.gallery.url }}" target="_blank" rel="noopener">{{ entry.gallery.title }}</a>
+                    </span>
+                  {% endif %}
+                </li>
+              {% endfor %}
+            </ul>
+          </div>
+        {% endif %}
+      </div>
     </div>
-    <div class="mb-3">
-      <label for="reason">Reason (wani, bavel, etc.). Optional but recommended.</label>
-      <input class="form-control" id="reason" name="reason" maxlength="93">
+  {% endif %}
+
+  <!-- Main submission form -->
+  <form action="{% url 'viewer:url-submit' %}" method="POST" id="url-submit-form">
+    {% csrf_token %}
+
+    <!-- Input Card -->
+    <div class="dm-card">
+      <div class="dm-card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+        <span>
+          <i class="fas fa-link text-info me-2"></i>Gallery URLs
+          <span class="badge bg-secondary ms-1 d-none" id="url-line-count">0</span>
+        </span>
+        <div class="d-flex flex-wrap gap-1">
+          <button type="button" class="btn btn-outline-info btn-sm py-0 d-none" id="btn-paste-urls"
+                  title="Append URLs from clipboard">
+            <i class="fas fa-paste me-1"></i>Paste
+          </button>
+          <button type="button" class="btn btn-outline-secondary btn-sm py-0 d-none" id="btn-import-file"
+                  title="Load URLs from a .txt file">
+            <i class="fas fa-file-upload me-1"></i>Import .txt
+          </button>
+          <input type="file" id="urls-file-input" class="d-none" accept=".txt,.text,.list,text/plain">
+          <button type="button" class="btn btn-outline-warning btn-sm py-0 d-none" id="btn-extract-urls"
+                  title="Split lines containing multiple URLs onto separate lines">
+            <i class="fas fa-magic me-1"></i>Split links
+          </button>
+          <button type="button" class="btn btn-outline-light btn-sm py-0 d-none" id="btn-clear-urls"
+                  title="Clear all URLs">
+            <i class="fas fa-times me-1"></i>Clear
+          </button>
+        </div>
+      </div>
+
+      <div class="p-3">
+        <!-- Quick single-link add bar (enabled by JS) -->
+        <div class="input-group input-group-sm mb-2 d-none" id="quick-add-wrap">
+          <span class="input-group-text bg-transparent text-info" style="border-color: var(--pg-border);">
+            <i class="fas fa-plus"></i>
+          </span>
+          <input type="text" class="form-control" id="quick-add-input"
+                 placeholder="Quick add a link and press Enter (or paste multiple links below)…"
+                 aria-label="Quick add gallery URL" autocomplete="off">
+          <button type="button" class="btn btn-outline-info" id="quick-add-btn">Add link</button>
+        </div>
+
+        <!-- Multi-line URLs textarea with drag & drop -->
+        <div class="mb-3">
+          <label for="urls" class="form-label dm-lbl">URLs (one per line)</label>
+          <div class="us-dropzone" id="urls-dropzone">
+            <textarea name="urls" class="form-control font-monospace us-textarea" id="urls" rows="6"
+                      placeholder="https://e-hentai.org/g/123456/abcdef1234/&#10;Paste one or more gallery URLs here, or drop a .txt file…"
+                      spellcheck="false">{{ initial_urls }}</textarea>
+            <div class="us-drop-overlay">
+              <span><i class="fas fa-file-import me-2 text-info"></i>Drop URLs or a .txt file to add them</span>
+            </div>
+          </div>
+          <div class="form-text">
+            Links are checked automatically against the public backup as you enter them. Commands starting with <code class="dm-code">-</code> are not allowed.
+          </div>
+        </div>
+
+        <!-- Reason field -->
+        <div class="row g-2 align-items-end">
+          <div class="col-md-9 col-lg-8">
+            <div class="d-flex justify-content-between align-items-baseline">
+              <label for="reason" class="form-label dm-lbl">Reason <span class="fw-normal text-lowercase dm-dim">(optional, recommended)</span></label>
+              <span class="small dm-dim font-monospace" id="reason-counter">0 / 93</span>
+            </div>
+            <input class="form-control form-control-sm" id="reason" name="reason" maxlength="93"
+                   value="{{ initial_reason }}" placeholder="e.g. wani, bavel, magazine, missing archive…">
+          </div>
+        </div>
+      </div>
     </div>
-    <div class="mb-3">
-      <button class="btn btn-light" name="submit">Submit URLs</button>
-      <button class="btn btn-info" name="check">Check URLs only</button>
-      <a class="btn btn-light" href="{% url 'viewer:url-submit' %}">Clear</a>
+
+    <!-- Live Interactive Inspector (also renders server-side results for non-JS Check URLs POST) -->
+    <div id="inspector-section" class="{% if not check_report %}d-none{% endif %}">
+      <!-- Summary KPI tiles (clickable quick filters) -->
+      <div class="row g-2 mb-3" id="inspector-stats">
+        <div class="col-6 col-md-3">
+          <button type="button" class="dm-stat us-stat-btn active" data-us-filter="all">
+            <div class="dm-lbl">All links</div>
+            <div class="dm-val text-light" id="stat-total">{% if check_report %}{{ check_report.counts.total }}{% else %}0{% endif %}</div>
+            <div class="dm-stat-sub">click to show all</div>
+          </button>
+        </div>
+        <div class="col-6 col-md-3">
+          <button type="button" class="dm-stat us-stat-btn" data-us-filter="submittable">
+            <div class="dm-lbl">Ready to submit</div>
+            <div class="dm-val text-info" id="stat-ready">{% if check_report %}{{ check_report.counts.submittable }}{% else %}0{% endif %}</div>
+            <div class="dm-stat-sub">will be queued</div>
+          </button>
+        </div>
+        <div class="col-6 col-md-3">
+          <button type="button" class="dm-stat us-stat-btn" data-us-filter="already_available">
+            <div class="dm-lbl">Already backed up</div>
+            <div class="dm-val text-success" id="stat-available">{% if check_report %}{{ check_report.counts.already_available }}{% else %}0{% endif %}</div>
+            <div class="dm-stat-sub">no need to submit</div>
+          </button>
+        </div>
+        <div class="col-6 col-md-3">
+          <button type="button" class="dm-stat us-stat-btn" data-us-filter="attention">
+            <div class="dm-lbl">Duplicates &amp; other</div>
+            <div class="dm-val text-warning" id="stat-attention">{% if check_report %}{{ check_report.counts.attention }}{% else %}0{% endif %}</div>
+            <div class="dm-stat-sub">skipped or needs review</div>
+          </button>
+        </div>
+      </div>
+
+      <!-- Callout when every entered link is already publicly available -->
+      <div class="dm-card us-banner-available p-3 mb-3 {% if not check_report or check_report.counts.already_available == 0 or check_report.counts.submittable > 0 or check_report.counts.attention > 0 %}d-none{% endif %}"
+           id="all-backed-up-banner" role="status">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+          <div>
+            <i class="fas fa-check-circle text-success me-2"></i>
+            <strong>No need to submit!</strong> Every link you entered is already publicly backed up with an archive. Open the gallery or archive links below directly.
+          </div>
+          <button type="button" class="btn btn-outline-light btn-sm d-none" id="btn-banner-clear">
+            <i class="fas fa-eraser me-1"></i>Start over
+          </button>
+        </div>
+      </div>
+
+      <!-- Error alert for live check issues (e.g. too many URLs, network error) -->
+      <div class="alert alert-warning py-2 mb-3 d-none" id="check-error-alert" role="alert"></div>
+
+      <!-- Interactive Results Table -->
+      <div class="dm-card">
+        <div class="dm-card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+          <div class="d-flex align-items-center gap-2">
+            <span><i class="fas fa-list-check text-info me-1"></i>Link check</span>
+            <span class="small dm-muted" id="check-status-indicator">
+              {% if check_report %}
+                Checked {{ check_report.counts.total }} line{{ check_report.counts.total|pluralize }}
+              {% endif %}
+            </span>
+          </div>
+          <div class="d-flex flex-wrap align-items-center gap-2">
+            <input type="search" id="inspector-search" class="form-control form-control-sm d-none"
+                   style="max-width: 14rem;" placeholder="Filter links…" aria-label="Filter checked links">
+            <button type="button" class="btn btn-outline-success btn-sm py-0 d-none" id="btn-prune-available"
+                    title="Remove links that are already publicly backed up">
+              <i class="fas fa-broom me-1"></i>Remove backed up (<span id="prune-available-count">0</span>)
+            </button>
+            <button type="button" class="btn btn-outline-warning btn-sm py-0 d-none" id="btn-prune-attention"
+                    title="Remove duplicate, invalid, and unsupported lines">
+              <i class="fas fa-broom me-1"></i>Remove duplicates/invalid (<span id="prune-attention-count">0</span>)
+            </button>
+            <button type="button" class="btn btn-outline-info btn-sm py-0 d-none" id="btn-recheck"
+                    title="Re-check all URLs against the server">
+              <i class="fas fa-sync-alt me-1"></i>Re-check
+            </button>
+          </div>
+        </div>
+
+        <div class="table-responsive">
+          <table class="table table-dm table-hover table-sm mb-0" id="inspector-table">
+            <thead>
+              <tr>
+                <th class="dm-check-col d-none" id="th-select-col">
+                  <input type="checkbox" class="form-check-input" id="toggle-all-submittable"
+                         title="Select or deselect all submittable links" aria-label="Select all submittable links">
+                </th>
+                <th style="width: 52px;"></th>
+                <th>URL &amp; Backup Match</th>
+                <th style="width: 11rem;">Status</th>
+                <th class="text-end d-none" id="th-remove-col" style="width: 3rem;" aria-label="Remove"></th>
+              </tr>
+            </thead>
+            <tbody id="inspector-tbody">
+              {% if check_report %}
+                {% for item in check_report.items %}
+                  <tr class="{% if item.status == 'already_available' %}us-row-available{% elif item.status == 'duplicate' or item.status == 'unsupported' or item.status == 'invalid' %}us-row-muted{% endif %}">
+                    <td>
+                      {% if item.gallery and item.gallery.thumbnail_url %}
+                        <a href="{{ item.gallery.url }}" class="img-preview" data-image-url="{{ item.gallery.thumbnail_url }}" target="_blank" rel="noopener">
+                          <img class="dm-thumb" src="{{ item.gallery.thumbnail_url }}" alt="" loading="lazy">
+                        </a>
+                      {% else %}
+                        <span class="dm-thumb dm-thumb-placeholder">
+                          {% if item.status == 'already_available' %}<i class="fas fa-check text-success"></i>
+                          {% elif item.status == 'ready' or item.status == 'gallery_only' or item.status == 'can_submit' %}<i class="fas fa-link text-info"></i>
+                          {% elif item.status == 'duplicate' %}<i class="fas fa-clone text-warning"></i>
+                          {% else %}<i class="fas fa-question"></i>{% endif %}
+                        </span>
+                      {% endif %}
+                    </td>
+                    <td class="dm-wrap" style="min-width: 18rem;">
+                      <div class="us-url-line">
+                        {{ item.input|urlize_all_rel }}
+                        {% if item.provider %}<span class="badge bg-secondary ms-1">{{ item.provider }}</span>{% endif %}
+                      </div>
+                      {% if item.gallery %}
+                        <div class="mt-1">
+                          <a class="us-gallery-title" href="{{ item.gallery.url }}" target="_blank" rel="noopener">{{ item.gallery.title }}</a>
+                          {% if item.gallery.category %}<span class="badge dm-badge-outline text-info ms-1">{{ item.gallery.category }}</span>{% endif %}
+                          {% if user.is_authenticated %}
+                            {% if item.gallery.public %}<span class="badge dm-badge-outline text-success ms-1">Public</span>{% else %}<span class="badge dm-badge-outline text-secondary ms-1">Private</span>{% endif %}
+                            {% if item.gallery.status_display and item.gallery.status_display != "Normal" %}<span class="badge dm-badge-outline text-warning ms-1">{{ item.gallery.status_display }}</span>{% endif %}
+                            {% if item.gallery.failed %}<span class="badge bg-danger ms-1">Failed</span>{% endif %}
+                          {% endif %}
+                        </div>
+                        <div class="us-meta">
+                          {% if item.gallery.posted %}Posted {{ item.gallery.posted }}{% endif %}
+                          {% if item.gallery.filecount %}{% if item.gallery.posted %} · {% endif %}{{ item.gallery.filecount }} files{% endif %}
+                          {% if item.gallery.filesize %} · {{ item.gallery.filesize|filesizeformat }}{% endif %}
+                        </div>
+                      {% endif %}
+                      {% if item.status == 'already_available' %}
+                        <div class="us-callout-available mt-1">
+                          <i class="fas fa-check-circle"></i>
+                          <span>{{ item.message }}</span>
+                        </div>
+                      {% else %}
+                        <div class="us-meta mt-1">{{ item.message }}</div>
+                      {% endif %}
+                      {% if item.archives %}
+                        <div class="us-archive-list">
+                          {% for archive in item.archives %}
+                            <a href="{{ archive.url }}" target="_blank" rel="noopener"
+                               class="us-archive-pill{% if user.is_authenticated and not archive.public %} us-archive-private{% endif %}{% if archive.thumbnail_url %} img-preview{% endif %}"
+                               {% if archive.thumbnail_url %}data-image-url="{{ archive.thumbnail_url }}"{% endif %}>
+                              <i class="fas fa-archive {% if user.is_authenticated and not archive.public %}text-secondary{% else %}text-success{% endif %}"></i>
+                              <span>Archive #{{ archive.id }}</span>
+                              <span class="badge bg-dark text-info">{{ archive.relation }}</span>
+                              {% if archive.public_date %}<span class="dm-muted">{{ archive.public_date }}</span>{% endif %}
+                              {% if user.is_authenticated %}
+                                {% if not archive.public %}<span class="badge bg-secondary">private</span>{% endif %}
+                                {% if archive.recycled %}<span class="badge bg-warning text-dark">binned</span>{% endif %}
+                              {% endif %}
+                            </a>
+                          {% endfor %}
+                        </div>
+                      {% endif %}
+                    </td>
+                    <td class="text-nowrap">
+                      {% if item.status == 'already_available' %}
+                        <span class="badge bg-success"><i class="fas fa-check-circle me-1"></i>Already backed up</span>
+                      {% elif item.status == 'ready' %}
+                        <span class="badge bg-info text-dark"><i class="fas fa-paper-plane me-1"></i>Ready</span>
+                      {% elif item.status == 'gallery_only' %}
+                        <span class="badge dm-badge-outline text-info"><i class="fas fa-box-open me-1"></i>No archive yet</span>
+                      {% elif item.status == 'can_submit' %}
+                        <span class="badge bg-info text-dark"><i class="fas fa-paper-plane me-1"></i>Can submit</span>
+                      {% elif item.status == 'failed' %}
+                        <span class="badge bg-danger"><i class="fas fa-exclamation-triangle me-1"></i>Failed</span>
+                      {% elif item.status == 'private_available' %}
+                        <span class="badge bg-secondary"><i class="fas fa-lock me-1"></i>Private archive</span>
+                      {% elif item.status == 'in_review' %}
+                        <span class="badge bg-warning text-dark"><i class="fas fa-clock me-1"></i>In review</span>
+                      {% elif item.status == 'removed' %}
+                        <span class="badge bg-danger"><i class="fas fa-ban me-1"></i>{{ item.gallery.status_display|default:"Removed" }}</span>
+                      {% elif item.status == 'duplicate' %}
+                        <span class="badge bg-secondary"><i class="fas fa-clone me-1"></i>Duplicate</span>
+                      {% elif item.status == 'note' %}
+                        <span class="badge dm-badge-outline text-secondary"><i class="fas fa-sticky-note me-1"></i>Note</span>
+                      {% else %}
+                        <span class="badge bg-warning text-dark"><i class="fas fa-exclamation-circle me-1"></i>Unsupported</span>
+                      {% endif %}
+                    </td>
+                  </tr>
+                {% empty %}
+                  <tr><td colspan="3" class="dm-empty"><i class="fas fa-link"></i>No URLs to check.</td></tr>
+                {% endfor %}
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Action Bar -->
+    <div class="dm-actionbar" id="submit-actionbar">
+      <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+        <div class="small" id="submit-summary">
+          <span class="dm-muted">Paste one or more gallery URLs above to check and submit them.</span>
+        </div>
+        <div class="d-flex flex-wrap align-items-center gap-2 ms-auto">
+          <button type="submit" class="btn btn-outline-info btn-sm" name="check" value="1" id="btn-check-urls">
+            <i class="fas fa-search me-1"></i>Check URLs
+          </button>
+          <a class="btn btn-outline-light btn-sm" href="{% url 'viewer:url-submit' %}">
+            <i class="fas fa-undo me-1"></i>Reset
+          </a>
+          <button type="submit" class="btn btn-info btn-sm" name="submit" value="1" id="btn-submit-urls">
+            <i class="fas fa-paper-plane me-1"></i><span id="btn-submit-label">Submit URLs</span>
+          </button>
+        </div>
+      </div>
     </div>
   </form>
-  {% if 'check' in request.POST %}
-  {% load static %}
-  {% load viewer_extras %}
-  <div class="card bg-dark border-info mb-2">
-    <div class="card-header py-2">
-      URL Report. Removed URLs means that after review it was discarded (possible reasons: reupload, resampled, etc)
-    </div>
-    <div class="card-body">
-    {% if results %}
-      <div class="table-responsive">
-        <table class="table table-sm table-striped">
-          <thead>
-          <tr>
-            <th scope="col">Checked URL</th>
-            <th scope="col">Gallery (Metadata)</th>
-            <th scope="col">Public</th>
-            <th scope="col">Posted date</th>
-            {% if user.is_authenticated %}<th scope="col">Status</th>{% endif %}
-            <th scope="col" title="ID, (main or alt), published date{% if user.is_authenticated %}, binned?{% endif %}">Archives (Associated files)</th>
-          </tr>
-          </thead>
-          <tbody>
-          {% for found_entry in results %}
-            <tr>
-              <td>{{ found_entry.0|urlize_all_rel }}</td>
-              <td>
-                {% if found_entry.1 %}
-                  {% if user.is_authenticated or found_entry.1.public %}
-                    <a href="{% url 'viewer:gallery' found_entry.1.pk %}" data-image-url="{% if found_entry.1.thumbnail.name %}{{ found_entry.1.thumbnail.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}" class="img-preview" rel="popover">{{ found_entry.1.best_title }}</a>
-                  {% else %}
-                    {% if found_entry.1.is_normal %}
-                    URL already exists and it's being reviewed
-                      {% else %}
-                    URL was added and removed
-                    {% endif %}
-                  {% endif %}
-                {% else %}
-                URL has not been added
-                {% endif %}
-              </td>
-              <td>{% if found_entry.1 %}{% if user.is_authenticated or found_entry.1.public %}{{ found_entry.1.public|yesno }}{% endif %}{% endif %}</td>
-              <td>{% if found_entry.1 %}{% if user.is_authenticated or found_entry.1.public %}{{ found_entry.1.posted|date:"SHORT_DATE_FORMAT" }}{% endif %}{% endif %}</td>
-              {% if user.is_authenticated %}<td>{% if found_entry.1 %}{{ found_entry.1.get_status_display }}{% endif %}</td>{% endif %}
-              <td>
-              <ul>
-              {% for archive in found_entry.1.archive_set.all %}
-                {% if archive.public or user.is_authenticated %}
-                <li>
-                  <a href="{% url 'viewer:archive' archive.pk %}" data-image-url="{% if archive.thumbnail.name %}{{ archive.thumbnail.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}" class="img-preview" rel="popover">{{ archive.pk }}</a><span> (main) on: {{ archive.public_date|date:"SHORT_DATE_FORMAT"|default:"not yet" }}{% if user.is_authenticated %}, {{ archive.is_recycled|yesno }}{% endif %}</span>
-                </li>
-                {% endif %}
-              {% endfor %}
-              {% for archive in found_entry.1.alternative_sources.all %}
-                {% if archive.public or user.is_authenticated %}
-                <li>
-                  <a href="{% url 'viewer:archive' archive.pk %}" data-image-url="{% if archive.thumbnail.name %}{{ archive.thumbnail.url }}{% else %}{% static "imgs/no_cover.png" %}{% endif %}" class="img-preview" rel="popover">{{ archive.pk }}</a><span> (alt) on: {{ archive.public_date|date:"SHORT_DATE_FORMAT"|default:"not yet" }}{% if user.is_authenticated %}, {{ archive.is_recycled|yesno }}{% endif %}</span>
-                </li>
-                {% endif %}
-              {% endfor %}
-              </ul>
-              </td>
-            </tr>
-          {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    {% else %}
-      <div>No found URLs</div>
-    {% endif %}
+
+  <!-- Concise guide -->
+  <div class="dm-card">
+    <div class="dm-card-header"><i class="fas fa-info-circle text-info me-2"></i>How URL submission works</div>
+    <div class="p-3">
+      <div class="row g-2 small">
+        <div class="col-md-4">
+          <div class="us-guide-item">
+            <div class="fw-semibold mb-1"><i class="fas fa-bolt text-success me-1"></i>Instant backup check</div>
+            <div class="dm-muted">
+              Pasted URLs are checked automatically. If a gallery is already publicly backed up with an archive, you'll get direct links to the gallery and its archives right away — no need to submit it.
+            </div>
           </div>
+        </div>
+        <div class="col-md-4">
+          <div class="us-guide-item">
+            <div class="fw-semibold mb-1"><i class="fas fa-layer-group text-info me-1"></i>Batch friendly</div>
+            <div class="dm-muted">
+              Add links one by one, paste a list, or drag &amp; drop a <code class="dm-code">.txt</code> file. Duplicates are detected automatically, and you can prune already-backed-up links in one click.
+            </div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="us-guide-item">
+            <div class="fw-semibold mb-1"><i class="fas fa-user-check text-warning me-1"></i>Moderator review</div>
+            <div class="dm-muted">
+              Submitted URLs enter the review queue where moderators verify and archive them. Adding an optional reason helps reviewers prioritize your request.
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
-  {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block afterJQ %}
+  {% load compress %}
+  {% compress js %}
+    <script src="{% static 'js/dm-pages.js' %}"></script>
+    <script src="{% static 'js/url_submit.js' %}"></script>
+  {% endcompress %}
 {% endblock %}

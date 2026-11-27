@@ -318,6 +318,7 @@ def _active_admin_tools_tasks() -> dict[str, TaskQueue]:
     web_search_aliases = client.get_task_type_aliases("web_search_worker")
     wanted_local_aliases = client.get_task_type_aliases("wanted_local_search_worker")
     crawler_aliases = client.get_task_type_aliases("web_crawler")
+    reconcile_aliases = client.get_task_type_aliases("reconcile_downloads_worker")
 
     active_tasks = client.get_active_tasks_by_types(
         (
@@ -328,6 +329,7 @@ def _active_admin_tools_tasks() -> dict[str, TaskQueue]:
             "web_search_worker",
             "wanted_local_search_worker",
             "web_crawler",
+            "reconcile_downloads_worker",
         )
     )
     found: dict[str, TaskQueue] = {}
@@ -371,6 +373,8 @@ def _active_admin_tools_tasks() -> dict[str, TaskQueue]:
                 _record("update_newer_than", task)
             elif "-umt" in args:
                 _record("update_missing_thumbnails", task)
+        elif task.task_type in reconcile_aliases:
+            _record("reconcile_downloads", task)
     return found
 
 
@@ -384,17 +388,19 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
             return HttpResponseNotAllowed(["POST"])
     target_url = get_safe_referer(request, reverse("viewer:tools"))
     if tool == "reconcile_downloads":
-        from viewer.utils.downloads import reconcile_downloads
-
-        stats = reconcile_downloads(settings=crawler_settings)
-        rescued = stats["rescued_from_disk"] + stats["rescued_from_staging"]
-        recycled = stats["recycled_failed"] + stats["recycled_false_completed"] + stats["recycled_orphaned"]
-        messages.success(
-            request,
-            f"Reconciliation completed: {stats['total_checked']} checked, {rescued} rescued, "
-            f"{recycled} recycled, {stats['requeued']} requeued, {stats['kept_in_progress']} in progress.",
+        active_task = client.get_active_task_by_type("reconcile_downloads_worker")
+        if active_task is not None:
+            return task_action_response(
+                request, active_task, target_url, "Reconcile downloads worker is already running.", messages.ERROR
+            )
+        task = client.enqueue(
+            args=[],
+            task_type="reconcile_downloads_worker",
+            override_options=crawler_settings,
+            user=request.user,
+            event_action="RECONCILE_DOWNLOADS",
         )
-        return safe_redirect_back(request, reverse("viewer:tools"))
+        return task_action_response(request, task, target_url, "Queued download reconciliation.")
     elif tool == "retry_failed":
         task = client.enqueue(
             args=["--retry-failed"], task_type="web_crawler", override_options=crawler_settings, user=request.user
@@ -458,7 +464,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
                 request, active_task, target_url, "Thumbnails worker is already running.", messages.ERROR
             )
 
-        archives_no_thumbnail = Archive.objects.filter(thumbnail="")
+        archives_no_thumbnail = Archive.objects.filter_by_missing_thumbnails()
         archive_pks = list(archives_no_thumbnail.values_list("pk", flat=True))
         if not archive_pks:
             return task_action_response(
@@ -711,7 +717,7 @@ def tools(request: HttpRequest, tool: str = "main", tool_arg: str = "") -> HttpR
         context["pending_tasks"] = TaskQueue.objects.filter(status=TaskQueue.Status.PENDING).count()
         # What each tool would act on, shown next to it.
         context["counts"] = {
-            "missing_thumbs": Archive.objects.filter(thumbnail="").count(),
+            "missing_thumbs": Archive.objects.filter_by_missing_thumbnails().count(),
             "missing_info": Archive.objects.filter_by_missing_file_info().count(),
             "hidden_gallery_archives": Archive.objects.filter(gallery__hidden=True).count(),
             "unmatched_archives": Archive.objects.filter(gallery__isnull=True).count(),
@@ -1235,7 +1241,7 @@ def database_maintenance(request: HttpRequest) -> HttpResponse:
     from viewer.services.retention import (
         get_database_info,
         get_retention_counts,
-        prune_database,
+        validate_prune_request,
     )
     from workers.models import SchedulerState, TaskQueue
 
@@ -1245,6 +1251,22 @@ def database_maintenance(request: HttpRequest) -> HttpResponse:
         days_str = request.POST.get("days", "").strip()
         dry_run = request.POST.get("dry_run") in ("1", "true", "True", True)
         days = int(days_str) if days_str.isdigit() else None
+        wants_json = request.headers.get("x-requested-with") == "XMLHttpRequest" or request.POST.get("json")
+
+        if action != "scheduler_control":
+            if not request.user.is_superuser:
+                msg = "You need to be a superuser to prune the database."
+                messages.error(request, msg, extra_tags="danger")
+                if wants_json:
+                    return JsonResponse({"success": False, "error": msg}, status=403)
+                return HttpResponseRedirect(reverse("viewer:database-maintenance"))
+            try:
+                validate_prune_request(entity, days)
+            except ValueError as e:
+                messages.error(request, str(e), extra_tags="danger")
+                if wants_json:
+                    return JsonResponse({"success": False, "error": str(e)}, status=400)
+                return HttpResponseRedirect(reverse("viewer:database-maintenance"))
 
         if action == "scheduler_control":
             cmd = request.POST.get("command", "")
@@ -1252,34 +1274,14 @@ def database_maintenance(request: HttpRequest) -> HttpResponse:
             if cmd in ("start", "stop", "force_run", "reload"):
                 SchedulerState.request_command("timed_database_pruner", cmd, timer_str)
                 messages.success(request, f"Sent '{cmd}' command to Database Pruner scheduler.")
-                if request.headers.get("x-requested-with") == "XMLHttpRequest" or request.POST.get("json"):
+                if wants_json:
                     return JsonResponse({"success": True, "message": f"Command '{cmd}' dispatched."})
             else:
                 messages.error(request, f"Unknown scheduler command '{cmd}'.", extra_tags="danger")
 
-        elif action == "prune_immediate":
-            try:
-                res = prune_database(
-                    settings_obj=crawler_settings,
-                    entity=entity,
-                    days_override=days,
-                    dry_run=dry_run,
-                    user=request.user,
-                )
-                action_text = "Dry run: would delete" if dry_run else "Successfully deleted"
-                msg = f"{action_text} {res['total_deleted']} rows across targeted tables in {res['duration_seconds']}s."
-                messages.success(request, msg)
-                if request.headers.get("x-requested-with") == "XMLHttpRequest" or request.POST.get("json"):
-                    return JsonResponse({"success": True, "message": msg, "results": res})
-            except Exception as e:
-                err_msg = f"Failed to execute database pruning: {e}"
-                logger.error(err_msg, exc_info=True)
-                messages.error(request, err_msg, extra_tags="danger")
-                if request.headers.get("x-requested-with") == "XMLHttpRequest" or request.POST.get("json"):
-                    return JsonResponse({"success": False, "error": err_msg}, status=500)
-
         else:
-            # Default: prune_background (enqueue to background worker)
+            # Always enqueue database pruning to the background worker (high priority for legacy prune_immediate).
+            priority = 5 if action == "prune_immediate" else 10
             try:
                 task = client.enqueue(
                     args=[],
@@ -1292,19 +1294,20 @@ def database_maintenance(request: HttpRequest) -> HttpResponse:
                     user=request.user,
                     reason=f"Database maintenance prune ({entity})",
                     event_action="DATABASE_PRUNE",
+                    priority=priority,
                 )
                 mode_str = " (dry-run)" if dry_run else ""
                 msg = (
                     f"Enqueued background task #{task.pk} to prune {entity}{mode_str}. Worker will process it shortly."
                 )
                 messages.success(request, msg)
-                if request.headers.get("x-requested-with") == "XMLHttpRequest" or request.POST.get("json"):
+                if wants_json:
                     return JsonResponse({"success": True, "task_id": task.pk, "message": msg})
-            except Exception as e:
-                err_msg = f"Failed to enqueue database pruning task: {e}"
-                logger.error(err_msg, exc_info=True)
+            except Exception:
+                logger.exception("Failed to enqueue database pruning task")
+                err_msg = "Failed to enqueue database pruning task, see the server logs."
                 messages.error(request, err_msg, extra_tags="danger")
-                if request.headers.get("x-requested-with") == "XMLHttpRequest" or request.POST.get("json"):
+                if wants_json:
                     return JsonResponse({"success": False, "error": err_msg}, status=500)
 
         return HttpResponseRedirect(reverse("viewer:database-maintenance"))

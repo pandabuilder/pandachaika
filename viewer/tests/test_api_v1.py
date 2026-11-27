@@ -341,8 +341,13 @@ class ReaderCommandTests(ApiV1TestBase):
         self.assertEqual(response.status_code, 403)
         response = self.client_for(self.owner).post(f"{V1}?extract-archive={self.private_archive.pk}")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["result"], "ok")
-        mock_extract.assert_called_once()
+        body = response.json()
+        self.assertEqual(body["result"], "queued")
+        self.assertEqual(body["status_url"], f"{V1}?task={body['task_id']}")
+        mock_extract.assert_not_called()
+        task = TaskQueue.objects.get(pk=body["task_id"])
+        self.assertEqual(task.task_type, "extract_worker")
+        self.assertEqual(task.args, [self.private_archive.pk])
 
     def test_extract_unknown_archive_is_404(self):
         response = self.client_for(self.owner).post(f"{V1}?extract-archive=999999")
@@ -469,6 +474,14 @@ class RemoteApiTests(ApiV1TestBase):
         response = self.post(Client(), "/api/v1/remote/", {"operation": "webcrawler", "args": []}, **bearer(remote))
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()["error"]["code"], "bad_request")
+
+    def test_v1_remote_webcrawler_rejects_crawler_options_as_links(self):
+        client = self.client_for(self.owner)
+        for links in (["-f", "/etc/passwd"], ["https://example.com/g/1/", "--ignore-global-filters"], "-f\n/etc/hosts"):
+            response = self.post(client, "/api/v1/remote/", {"operation": "webcrawler", "args": {"links": links}})
+            self.assertEqual(response.status_code, 400)
+            self.assertIn("can't start with '-'", response.json()["error"]["message"])
+        self.assertFalse(TaskQueue.objects.filter(task_type="web_crawler").exists())
 
     def test_v1_remote_errors(self):
         client = self.client_for(self.owner)

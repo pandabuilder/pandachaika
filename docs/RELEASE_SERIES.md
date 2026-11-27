@@ -119,6 +119,26 @@ Each issue in the dialog has its **title to search**, which can be changed for u
 a query without `{title}` is replaced by the default one for that search. The results are still read as that issue,
 with the series' title regex.
 
+## Archive group
+
+"Archive group" on a series page puts the series' archives in an archive group, in issue order. The series' archives
+are the ones the check counts: archives whose title is an issue, and the archives of the series' galleries whose title
+is one ("via its gallery": the archive's own title doesn't match). Archives without an issue in their title
+(unparsed) are left out. They're all checked except the ones in the Recycle Bin or without their file; uncheck the ones
+you don't want (another version of the same issue, for example).
+
+Choose a **new group** (its title is the series' name by default) or an **existing group**: the groups that already
+have some of the series' archives are listed first, and the one with the most is chosen. An existing group is updated
+in one of three ways; the table shows what happens to each archive and each other entry before applying:
+
+- **Add**: the checked archives not in the group yet are appended, in issue order. Nothing else changes.
+- **Merge and sort**: they're added, then the group is sorted: the series' archives in it (checked or not) in issue
+  order, followed by its other entries in their current order.
+- **Replace**: the group becomes the checked archives, in issue order. Every other entry (and unchecked archive) is
+  removed.
+
+Creating a group needs the "add archive group" permission, updating one "change archive group".
+
 ## Export, import and JSON
 
 Export downloads every series and its dismissals as JSON. Import creates or updates series by name (fields left out

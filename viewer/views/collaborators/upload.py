@@ -9,6 +9,7 @@ from django.http import HttpRequest, HttpResponse, HttpResponseRedirect, QueryDi
 from django.shortcuts import render
 
 from core.base.setup import Settings
+from core.base.utilities import split_crawler_options
 from viewer.utils.general import PAGE_SIZE_OPTIONS, page_size, safe_redirect_back
 from viewer.utils.actions import event_log
 from viewer.models.change_log import batched_changes
@@ -144,8 +145,7 @@ def submit_queue(request: HttpRequest) -> HttpResponse:
                     )
                     if request.user.has_perm("viewer.publish_archive"):
                         for archive in gallery.archive_set.all():
-                            if not archive.public:
-                                archive.set_public()
+                            if not archive.public and archive.set_public():
                                 event_log(
                                     request.user,
                                     "PUBLISH_ARCHIVE",
@@ -420,7 +420,9 @@ def user_crawler(request: AuthenticatedHttpRequest) -> HttpResponse:
                     url_list = v.split("\n")
                     for item in url_list:
                         url_set.add(item.rstrip("\r"))
-        urls = list(url_set)
+        urls, rejected = split_crawler_options(url_set)
+        if rejected:
+            messages.error(request, "Ignored entries that aren't links: {}".format(", ".join(rejected)))
 
         if not urls:
             messages.error(request, "Submission is empty.")
@@ -585,7 +587,13 @@ def upload_archive(request: HttpRequest) -> HttpResponse:
             new_archive.origin = Archive.ORIGIN_UPLOAD_ARCHIVE
             new_archive = edit_form.save()
             if crawler_settings.mark_similar_new_archives:
-                new_archive.create_marks_for_similar_archives()
+                client.enqueue(
+                    args=[new_archive.pk],
+                    task_type="mark_similar_worker",
+                    override_options={"use_recycled": False},
+                    user=request.user if request.user.is_authenticated else None,
+                    event_action="MARK_SIMILAR",
+                )
             message = "Archive successfully uploaded: {}"
             messages.success(request, message.format(request.build_absolute_uri(new_archive.get_absolute_url())))
             logger.info("User {}: {}".format(request.user.username, message.format(new_archive.get_absolute_url())))

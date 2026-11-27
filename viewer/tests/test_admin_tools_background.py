@@ -40,10 +40,17 @@ class AdminToolsBackgroundTests(TestCase):
     def test_generate_missing_thumbs_view_enqueues_task(self):
         a1 = Archive.objects.create(title="A1", thumbnail="", user=self.admin_user)
         a2 = Archive.objects.create(title="A2", thumbnail="", user=self.admin_user)
+        Archive.objects.create(title="Deleted", thumbnail="", file_deleted=True, user=self.admin_user)
         resp = self.client.post(reverse("viewer:tools-id", args=["generate_missing_thumbs"]), HTTP_REFERER="/tools/")
         self.assertEqual(resp.status_code, 302)
         task = TaskQueue.objects.filter(task_type="thumbnails_worker").latest("pk")
         self.assertEqual(sorted(task.args), sorted([a1.pk, a2.pk]))
+
+    def test_generate_missing_thumbs_view_skips_file_deleted_only(self):
+        Archive.objects.create(title="Deleted", thumbnail="", file_deleted=True, user=self.admin_user)
+        resp = self.client.post(reverse("viewer:tools-id", args=["generate_missing_thumbs"]), HTTP_REFERER="/tools/")
+        self.assertEqual(resp.status_code, 302)
+        self.assertFalse(TaskQueue.objects.filter(task_type="thumbnails_worker").exists())
 
     def test_generate_missing_thumbs_view_already_running(self):
         TaskQueue.objects.create(task_type="thumbnails_worker", status=TaskQueue.Status.PENDING)
@@ -60,12 +67,21 @@ class AdminToolsBackgroundTests(TestCase):
 
     def test_generate_missing_thumbs_api_enqueues_task(self):
         a1 = Archive.objects.create(title="A1", thumbnail="", user=self.admin_user)
+        Archive.objects.create(title="Deleted", thumbnail="", file_deleted=True, user=self.admin_user)
         resp = self.client.post(reverse("viewer:tools-api", args=["generate_missing_thumbs"]))
         self.assertEqual(resp.status_code, 200)
         data = json.loads(resp.content)
         self.assertIn("Thumbnails worker started in background for 1 archives", data["message"])
         task = TaskQueue.objects.filter(task_type="thumbnails_worker").latest("pk")
         self.assertEqual(task.args, [a1.pk])
+
+    def test_generate_missing_thumbs_api_skips_file_deleted_only(self):
+        Archive.objects.create(title="Deleted", thumbnail="", file_deleted=True, user=self.admin_user)
+        resp = self.client.post(reverse("viewer:tools-api", args=["generate_missing_thumbs"]))
+        self.assertEqual(resp.status_code, 200)
+        data = json.loads(resp.content)
+        self.assertEqual(data["message"], "No archives missing thumbnails found.")
+        self.assertFalse(TaskQueue.objects.filter(task_type="thumbnails_worker").exists())
 
     def test_generate_missing_thumbs_api_already_running(self):
         TaskQueue.objects.create(task_type="thumbnails_worker", status=TaskQueue.Status.PROCESSING)
@@ -195,3 +211,19 @@ class AdminToolsBackgroundTests(TestCase):
         with patch.object(ArchiveWorker, "publish_archives") as mock_pub:
             runner.execute_job(job_pub)
             mock_pub.assert_called_once()
+
+    def test_generate_missing_thumbs_worker_and_runner_skip_file_deleted(self):
+        a1 = Archive.objects.create(title="A1", thumbnail="", user=self.admin_user)
+        Archive.objects.create(title="Deleted", thumbnail="", file_deleted=True, user=self.admin_user)
+
+        aw = ArchiveWorker(self.settings)
+        aw.generate_missing_thumbs(user=self.admin_user)
+        task = TaskQueue.objects.filter(task_type="thumbnails_worker").latest("pk")
+        self.assertEqual(task.args, [a1.pk])
+
+        runner = WorkerRunner(self.settings, enable_schedulers=False)
+        job = TaskQueue.objects.create(task_type="generate_missing_thumbs", args=[], status=TaskQueue.Status.PROCESSING)
+        with patch.object(ArchiveWorker, "regenerate_all_thumbs") as mock_thumbs:
+            runner.execute_job(job)
+            mock_thumbs.assert_called_once()
+            self.assertEqual(list(mock_thumbs.call_args.args[0].values_list("pk", flat=True)), [a1.pk])

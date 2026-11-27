@@ -810,10 +810,24 @@ class WorkerRunner:
                 current_settings.event_action = job.event_action
 
             if job.task_type in ("web_crawler", "webcrawler"):
+                opts = job.options if isinstance(job.options, dict) else {}
+                replace_parent_id = opts.get("replace_parent_archive_id")
+                if replace_parent_id:
+                    from core.workers.archive_work import ArchiveWorker
+
+                    ArchiveWorker(current_settings, 4).delete_archive(
+                        archive_id=int(replace_parent_id),
+                        delete_archive=True,
+                        delete_file=True,
+                        mark_gallery_deleted=True,
+                        user_reason=job.reason or "",
+                        user=job.user,
+                        force_local=True,
+                    )
                 if batch_id:
                     from workers.crawl_batch import CrawlBatchCollector
 
-                    batch_collector = CrawlBatchCollector(batch_id)
+                    batch_collector = CrawlBatchCollector(batch_id, task_pk=job.pk)
                     current_settings.crawl_batch_collector = batch_collector
                 crawler = WebCrawler(current_settings)
                 crawler.start_crawling(job.args)
@@ -848,7 +862,7 @@ class WorkerRunner:
                 if job.args:
                     archives = Archive.objects.filter(pk__in=job.args)
                 elif job.task_type == "generate_missing_thumbs":
-                    archives = Archive.objects.filter(thumbnail="")
+                    archives = Archive.objects.filter_by_missing_thumbnails()
                 elif self.runs_on_all_archives(job, "regenerate_all_thumbs"):
                     archives = Archive.objects.all()
                 else:
@@ -947,20 +961,26 @@ class WorkerRunner:
             elif job.task_type in ("delete_archive_worker", "delete_archive", "delete_archives"):
                 from core.workers.archive_work import ArchiveWorker
                 opts = job.options if isinstance(job.options, dict) else {}
-                archive_id = self.required_archive_id(job)
+                archive_ids = [int(pk) for pk in job.args] if job.args else []
+                if not archive_ids:
+                    self.required_archive_id(job)
                 archive_worker = ArchiveWorker(current_settings, 4)
-                archive_worker.delete_archive(
-                    archive_id=archive_id,
-                    delete_zipped=bool(opts.get("delete_zipped", False)),
-                    delete_archive=bool(opts.get("delete_archive", False)),
-                    delete_file=bool(opts.get("delete_file", False)),
-                    delete_gallery=bool(opts.get("delete_gallery", False)),
-                    mark_gallery_deleted=bool(opts.get("mark_gallery_deleted", False)),
-                    mark_gallery_denied=bool(opts.get("mark_gallery_denied", False)),
-                    user_reason=opts.get("user_reason", "") or job.reason or "",
-                    user=job.user,
-                    force_local=True,
-                )
+                for archive_id in archive_ids:
+                    if current_settings.is_cancelled():
+                        raise TaskCancelledError("Delete archive task cancelled")
+                    archive_worker.delete_archive(
+                        archive_id=archive_id,
+                        delete_zipped=bool(opts.get("delete_zipped", False)),
+                        delete_archive=bool(opts.get("delete_archive", False)),
+                        delete_file=bool(opts.get("delete_file", False)),
+                        delete_gallery=bool(opts.get("delete_gallery", False)),
+                        mark_gallery_deleted=bool(opts.get("mark_gallery_deleted", False)),
+                        mark_gallery_denied=bool(opts.get("mark_gallery_denied", False)),
+                        user_reason=opts.get("user_reason", "") or job.reason or "",
+                        user=job.user,
+                        force_local=True,
+                    )
+                job_result = {"deleted": len(archive_ids)}
             elif job.task_type in ("cold_storage_offload_worker", "cold_storage_restore_worker"):
                 from viewer.services.cold_storage import RESTORE_TASK, run_transfer_task
 
@@ -1034,11 +1054,35 @@ class WorkerRunner:
                 kwargs = job.options.get("matching_kwargs", {})
                 create_matches_wanted_galleries_from_providers(results, provider, **kwargs)
             elif job.task_type in ("wanted_local_search_worker", "wanted_galleries_possible_matches"):
-                from viewer.utils.matching import create_matches_wanted_galleries_from_providers_internal
                 from viewer.models import WantedGallery
-                results = WantedGallery.objects.filter(pk__in=job.args) if job.args else WantedGallery.objects.eligible_to_search()
-                kwargs = job.options.get("matching_kwargs", {})
-                create_matches_wanted_galleries_from_providers_internal(results, **kwargs)
+                opts = job.options if isinstance(job.options, dict) else {}
+                mode = opts.get("mode", "possible_matches")
+                if mode == "rule_matches":
+                    provider_filter = str(opts.get("provider_filter", ""))
+                    wanted_qs = WantedGallery.objects.filter(pk__in=job.args) if job.args else WantedGallery.objects.none()
+                    matched_total = 0
+                    for wg in wanted_qs:
+                        if current_settings.is_cancelled():
+                            raise TaskCancelledError("Wanted rule match task cancelled")
+                        current_settings.activity_callback()
+                        wg.create_gallery_matches_internally(provider_filter=provider_filter)
+                        matched_total += wg.possible_matches.count()
+                    job_result = {"mode": mode, "wanted_count": wanted_qs.count(), "possible_matches": matched_total}
+                elif mode == "found_matches":
+                    wanted_qs = WantedGallery.objects.filter(pk__in=job.args) if job.args else WantedGallery.objects.none()
+                    found_total = 0
+                    for wg in wanted_qs:
+                        if current_settings.is_cancelled():
+                            raise TaskCancelledError("Wanted found match task cancelled")
+                        current_settings.activity_callback()
+                        wg.create_found_galleries_internally()
+                        found_total += wg.found_galleries.count()
+                    job_result = {"mode": mode, "wanted_count": wanted_qs.count(), "found_galleries": found_total}
+                else:
+                    from viewer.utils.matching import create_matches_wanted_galleries_from_providers_internal
+                    results = WantedGallery.objects.filter(pk__in=job.args) if job.args else WantedGallery.objects.eligible_to_search()
+                    kwargs = opts.get("matching_kwargs", {})
+                    create_matches_wanted_galleries_from_providers_internal(results, **kwargs)
             elif job.task_type in ("match_unmatched_gallery_groups_worker",):
                 from viewer.utils.matching import generate_possible_matches_for_gallery_match_groups
                 from viewer.models import GalleryMatchGroup
@@ -1086,6 +1130,54 @@ class WorkerRunner:
                     is_cancelled=current_settings.is_cancelled,
                 )
                 job_result = file_check_result(check)
+            elif job.task_type in ("archive_batch_worker",):
+                from workers.batch_tasks import run_archive_batch_task
+
+                options = job.options if isinstance(job.options, dict) else {}
+                job_result = run_archive_batch_task(
+                    archive_pks=[int(pk) for pk in job.args] if job.args else [],
+                    options=options,
+                    settings_obj=current_settings,
+                    user=job.user,
+                    reason=job.reason or "",
+                )
+            elif job.task_type in ("gallery_batch_worker",):
+                from workers.batch_tasks import run_gallery_batch_task
+
+                options = job.options if isinstance(job.options, dict) else {}
+                job_result = run_gallery_batch_task(
+                    gallery_pks=[int(pk) for pk in job.args] if job.args else [],
+                    options=options,
+                    settings_obj=current_settings,
+                    user=job.user,
+                    reason=job.reason or "",
+                )
+            elif job.task_type in ("reconcile_downloads_worker", "reconcile_downloads"):
+                from viewer.utils.downloads import reconcile_downloads
+
+                options = job.options if isinstance(job.options, dict) else {}
+                job_result = reconcile_downloads(
+                    dry_run=bool(options.get("dry_run", False)),
+                    requeue_failed=bool(options.get("requeue_failed", True)),
+                    recycle_orphaned=bool(options.get("recycle_orphaned", True)),
+                    recycle_failed=bool(options.get("recycle_failed", True)),
+                    check_disk=bool(options.get("check_disk", True)),
+                    settings=current_settings,
+                )
+            elif job.task_type in ("update_provider_wanted_worker",):
+                from workers.batch_tasks import run_update_provider_wanted_task
+
+                options = job.options if isinstance(job.options, dict) else {}
+                job_result = run_update_provider_wanted_task(
+                    options=options,
+                    settings_obj=current_settings,
+                    user=job.user,
+                )
+            elif job.task_type in ("send_email_worker",):
+                from workers.batch_tasks import run_send_email_task
+
+                options = job.options if isinstance(job.options, dict) else {}
+                job_result = run_send_email_task(options=options, settings_obj=current_settings)
             else:
                 raise ValueError(f"Unknown task_type: {job.task_type!r}")
 

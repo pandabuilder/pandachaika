@@ -5,6 +5,7 @@ from viewer.services.archive_thumbnail import ArchiveThumbnailService
 from viewer.services.archive_cloning import ArchiveCloningService
 from viewer.services.archive_ingestion import ArchiveIngestionService
 from viewer.services.archive_contextual_extractor import ArchiveContextualExtractorService
+from viewer.services.elasticsearch_index import ElasticsearchIndexMixin, ElasticsearchIndexService
 from viewer.services.gallery_ingestion import GalleryIngestionService
 
 __all__ = [
@@ -15,5 +16,7 @@ __all__ = [
     "ArchiveCloningService",
     "ArchiveIngestionService",
     "ArchiveContextualExtractorService",
+    "ElasticsearchIndexMixin",
+    "ElasticsearchIndexService",
     "GalleryIngestionService",
 ]

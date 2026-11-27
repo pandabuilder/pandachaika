@@ -26,7 +26,7 @@ Know how to run a Python program and how to install packages.
 
 Python [3.13, 3.14, 3.15] are the tested versions, it won't work on Python 2.
 
-See requirements.txt.
+See pyproject.toml.
 
 How to run
 ---------------------
@@ -37,11 +37,10 @@ Read defaults.yaml for explanations on most configurable options.
 
 Copy defaults.yaml to settings.yaml. Edit settings.yaml (before running it!).
 
-Install the requirements:
+Install the dependencies (from `pyproject.toml` / `uv.lock` using [uv](https://docs.astral.sh/uv/)):
 
-- One by one (to filter unneeded packages)
-- pip install -r requirements.txt
-- Install virtualenv and generate a virtual environment.
+- `uv sync --locked --no-dev` (creates `.venv` with production dependencies; omit `--no-dev` for development)
+- Or install into an existing virtual environment with `uv pip install -r pyproject.toml`
 
 Run "python manage.py migrate", to create the database.
 

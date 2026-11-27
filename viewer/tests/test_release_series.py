@@ -8,7 +8,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from core.base.types import GalleryData
-from viewer.models import ArchiveTag, ReleaseSeries, ReleaseSeriesDismissal, Tag
+from viewer.models import ArchiveGroup, ArchiveGroupEntry, ArchiveTag, ReleaseSeries, ReleaseSeriesDismissal, Tag
 from viewer.services import release_series as rs
 from viewer.tests.factories import ArchiveFactory, GalleryFactory
 
@@ -668,3 +668,114 @@ class ReleaseSeriesViewTests(TestCase):
     def test_delete(self):
         self.client.post(reverse("viewer:release-series-edit", args=(self.series.pk,)), {"action": "delete"})
         self.assertFalse(ReleaseSeries.objects.exists())
+
+
+class ReleaseSeriesArchiveGroupTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_superuser(username="rsg_admin", password="password", email="rsg@example.com")
+        self.client.force_login(self.admin)
+        self.series = ReleaseSeries.objects.create(
+            name="COMIC Test",
+            key_type=KT.YEAR_MONTH,
+            title_contains="COMIC Test",
+            title_regex=rs.default_title_regex("COMIC Test", KT.YEAR_MONTH),
+            schedule="2026-01 monthly",
+        )
+        self.url = reverse("viewer:release-series-archive-group", args=(self.series.pk,))
+        # Out of issue order on purpose; 2026-02 only through its gallery, 2026-04 in the Recycle Bin.
+        self.a3 = ArchiveFactory.create(title="COMIC Test 2026-03", gallery=None)
+        self.a1 = ArchiveFactory.create(title="COMIC Test 2026-01", gallery=None)
+        self.a2 = ArchiveFactory.create(title="renamed", gallery=GalleryFactory.create(title="COMIC Test 2026-02"))
+        self.a4 = ArchiveFactory.create(title="COMIC Test 2026-04", gallery=None, binned=True)
+        ArchiveFactory.create(title="[Artist] Story (COMIC Test 2026-05)", gallery=None)  # unparsed: left out
+        self.other = ArchiveFactory.create(title="Something else", gallery=None)
+
+    def group_with(self, *archives):
+        group = ArchiveGroup.objects.create(title="Existing")
+        for position, archive in enumerate(archives, start=1):
+            ArchiveGroupEntry.objects.create(archive_group=group, archive=archive, position=position)
+        return group
+
+    def order(self, group):
+        entries = ArchiveGroupEntry.objects.filter(archive_group=group).order_by("position")
+        return list(entries.values_list("archive_id", flat=True))
+
+    def test_series_archives(self):
+        from viewer.services import release_series_group as rsg
+
+        archives = rsg.series_archives(self.series)
+        self.assertEqual([a.pk for a in archives], [self.a1.pk, self.a2.pk, self.a3.pk, self.a4.pk])
+        self.assertEqual([a.issue for a in archives], ["2026-01", "2026-02", "2026-03", "2026-04"])
+        self.assertEqual([a.via_gallery for a in archives], [False, True, False, False])
+        self.assertEqual([a.suggested for a in archives], [True, True, True, False])
+
+    def test_get(self):
+        group = self.group_with(self.other, self.a3)
+        data = self.client.get(self.url).json()
+        self.assertEqual([a["id"] for a in data["archives"]], [self.a1.pk, self.a2.pk, self.a3.pk, self.a4.pk])
+        self.assertEqual(data["suggested"], [{"id": group.pk, "title": "Existing", "series_archives": 1}])
+        self.assertTrue(data["can_create"] and data["can_change"])
+        data = self.client.get(self.url + f"?group={group.pk}").json()
+        self.assertEqual([e["id"] for e in data["group"]["entries"]], [self.other.pk, self.a3.pk])
+        self.assertEqual(self.client.get(self.url + "?group=999999").status_code, 404)
+
+    def test_create(self):
+        response = self.client.post(
+            self.url, {"action": "create", "title": "COMIC Test", "archive": [self.a3.pk, self.a1.pk, self.other.pk]}
+        )
+        data = response.json()
+        self.assertTrue(data["created"])
+        group = ArchiveGroup.objects.get(pk=data["group"]["id"])
+        self.assertEqual(group.title, "COMIC Test")
+        self.assertFalse(group.public)
+        # Issue order, and an archive that isn't the series' is ignored.
+        self.assertEqual(self.order(group), [self.a1.pk, self.a3.pk])
+        self.assertEqual(self.client.post(self.url, {"action": "create", "title": "X"}).status_code, 400)
+
+    def test_add(self):
+        group = self.group_with(self.other, self.a3)
+        data = self.client.post(
+            self.url, {"action": "update", "group": group.pk, "mode": "add", "archive": [self.a2.pk, self.a1.pk]}
+        ).json()
+        self.assertEqual((data["added"], data["removed"], data["moved"], data["total"]), (2, 0, 0, 4))
+        self.assertEqual(self.order(group), [self.other.pk, self.a3.pk, self.a1.pk, self.a2.pk])
+
+    def test_merge(self):
+        group = self.group_with(self.other, self.a3)
+        data = self.client.post(
+            self.url, {"action": "update", "group": group.pk, "mode": "merge", "archive": [self.a1.pk]}
+        ).json()
+        # a3 isn't checked, but it's in the group and the series: it's kept, sorted by issue.
+        self.assertEqual((data["added"], data["removed"]), (1, 0))
+        self.assertEqual(self.order(group), [self.a1.pk, self.a3.pk, self.other.pk])
+        positions = ArchiveGroupEntry.objects.filter(archive_group=group).order_by("position")
+        self.assertEqual(list(positions.values_list("position", flat=True)), [1, 2, 3])
+
+    def test_replace(self):
+        group = self.group_with(self.other, self.a3, self.a2, self.a2)
+        data = self.client.post(
+            self.url, {"action": "update", "group": group.pk, "mode": "replace", "archive": [self.a2.pk, self.a1.pk]}
+        ).json()
+        # other and the unchecked a3 removed, and a2's second entry.
+        self.assertEqual((data["added"], data["removed"], data["total"]), (1, 3, 2))
+        self.assertEqual(self.order(group), [self.a1.pk, self.a2.pk])
+        response = self.client.post(self.url, {"action": "update", "group": group.pk, "mode": "replace"})
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(self.order(group), [self.a1.pk, self.a2.pk])
+
+    def test_permissions(self):
+        group = self.group_with(self.a1)
+        staff = User.objects.create_user(username="rsg_staff", password="password", is_staff=True)
+        self.client.force_login(staff)
+        data = self.client.get(self.url).json()
+        self.assertFalse(data["can_create"] or data["can_change"])
+        response = self.client.post(self.url, {"action": "create", "title": "X", "archive": [self.a1.pk]})
+        self.assertEqual(response.status_code, 403)
+        response = self.client.post(self.url, {"action": "update", "group": group.pk, "archive": [self.a2.pk]})
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(self.order(group), [self.a1.pk])
+
+    def test_detail_page_has_the_tool(self):
+        response = self.client.get(reverse("viewer:release-series-detail", args=(self.series.pk,)))
+        self.assertContains(response, 'id="rs-group-body"')
+        self.assertContains(response, self.url)

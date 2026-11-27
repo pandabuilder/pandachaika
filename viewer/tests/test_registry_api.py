@@ -13,6 +13,7 @@ from viewer.models import (
     ArchiveGroup,
     ArchiveGroupEntry,
     ArchiveTag,
+    DownloadEvent,
     FoundGallery,
     Gallery,
     Image,
@@ -791,6 +792,13 @@ class RegistryApiGalleryEndpointsTests(BaseRegistryApiMixin, TestCase):
             self.assertEqual(item["origin"], "normal")
             self.assertIsInstance(item["create_date"], int)
 
+    def test_get_gids_list_is_capped_without_authentication(self):
+        too_many = [str(900000 + i) for i in range(101)]
+        response = self._api_get(self.anon_client, gids=too_many, provider="panda")
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(self._api_get(self.anon_client, gids=too_many[:100], provider="panda").status_code, 200)
+        self.assertEqual(self._api_get(self.auth_client, gids=too_many, provider="panda").status_code, 200)
+
     def test_get_gids_nonexistent(self):
         response = self._api_get(self.anon_client, gids=["999999"], provider="panda")
         self.assertEqual(response.status_code, 200)
@@ -953,6 +961,288 @@ class RegistryApiGalleryEndpointsTests(BaseRegistryApiMixin, TestCase):
         # chain3 is newest, not replaced
         res3 = self._api_get(self.anon_client, gid="30033", provider="panda")
         self.assertFalse(json.loads(res3.content)["replaced"])
+
+    def _client_with_download_history_perm(self, username: str = "dl_viewer_user") -> tuple[User, Client]:
+        user, _ = User.objects.get_or_create(username=username)
+        user.set_password("password123")
+        user.save()
+        user.user_permissions.add(Permission.objects.get(codename="download_history"))
+        client = Client()
+        client.force_login(user)
+        return user, client
+
+    def test_get_gid_gids_gallery_archive_completed_flag(self):
+        complete_archive = Archive.objects.create(
+            title="Completed Archive",
+            user=self.superuser,
+            gallery=self.gallery_priv,
+            public=False,
+            crc32="a1b2c3d4",
+            source_type="web",
+            reason="Completed",
+        )
+        incomplete_archive = Archive.objects.create(
+            title="Orange Titled Archive",
+            user=self.superuser,
+            gallery=self.gallery_priv,
+            public=False,
+            crc32="",
+            source_type="web",
+            reason="Downloading",
+        )
+
+        # Authenticated regular user without download_history sees completed flag, no download_status
+        for params in (
+            {"gid": self.gallery_priv.gid, "provider": self.gallery_priv.provider},
+            {"gallery": self.gallery_priv.pk},
+        ):
+            response = self._api_get(self.regular_client, **params)
+            self.assertEqual(response.status_code, 200)
+            data = json.loads(response.content)
+            archive_map = {item["id"]: item for item in data["archives"]}
+            self.assertTrue(archive_map[complete_archive.pk]["completed"])
+            self.assertFalse(archive_map[incomplete_archive.pk]["completed"])
+            self.assertNotIn("download_status", archive_map[complete_archive.pk])
+            self.assertNotIn("download_status", archive_map[incomplete_archive.pk])
+
+        # Same for gids
+        response = self._api_get(
+            self.regular_client,
+            gids=[self.gallery_priv.gid],
+            provider=self.gallery_priv.provider,
+        )
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        archive_map = {item["id"]: item for item in data[0]["archives"]}
+        self.assertTrue(archive_map[complete_archive.pk]["completed"])
+        self.assertFalse(archive_map[incomplete_archive.pk]["completed"])
+        self.assertNotIn("download_status", archive_map[incomplete_archive.pk])
+
+    def test_include_downloads_permission_enforcement(self):
+        for path in (reverse("viewer:api"), reverse("viewer:api-v1")):
+            for params in (
+                {"gid": self.gallery_pub.gid, "provider": self.gallery_pub.provider, "include_downloads": "1"},
+                {"gids": [self.gallery_pub.gid], "provider": self.gallery_pub.provider, "include_downloads": "1"},
+                {"gallery": self.gallery_pub.pk, "include_downloads": "1"},
+            ):
+                # Anonymous -> 401
+                anon_res = self._api_get(self.anon_client, path=path, **params)
+                self.assertEqual(anon_res.status_code, 401)
+                self.assertEqual(anon_res.json()["error"]["code"], "not_authenticated")
+
+                # Authenticated without viewer.download_history -> 403
+                reg_res = self._api_get(self.regular_client, path=path, **params)
+                self.assertEqual(reg_res.status_code, 403)
+                self.assertEqual(reg_res.json()["error"]["code"], "forbidden")
+
+        # Explicitly false include_downloads does not require permission
+        anon_false = self._api_get(
+            self.anon_client,
+            gid=self.gallery_pub.gid,
+            provider=self.gallery_pub.provider,
+            include_downloads="0",
+        )
+        self.assertEqual(anon_false.status_code, 200)
+        self.assertNotIn("download_status", anon_false.json()["archives"][0])
+
+    def test_include_downloads_with_permission_and_bearer_token(self):
+        dl_archive = Archive.objects.create(
+            title="Active Download Archive",
+            user=self.superuser,
+            gallery=self.gallery_priv,
+            public=False,
+            crc32="",
+            filesize=2_000_000,
+        )
+        no_event_archive = Archive.objects.create(
+            title="Legacy Complete Archive",
+            user=self.superuser,
+            gallery=self.gallery_priv,
+            public=False,
+            crc32="deadbeef",
+        )
+        # Older failed event + newer active in_progress event -> active must be selected
+        DownloadEvent.objects.create(
+            name="Old failed attempt",
+            archive=dl_archive,
+            gallery=self.gallery_priv,
+            method="torrent",
+            agent="qbit",
+            download_id="/internal/secret/path.zip",
+            download_url="https://secret.example/download?token=xyz",
+            request_options={"cookies": {"secret": "1"}},
+            status=DownloadEvent.Status.FAILED,
+            failed=True,
+            completed=True,
+            error_message="Timeout",
+        )
+        active_event = DownloadEvent.objects.create(
+            name="Active torrent",
+            archive=dl_archive,
+            gallery=self.gallery_priv,
+            method="torrent",
+            agent="qbit",
+            download_id="/internal/secret/active.zip",
+            download_url="https://secret.example/active?token=xyz",
+            request_options={"headers": {"Authorization": "secret"}},
+            status=DownloadEvent.Status.IN_PROGRESS,
+            progress=64.54,
+            total_size=2_000_000,
+            started_date=timezone.now() - timedelta(seconds=60),
+        )
+
+        user, dl_client = self._client_with_download_history_perm("dl_perm_session_user")
+        _, read_secret = UserLongLivedToken.create_for_user(user, "dl-reader", scopes=["read"])
+
+        for client, headers in (
+            (dl_client, {}),
+            (Client(), {"HTTP_AUTHORIZATION": f"Bearer {read_secret}"}),
+        ):
+            response = client.get(
+                reverse("viewer:api-v1"),
+                {"gid": self.gallery_priv.gid, "provider": self.gallery_priv.provider, "include_downloads": "1"},
+                **headers,
+            )
+            self.assertEqual(response.status_code, 200)
+            archive_map = {item["id"]: item for item in response.json()["archives"]}
+
+            dl_item = archive_map[dl_archive.pk]
+            self.assertFalse(dl_item["completed"])
+            dl_status = dl_item["download_status"]
+            self.assertIsNotNone(dl_status)
+            self.assertEqual(dl_status["id"], active_event.pk)
+            self.assertEqual(dl_status["status"], "in_progress")
+            self.assertTrue(dl_status["active"])
+            self.assertFalse(dl_status["failed"])
+            self.assertEqual(dl_status["progress"], 64.5)
+            self.assertEqual(dl_status["method"], "torrent")
+            self.assertEqual(dl_status["total_size"], 2_000_000)
+            self.assertEqual(dl_status["error_message"], "")
+            self.assertIsInstance(dl_status["create_date"], int)
+            self.assertIsInstance(dl_status["started_date"], int)
+            self.assertIsNone(dl_status["completed_date"])
+            self.assertIsInstance(dl_status["eta"], int)
+            # Sensitive internal fields must never be exposed
+            for forbidden_key in ("download_url", "request_options", "download_id", "worker_pid"):
+                self.assertNotIn(forbidden_key, dl_status)
+
+            no_event_item = archive_map[no_event_archive.pk]
+            self.assertTrue(no_event_item["completed"])
+            self.assertIsNone(no_event_item["download_status"])
+
+        # Also works on ?gallery=
+        gal_res = dl_client.get(reverse("viewer:api-v1"), {"gallery": self.gallery_priv.pk, "include_downloads": "1"})
+        self.assertEqual(gal_res.status_code, 200)
+        gal_map = {item["id"]: item for item in gal_res.json()["archives"]}
+        self.assertEqual(gal_map[dl_archive.pk]["download_status"]["progress"], 64.5)
+
+    def test_gids_include_downloads_and_downloading_only_filter(self):
+        # gallery_pub already has self.archive_pub (no crc32 set in fixture -> give it crc32 so it's completed)
+        self.archive_pub.crc32 = "11223344"
+        self.archive_pub.save(update_fields=["crc32"])
+
+        queued_archive = Archive.objects.create(
+            title="Queued Archive",
+            user=self.superuser,
+            gallery=self.gallery_priv,
+            public=False,
+            crc32="",
+        )
+        failed_archive = Archive.objects.create(
+            title="Failed Archive",
+            user=self.superuser,
+            gallery=self.gallery_priv,
+            public=False,
+            crc32="",
+        )
+        done_archive = Archive.objects.create(
+            title="Done Archive",
+            user=self.superuser,
+            gallery=self.gallery_priv,
+            public=False,
+            crc32="55667788",
+        )
+        DownloadEvent.objects.create(
+            name="Queued HTTP",
+            archive=queued_archive,
+            gallery=self.gallery_priv,
+            method="archive",
+            agent="http",
+            download_id="q1",
+            status=DownloadEvent.Status.QUEUED,
+            progress=0.0,
+            total_size=500_000,
+        )
+        DownloadEvent.objects.create(
+            name="Failed download",
+            archive=failed_archive,
+            gallery=self.gallery_priv,
+            method="archive",
+            agent="http",
+            download_id="f1",
+            status=DownloadEvent.Status.FAILED,
+            failed=True,
+            completed=True,
+            error_message="403 Forbidden",
+        )
+        DownloadEvent.objects.create(
+            name="Completed download",
+            archive=done_archive,
+            gallery=self.gallery_priv,
+            method="torrent",
+            agent="qbit",
+            download_id="d1",
+            status=DownloadEvent.Status.COMPLETED,
+            completed=True,
+            progress=100.0,
+            completed_date=timezone.now(),
+        )
+
+        # gids with include_downloads=1 returns all archives with their download_status
+        res_all = self._api_get(
+            self.auth_client,
+            gids=[self.gallery_pub.gid, self.gallery_priv.gid],
+            provider="panda",
+            include_downloads="1",
+        )
+        self.assertEqual(res_all.status_code, 200)
+        by_gid = {item["gid"]: item for item in res_all.json()}
+        priv_archives = {a["id"]: a for a in by_gid[self.gallery_priv.gid]["archives"]}
+        self.assertEqual(priv_archives[queued_archive.pk]["download_status"]["status"], "queued")
+        self.assertTrue(priv_archives[queued_archive.pk]["download_status"]["active"])
+        self.assertIsNone(priv_archives[queued_archive.pk]["download_status"]["eta"])
+        self.assertEqual(priv_archives[failed_archive.pk]["download_status"]["status"], "failed")
+        self.assertTrue(priv_archives[failed_archive.pk]["download_status"]["failed"])
+        self.assertFalse(priv_archives[failed_archive.pk]["download_status"]["active"])
+        self.assertEqual(priv_archives[done_archive.pk]["download_status"]["status"], "completed")
+        self.assertEqual(priv_archives[done_archive.pk]["download_status"]["progress"], 100.0)
+        self.assertIsNotNone(priv_archives[done_archive.pk]["download_status"]["completed_date"])
+
+        # gids with include_downloads=1 & downloading_only=1 returns only active downloads
+        res_dl = self._api_get(
+            self.auth_client,
+            gids=[self.gallery_pub.gid, self.gallery_priv.gid],
+            provider="panda",
+            include_downloads="1",
+            downloading_only="1",
+        )
+        self.assertEqual(res_dl.status_code, 200)
+        by_gid_dl = {item["gid"]: item for item in res_dl.json()}
+        self.assertEqual(by_gid_dl[self.gallery_pub.gid]["archives"], [])
+        self.assertEqual([a["id"] for a in by_gid_dl[self.gallery_priv.gid]["archives"]], [queued_archive.pk])
+
+        # downloading_only=1 without include_downloads works for regular authenticated users
+        # (filters by incomplete & not recycled, without leaking DownloadEvent data)
+        res_reg = self._api_get(
+            self.regular_client,
+            gid=self.gallery_priv.gid,
+            provider="panda",
+            downloading_only="1",
+        )
+        self.assertEqual(res_reg.status_code, 200)
+        # failed_archive was auto-recycled by DownloadEvent.save(), so only queued_archive remains
+        self.assertEqual([a["id"] for a in res_reg.json()["archives"]], [queued_archive.pk])
+        self.assertNotIn("download_status", res_reg.json()["archives"][0])
 
     def test_get_gt_gallery_tags_public(self):
         response = self._api_get(self.anon_client, gt=self.gallery_pub.pk)
@@ -1608,6 +1898,23 @@ class RegistryApiWantedGalleryEndpointsTests(BaseRegistryApiMixin, TestCase):
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.content)
         self.assertEqual(data, [])
+
+    def test_get_wanted_tags_and_ids_are_capped_without_authentication(self):
+        tags = ",".join(f"artist:a{i}" for i in range(101))
+        self.assertEqual(self._api_get(self.anon_client, **{"wanted-tags": "", "tags": tags}).status_code, 400)
+        self.assertEqual(self._api_get(self.auth_client, **{"wanted-tags": "", "tags": tags}).status_code, 200)
+        ids = [str(i) for i in range(1, 102)]
+        self.assertEqual(self._api_get(self.anon_client, **{"wanted-galleries": ids}).status_code, 400)
+        self.assertEqual(self._api_get(self.auth_client, **{"wanted-galleries": ids}).status_code, 200)
+
+    def test_get_wanted_galleries_search_is_capped_without_authentication(self):
+        from viewer.views.api.handlers import get as get_handlers
+
+        with patch.object(get_handlers, "ANONYMOUS_MAX_RESULTS", 0):
+            response = self._api_get(self.anon_client, **{"wanted-galleries-search": "", "title": "Public Wanted"})
+            self.assertEqual(json.loads(response.content), [])
+            response = self._api_get(self.auth_client, **{"wanted-galleries-search": "", "title": "Public Wanted"})
+            self.assertGreaterEqual(len(json.loads(response.content)), 1)
 
     def test_get_wanted_tags_empty_parameters(self):
         response = self._api_get(self.anon_client, **{"wanted-tags": ""})

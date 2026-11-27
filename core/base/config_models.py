@@ -1060,9 +1060,9 @@ class RetentionSettings(BaseConfigModel):
         ),
     )
     history_days: int = Field(
-        default=90,
+        default=0,
         description=(
-            "Retention in days for Gallery/Archive change log entries (0 to disable). "
+            "Retention in days for Gallery/Archive change log entries (0, the default, keeps them forever). "
             "Only real changes are stored, so keeping them for long is cheap."
         ),
     )
@@ -1843,10 +1843,6 @@ class PandaGalleryConfig(BaseConfigModel):
     manga_extractor: MangaExtractorSettings = Field(
         default_factory=MangaExtractorSettings,
         description="External manga-extractor service integration for contextual archive and page analysis.",
-    )
-    experimental: dict[str, Any] = Field(
-        default_factory=dict,
-        description="Experimental features and developer settings.",
     )
     providers: ProvidersConfig = Field(
         default_factory=ProvidersConfig,
@@ -2784,8 +2780,9 @@ retention:
   processed_links_days: 180
 
   # Days to retain Gallery/Archive change log entries (recorded field and tag changes).
-  # 0 to disable pruning for this entity. Default: 90
-  history_days: 90
+  # Only real changes are stored, so keeping them is cheap.
+  # 0 to disable pruning for this entity (keep them forever). Default: 0
+  history_days: 0
 
   # Days past expiry to retain expired Django sessions (django_session).
   # 0 to disable pruning for this entity. Default: 1

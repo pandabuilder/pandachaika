@@ -21,6 +21,7 @@
       <p class="mb-0 small">Aggregated information about every gallery, archive, wanted gallery and tag, public or not. Tiles open the matching list.</p>
     </div>
     <div class="d-flex flex-wrap gap-2">
+      <a href="{% url 'viewer:stats-wanted' %}" class="btn btn-outline-info btn-sm"><i class="fas fa-filter me-1"></i>Wanted funnel</a>
       {% if user.is_staff %}
         <a href="{% url 'viewer:stats-visualizations' %}" class="btn btn-outline-info btn-sm"><i class="fas fa-chart-line me-1"></i>Visualizations</a>
         <a href="{% url 'viewer:stats-workers' %}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-tasks me-1"></i>Workers Dashboard</a>

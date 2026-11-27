@@ -27,6 +27,7 @@ from viewer.views import (
     release_series,
     auto_wanted,
     auto_updater,
+    wanted_funnel,
 )
 
 from viewer.views.api import legacy as api_legacy
@@ -178,6 +179,7 @@ urlpatterns = [
         name="user-archive-preferences",
     ),
     path("submit/", head.url_submit, name="url-submit"),
+    path("submit/check/", head.url_submit_check, name="url-submit-check"),
     path("login/", head.viewer_login, name="login"),
     path("logout/", head.viewer_logout, name="logout"),
     path("password/", head.change_password, name="change-password"),
@@ -251,6 +253,11 @@ urlpatterns += [
         release_series.release_series_backlog_search,
         name="release-series-backlog-search",
     ),
+    path(
+        "release-series/<int:pk>/archive-group/",
+        release_series.release_series_archive_group,
+        name="release-series-archive-group",
+    ),
     path("archives-not-matched/", manager.archives_not_matched_with_gallery, name="archives-not-matched"),
     path("wanted-galleries/", manager.wanted_galleries, name="wanted-galleries"),
     path("found-galleries/", manager.found_galleries, name="found-galleries"),
@@ -274,6 +281,7 @@ urlpatterns += [
         name="admin-report-subscription",
     ),
     path("stats/collection/", admin.stats_collection, name="stats-collection"),
+    path("stats/wanted/", wanted_funnel.stats_wanted_funnel, name="stats-wanted"),
     path("public-stats/", head.public_stats, name="public-stats"),
     path("stats/workers/", admin.stats_workers, name="stats-workers"),
     re_path(r"^stats/workers$", admin.stats_workers),

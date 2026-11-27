@@ -156,19 +156,9 @@ def process_gallery_page(
     if request.user.is_authenticated:
         d["active_tasks"] = client.get_active_gallery_tasks(gallery.pk, gallery.get_link())
 
-    if gallery.first_gallery:
-        gallery_filters = (
-            Q(first_gallery=gallery.first_gallery)
-            | Q(first_gallery=gallery)
-            | Q(pk=gallery.pk)
-            | Q(pk=gallery.first_gallery.pk)
-        )
-    else:
-        gallery_filters = Q(first_gallery=gallery) | Q(pk=gallery.pk)
-
     d.update(
         {
-            "gallery_chain": Gallery.objects.filter(gallery_filters, provider=gallery.provider).order_by("gid"),
+            "gallery_chain": gallery.get_gallery_chain(),
             "gallery_group": GalleryMatchGroup.objects.filter(galleries=gallery).prefetch_related("galleries").first()
         }
     )

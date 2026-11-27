@@ -2,15 +2,20 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import timedelta
 import logging
 import threading
 from typing import Any
 
 from django.db import transaction
+import django.utils.timezone as django_tz
 from django.utils.dateparse import parse_datetime
 
 logger = logging.getLogger(__name__)
+
+MIN_BATCH_PRIORITY = 1
+MAX_BATCH_PRIORITY = 10
 
 
 def _empty_provider_stats() -> dict[str, Any]:
@@ -38,8 +43,9 @@ def _empty_provider_stats() -> dict[str, Any]:
 class CrawlBatchCollector:
     """Thread-safe per-task collector for crawler summary counters within a split batch."""
 
-    def __init__(self, batch_id: str) -> None:
+    def __init__(self, batch_id: str, task_pk: int | None = None) -> None:
         self.batch_id = batch_id
+        self._task_pk = task_pk
         self._lock = threading.Lock()
         self._providers: dict[str, dict[str, Any]] = {}
 
@@ -48,6 +54,19 @@ class CrawlBatchCollector:
         if key not in self._providers:
             self._providers[key] = _empty_provider_stats()
         return self._providers[key]
+
+    def _flush_live_stats(self) -> None:
+        if self._task_pk is None:
+            return
+        try:
+            record_task_batch_stats(self._task_pk, self)
+        except Exception:
+            logger.debug(
+                "Could not persist live crawl batch stats for task #%s (batch %s)",
+                self._task_pk,
+                self.batch_id,
+                exc_info=True,
+            )
 
     def record_db_check(
         self,
@@ -65,6 +84,7 @@ class CrawlBatchCollector:
             stats["db_existing"] += existing
             stats["db_discarded"] += discarded
             stats["db_to_update"] += to_update
+        self._flush_live_stats()
 
     def record_metadata_check(
         self,
@@ -92,6 +112,7 @@ class CrawlBatchCollector:
                 stats["wanted_filters"] = True
             if wanted_only:
                 stats["wanted_only"] = True
+        self._flush_live_stats()
 
     def record_download_dispatch(
         self,
@@ -109,6 +130,7 @@ class CrawlBatchCollector:
             if dispatched and gallery_count > 0:
                 stats["dispatched_galleries"] += gallery_count
                 stats["dispatched_tasks"] += 1
+        self._flush_live_stats()
 
     def to_dict(self) -> dict[str, Any]:
         with self._lock:
@@ -142,6 +164,53 @@ def _merge_provider_stats(target: dict[str, Any], source: dict[str, Any]) -> Non
         target["wanted_filters"] = True
     if source.get("wanted_only"):
         target["wanted_only"] = True
+
+
+def extract_crawl_batch_meta(options: Any) -> dict[str, Any] | None:
+    """Return the ``crawl_batch`` metadata dict from a TaskQueue ``options`` payload, or None."""
+    if not isinstance(options, dict):
+        return None
+    batch_meta = options.get("crawl_batch")
+    if isinstance(batch_meta, dict) and batch_meta.get("id"):
+        return batch_meta
+    return None
+
+
+def enrich_provider_stats(stats: dict[str, Any]) -> dict[str, Any]:
+    """Return a copy of provider stats enriched with derived counters (e.g. ``db_new``)."""
+    enriched = _empty_provider_stats()
+    _merge_provider_stats(enriched, stats)
+    enriched["db_new"] = max(0, int(enriched["db_total"]) - int(enriched["db_existing"]))
+    return enriched
+
+
+def aggregate_tasks_provider_stats(tasks: Iterable[Any]) -> dict[str, dict[str, Any]]:
+    """Aggregate ``crawl_batch_stats`` provider counters across an iterable of TaskQueue rows."""
+    aggregated: dict[str, dict[str, Any]] = {}
+    for task in tasks:
+        opts = task.options if isinstance(getattr(task, "options", None), dict) else {}
+        task_stats = opts.get("crawl_batch_stats")
+        if not isinstance(task_stats, dict):
+            continue
+        providers_map = task_stats.get("providers")
+        if not isinstance(providers_map, dict):
+            continue
+        for prov_name, prov_values in providers_map.items():
+            if isinstance(prov_values, dict):
+                if prov_name not in aggregated:
+                    aggregated[prov_name] = _empty_provider_stats()
+                _merge_provider_stats(aggregated[prov_name], prov_values)
+    return {name: aggregated[name] for name in sorted(aggregated.keys())}
+
+
+def summarize_provider_stats(providers: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    """Compute overall totals across all providers in a batch."""
+    totals = _empty_provider_stats()
+    for prov_values in providers.values():
+        if isinstance(prov_values, dict):
+            _merge_provider_stats(totals, prov_values)
+    totals["db_new"] = max(0, int(totals["db_total"]) - int(totals["db_existing"]))
+    return totals
 
 
 def _emit_batch_summary_logs(
@@ -311,7 +380,6 @@ def finalize_crawl_batch_if_done(batch_id: str, created_at_hint: str | None = No
         cancelled_blocks = 0
         total_blocks = len(tasks)
         total_links = 0
-        aggregated_providers: dict[str, dict[str, Any]] = {}
 
         for task in tasks:
             opts = task.options if isinstance(task.options, dict) else {}
@@ -331,15 +399,7 @@ def finalize_crawl_batch_if_done(batch_id: str, created_at_hint: str | None = No
             elif task.status == TaskQueue.Status.CANCELLED:
                 cancelled_blocks += 1
 
-            task_stats = opts.get("crawl_batch_stats")
-            if isinstance(task_stats, dict):
-                providers_map = task_stats.get("providers")
-                if isinstance(providers_map, dict):
-                    for prov_name, prov_values in providers_map.items():
-                        if isinstance(prov_values, dict):
-                            if prov_name not in aggregated_providers:
-                                aggregated_providers[prov_name] = _empty_provider_stats()
-                            _merge_provider_stats(aggregated_providers[prov_name], prov_values)
+        aggregated_providers = aggregate_tasks_provider_stats(tasks)
 
         # Mark the last task in the batch so summary is emitted at most once.
         marker_task = tasks[-1]
@@ -364,3 +424,96 @@ def finalize_crawl_batch_if_done(batch_id: str, created_at_hint: str | None = No
         _emit_batch_summary_logs(*summary_payload)
         return True
     return False
+
+
+def cancel_crawl_batch(batch_id: str, include_processing: bool = True) -> dict[str, Any]:
+    """Cancel remaining unfinished blocks in a split web-crawler batch.
+
+    When ``include_processing`` is True (default), both ``PENDING`` and ``PROCESSING`` blocks are
+    marked ``CANCELLED`` (running workers observe the status change and abort promptly).
+    Triggers ``finalize_crawl_batch_if_done`` once no active blocks remain.
+    """
+    from workers.client import get_task_type_aliases
+    from workers.models import TaskQueue
+
+    cleaned_id = str(batch_id or "").strip()
+    if not cleaned_id:
+        return {"exists": False, "cancelled": 0, "cancelled_pending": 0, "cancelled_processing": 0}
+
+    created_at_hint: str | None = None
+    cancelled_pending = 0
+    cancelled_processing = 0
+
+    with transaction.atomic():
+        qs = TaskQueue.objects.select_for_update().filter(
+            task_type__in=get_task_type_aliases("web_crawler"),
+            options__crawl_batch__id=cleaned_id,
+        )
+        tasks = list(qs.order_by("id"))
+        if not tasks:
+            return {"exists": False, "cancelled": 0, "cancelled_pending": 0, "cancelled_processing": 0}
+
+        for task in tasks:
+            meta = extract_crawl_batch_meta(task.options)
+            if meta and meta.get("created_at"):
+                created_at_hint = str(meta["created_at"])
+                break
+
+        target_statuses = [TaskQueue.Status.PENDING]
+        if include_processing:
+            target_statuses.append(TaskQueue.Status.PROCESSING)
+
+        to_cancel_ids: list[int] = []
+        for task in tasks:
+            if task.status in target_statuses:
+                to_cancel_ids.append(task.pk)
+                if task.status == TaskQueue.Status.PENDING:
+                    cancelled_pending += 1
+                elif task.status == TaskQueue.Status.PROCESSING:
+                    cancelled_processing += 1
+
+        if to_cancel_ids:
+            TaskQueue.objects.filter(pk__in=to_cancel_ids, status__in=target_statuses).update(
+                status=TaskQueue.Status.CANCELLED,
+                finished_at=django_tz.now(),
+            )
+
+    cancelled_total = cancelled_pending + cancelled_processing
+    if cancelled_total > 0:
+        finalize_crawl_batch_if_done(cleaned_id, created_at_hint)
+
+    return {
+        "exists": True,
+        "cancelled": cancelled_total,
+        "cancelled_pending": cancelled_pending,
+        "cancelled_processing": cancelled_processing,
+    }
+
+
+def reprioritize_crawl_batch(batch_id: str, priority: int) -> dict[str, Any]:
+    """Set queue ``priority`` (1 = highest .. 10 = lowest) on all pending blocks of a split batch."""
+    from workers.client import get_task_type_aliases
+    from workers.models import TaskQueue
+
+    if isinstance(priority, bool) or not isinstance(priority, int) or not (MIN_BATCH_PRIORITY <= priority <= MAX_BATCH_PRIORITY):
+        raise ValueError(f"Priority must be an integer between {MIN_BATCH_PRIORITY} and {MAX_BATCH_PRIORITY}.")
+
+    cleaned_id = str(batch_id or "").strip()
+    if not cleaned_id:
+        return {"exists": False, "updated": 0, "priority": priority}
+
+    with transaction.atomic():
+        qs = TaskQueue.objects.filter(
+            task_type__in=get_task_type_aliases("web_crawler"),
+            options__crawl_batch__id=cleaned_id,
+        )
+        if not qs.exists():
+            return {"exists": False, "updated": 0, "priority": priority}
+
+        updated = qs.filter(status=TaskQueue.Status.PENDING).update(priority=priority)
+
+    return {
+        "exists": True,
+        "updated": updated,
+        "priority": priority,
+    }

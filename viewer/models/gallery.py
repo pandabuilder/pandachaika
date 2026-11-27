@@ -5,11 +5,10 @@ import shutil
 import typing
 import uuid
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from os.path import join as pjoin
 from tempfile import NamedTemporaryFile
 
-import elasticsearch
 from PIL import Image as PImage
 from PIL import ImageFile
 import requests
@@ -35,7 +34,7 @@ from core.base.utilities import get_dict_allowed_fields, request_with_retries
 from viewer.models.change_log import GALLERY_TRACKED_FIELDS, TrackedChangesMixin, batched_changes
 from viewer.models.common import EMPTY_TITLE, ItemProperties
 from viewer.models.tag import Tag
-from viewer.services import CompareObjectsService
+from viewer.services import CompareObjectsService, ElasticsearchIndexMixin
 from viewer.utils.tags import sort_tags, sort_tags_str
 
 if typing.TYPE_CHECKING:
@@ -304,7 +303,6 @@ class GalleryManager(models.Manager["Gallery"]):
                     ).first()
                     if gallery_first:
                         values["first_gallery"] = gallery_first
-                    del values["first_gallery_gid"]
                 for key, value in values.items():
                     setattr(gallery, key, value)
                 gallery.save()
@@ -337,6 +335,13 @@ class GalleryManager(models.Manager["Gallery"]):
             return False
 
     @staticmethod
+    def link_newer_to_first(gallery: "Gallery") -> None:
+        """Point the newer versions that name this gallery as their first one at it, now that it is here."""
+        Gallery.objects.filter(
+            provider=gallery.provider, first_gallery_gid=gallery.gid, first_gallery__isnull=True
+        ).exclude(pk=gallery.pk).update(first_gallery=gallery)
+
+    @staticmethod
     def add_from_values(gallery_data: GalleryData) -> "Gallery":
         tags = gallery_data.tags
 
@@ -364,11 +369,11 @@ class GalleryManager(models.Manager["Gallery"]):
             gallery_first = Gallery.objects.filter(gid=values["first_gallery_gid"], provider=values["provider"]).first()
             if gallery_first:
                 values["first_gallery"] = gallery_first
-            del values["first_gallery_gid"]
 
         with transaction.atomic(), batched_changes():
             gallery = Gallery(**values)
             gallery.save()
+            GalleryManager.link_newer_to_first(gallery)
 
             if gallery_data.extra_provider_data:
                 for gallery_provider_data in gallery_data.extra_provider_data:
@@ -441,10 +446,10 @@ class GalleryManager(models.Manager["Gallery"]):
             gallery_first = Gallery.objects.filter(gid=values["first_gallery_gid"], provider=values["provider"]).first()
             if gallery_first:
                 values["first_gallery"] = gallery_first
-            del values["first_gallery_gid"]
 
         with transaction.atomic(), batched_changes():
             gallery, _ = self.update_or_create(defaults=values, gid=values["gid"], provider=values["provider"])
+            GalleryManager.link_newer_to_first(gallery)
 
             if gallery_data.extra_provider_data:
                 for gallery_provider_data in gallery_data.extra_provider_data:
@@ -503,7 +508,10 @@ class GalleryManager(models.Manager["Gallery"]):
 
 
 
-class Gallery(TrackedChangesMixin, models.Model):
+class Gallery(ElasticsearchIndexMixin, TrackedChangesMixin, models.Model):
+    es_autorefresh_setting = "ES_AUTOREFRESH_GALLERY"
+    es_select_related = ("gallery_container", "magazine", "first_gallery")
+    es_prefetch_related = ("tags",)
 
     class StatusChoices(models.IntegerChoices):
         NORMAL = 1, _("Normal")
@@ -535,6 +543,9 @@ class Gallery(TrackedChangesMixin, models.Model):
     first_gallery = models.ForeignKey(
         "self", blank=True, null=True, on_delete=models.SET_NULL, related_name="newer_galleries"
     )
+    # The provider's id for the first gallery of this gallery's version chain, kept even when that gallery was never
+    # added here, so every version can still be grouped into the same chain. The first gallery itself leaves it empty.
+    first_gallery_gid = models.CharField(max_length=200, blank=True, null=True)
     parent_gallery = models.ForeignKey(
         "self", blank=True, null=True, on_delete=models.SET_NULL, related_name="children_galleries"
     )
@@ -668,47 +679,36 @@ class Gallery(TrackedChangesMixin, models.Model):
                 name="gallery_title_jpn_trgm_gin",
                 opclasses=["gin_trgm_ops"],
             ),
+            # Only galleries in a chain have a value, so the index leaves out the rest.
+            models.Index(
+                fields=["first_gallery_gid"],
+                name="gallery_first_gid_idx",
+                condition=Q(first_gallery_gid__isnull=False),
+            ),
         ]
 
-    def es_repr(self) -> DataDict:
-        data = {}
-        mapping = getattr(self._meta, "es_mapping")
-        data["_id"] = self.pk
-        for field_name in mapping["properties"].keys():
-            data[field_name] = self.field_es_repr(field_name)
-        return data
-
-    def field_es_repr(self, field_name: str) -> typing.Any:
-        config = getattr(self._meta, "es_mapping")["properties"][field_name]
-        if hasattr(self, "get_es_%s" % field_name):
-            field_es_value = getattr(self, "get_es_%s" % field_name)()
-        else:
-            if config["type"] == "object":
-                related_object = getattr(self, field_name)
-                if related_object:
-                    field_es_value = {"_id": related_object.pk}
-                    for prop in config["properties"].keys():
-                        field_es_value[prop] = getattr(related_object, prop)
-                else:
-                    field_es_value = None
-            else:
-                field_es_value = getattr(self, field_name)
-        return field_es_value
-
-    def get_es_last_in_chain(self):
+    def get_chain_first_gid(self) -> str:
+        """The gid of the first gallery in this gallery's version chain (its own gid when it is the first)."""
+        if self.first_gallery_gid:
+            return self.first_gallery_gid
         if self.first_gallery:
-            gallery_filters = (
-                Q(first_gallery=self.first_gallery)
-                | Q(first_gallery=self)
-                | Q(pk=self.pk)
-                | Q(pk=self.first_gallery.pk)
-            )
-        else:
-            gallery_filters = Q(first_gallery=self) | Q(pk=self.pk)
+            return self.first_gallery.gid
+        return self.gid
 
-        gallery_chain = Gallery.objects.filter(gallery_filters, provider=self.provider).order_by("gid")
+    def get_gallery_chain(self) -> "QuerySet[Gallery]":
+        """Every gallery of this gallery's version chain, oldest first, including itself.
 
-        last_in_chain = gallery_chain.last()
+        Galleries are grouped by the first gallery's gid, so the chain holds together even when the first
+        gallery was never added here.
+        """
+        first_gid = self.get_chain_first_gid()
+        gallery_filters = Q(pk=self.pk) | Q(gid=first_gid) | Q(first_gallery_gid=first_gid) | Q(first_gallery=self)
+        if self.first_gallery_id:
+            gallery_filters |= Q(pk=self.first_gallery_id) | Q(first_gallery=self.first_gallery_id)
+        return Gallery.objects.filter(gallery_filters, provider=self.provider).order_by("gid")
+
+    def get_es_last_in_chain(self) -> bool:
+        last_in_chain = self.get_gallery_chain().last()
 
         if last_in_chain is None:
             return True
@@ -717,79 +717,11 @@ class Gallery(TrackedChangesMixin, models.Model):
         else:
             return False
 
-    def get_es_gallery_chain_urls(self):
-        if self.first_gallery:
-            gallery_filters = (
-                Q(first_gallery=self.first_gallery)
-                | Q(first_gallery=self)
-                | Q(pk=self.pk)
-                | Q(pk=self.first_gallery.pk)
-            )
-        else:
-            gallery_filters = Q(first_gallery=self) | Q(pk=self.pk)
-
-        gallery_chain = Gallery.objects.filter(gallery_filters, provider=self.provider).order_by("gid")
-
-        return [x.get_link() for x in gallery_chain]
-
-    def get_es_title_complete(self) -> DataDict:
-        if self.title_jpn:
-            title_input = [self.title, self.title_jpn]
-        else:
-            title_input = [self.title]
-        return {
-            "input": title_input,
-        }
-
-    def get_es_title_suggest(self) -> list[str]:
-        title_input = []
-        if self.title:
-            title_input.append(self.title)
-        if self.title_jpn:
-            title_input.append(self.title_jpn)
-        return title_input
-
-    def get_es_size(self) -> int | None:
-        return self.filesize
-
-    def get_es_image_count(self) -> int | None:
-        return self.filecount
+    def get_es_gallery_chain_urls(self) -> list[str]:
+        return [x.get_link() for x in self.get_gallery_chain()]
 
     def get_es_posted_date(self) -> str | None:
-        data = None
-        if self.posted:
-            data = self.posted.replace(tzinfo=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S%z")
-        return data
-
-    def get_es_create_date(self) -> str | None:
-        if self.create_date:
-            return self.create_date.replace(tzinfo=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S%z")
-        else:
-            return None
-
-    def get_es_tags(self) -> list[DataDict]:
-        data: list[DataDict] = []
-        if self.tags.exists():
-            data += [{"scope": c.scope, "name": c.name, "full": str(c)} for c in self.tags.all()]
-        return data
-
-    def get_es_tag_names(self) -> list[str]:
-        data: list[str] = []
-        if self.tags.exists():
-            data += [c.name for c in self.tags.all()]
-        return data
-
-    def get_es_tag_scopes(self) -> list[str]:
-        data: list[str] = []
-        if self.tags.exists():
-            data += [c.scope for c in self.tags.all()]
-        return data
-
-    def get_es_thumbnail(self) -> str | None:
-        if self.thumbnail:
-            return self.thumbnail.url
-        else:
-            return None
+        return self._format_es_datetime(self.posted)
 
     def get_es_source_thumbnail(self) -> str | None:
         if self.thumbnail_url:
@@ -801,22 +733,16 @@ class Gallery(TrackedChangesMixin, models.Model):
         return self.get_link()
 
     def get_es_has_container(self) -> bool:
-        return self.gallery_container is not None
+        return self.gallery_container_id is not None
 
     def get_es_has_magazine(self) -> bool:
-        return self.magazine is not None
+        return self.magazine_id is not None
 
     def get_es_has_contained(self) -> bool:
-        if self.gallery_contains.count() == 0:
-            return False
-        else:
-            return True
+        return self.gallery_contains.exists()
 
     def get_es_has_chapters(self) -> bool:
-        if self.magazine_chapters.count() == 0:
-            return False
-        else:
-            return True
+        return self.magazine_chapters.exists()
 
 
     def __str__(self) -> str:
@@ -877,9 +803,15 @@ class Gallery(TrackedChangesMixin, models.Model):
     def is_replaced(self) -> bool:
         if not self.pk:
             return False
-        if Gallery.objects.filter(Q(parent_gallery=self) | Q(first_gallery=self)).exclude(pk=self.pk).exists():
+        if (
+            Gallery.objects.filter(
+                Q(parent_gallery=self) | Q(first_gallery=self) | Q(first_gallery_gid=self.gid, provider=self.provider)
+            )
+            .exclude(pk=self.pk)
+            .exists()
+        ):
             return True
-        if self.first_gallery and not self.get_es_last_in_chain():
+        if (self.first_gallery_id or self.first_gallery_gid) and not self.get_es_last_in_chain():
             return True
         return False
 
@@ -917,7 +849,7 @@ class Gallery(TrackedChangesMixin, models.Model):
             magazine_gid=self.magazine.gid if self.magazine else None,
             magazine_chapters_gids=list(self.magazine_chapters.all().values_list("gid", flat=True)),
             parent_gallery_gid=self.parent_gallery.gid if self.parent_gallery else None,
-            first_gallery_gid=self.first_gallery.gid if self.first_gallery else None,
+            first_gallery_gid=self.first_gallery_gid or (self.first_gallery.gid if self.first_gallery else None),
             category=self.category,
             posted=self.posted,
             filesize=self.filesize,
@@ -940,26 +872,6 @@ class Gallery(TrackedChangesMixin, models.Model):
     # Should be used by small changes.
     def simple_save(self, *args: typing.Any, **kwargs: typing.Any) -> None:
         super(Gallery, self).save(*args, **kwargs)
-
-    def schedule_index_update(self) -> None:
-        if not (settings.ES_CLIENT and settings.ES_AUTOREFRESH_GALLERY):
-            return
-        if settings.ES_ONLY_INDEX_PUBLIC and not self.public:
-            return
-        if self.pk is None:
-            return
-        conn = transaction.get_connection()
-        key = (self._meta.label, self.pk)
-        if conn.in_atomic_block and any(
-            getattr(func, "_es_index_key", None) == key for _, func, _ in conn.run_on_commit
-        ):
-            return
-
-        def _on_commit() -> None:
-            self.update_index()
-
-        setattr(_on_commit, "_es_index_key", key)
-        transaction.on_commit(_on_commit)
 
     def save(self, *args: typing.Any, **kwargs: typing.Any) -> None:
         super(Gallery, self).save(*args, **kwargs)
@@ -994,46 +906,12 @@ class Gallery(TrackedChangesMixin, models.Model):
                     defaults={"value": hash_result},
                 )
 
-    def update_index(self) -> None:
-        if settings.ES_CLIENT and settings.ES_AUTOREFRESH_GALLERY and self.pk is not None:
-            if (settings.ES_ONLY_INDEX_PUBLIC and self.public) or not settings.ES_ONLY_INDEX_PUBLIC:
-                payload = self.es_repr()
-                del payload["_id"]
-                es_index = getattr(self._meta, "es_index_name")
-                try:
-                    settings.ES_CLIENT.update(
-                        index=es_index,
-                        id=str(self.pk),
-                        refresh=True,
-                        doc=payload
-                    )
-                except elasticsearch.exceptions.NotFoundError:
-                    settings.ES_CLIENT.create(
-                        index=es_index,
-                        id=str(self.pk),
-                        refresh=True,
-                        document=payload
-                    )
-
     def delete(self, *args: typing.Any, **kwargs: typing.Any) -> tuple[int, dict[str, int]]:
         self.thumbnail.delete(save=False)
         self.remove_wanted_relations()
         prev_pk = self.pk
         deleted = super(Gallery, self).delete(*args, **kwargs)
-        if settings.ES_CLIENT and settings.ES_AUTOREFRESH_GALLERY and prev_pk is not None:
-            es_index = getattr(self._meta, "es_index_name")
-
-            def _delete_from_es() -> None:
-                if not settings.ES_CLIENT:
-                    return
-                try:
-                    settings.ES_CLIENT.delete(
-                        index=es_index, id=str(prev_pk), refresh=True
-                    )
-                except elasticsearch.exceptions.NotFoundError:
-                    pass
-
-            transaction.on_commit(_delete_from_es)
+        self.schedule_index_delete(prev_pk)
         return deleted
 
     def remove_wanted_relations(self) -> None:

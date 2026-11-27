@@ -260,13 +260,18 @@
         <div class="dm-tool">
           <div class="dm-tool-info">
             <div class="dm-tool-name"><i class="fas fa-sync"></i>Reconcile downloads and archives</div>
-            <div class="dm-tool-desc">Rescues finished files, recycles stale downloads and syncs missing CRC32. Runs right away and reports when done.</div>
+            <div class="dm-tool-desc">Rescues finished files, recycles stale downloads and syncs missing CRC32 in the background.</div>
           </div>
           <div class="dm-tool-controls">
-            <form action="{% url 'viewer:tools-id' 'reconcile_downloads' %}" method="POST">
-              {% csrf_token %}
-              <button type="submit" class="btn btn-sm btn-outline-info dm-busy-on-submit"><i class="fas fa-play me-1"></i>Run</button>
-            </form>
+            {% if active_tasks.reconcile_downloads %}
+              {% task_status active_tasks.reconcile_downloads %}
+            {% else %}
+              <form action="{% url 'viewer:tools-id' 'reconcile_downloads' %}" method="POST" class="task-action"
+                    hx-post="{% url 'viewer:tools-id' 'reconcile_downloads' %}" hx-target="this" hx-swap="outerHTML">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-outline-info"><i class="fas fa-play me-1"></i>Run</button>
+              </form>
+            {% endif %}
           </div>
         </div>
 

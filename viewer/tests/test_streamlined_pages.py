@@ -273,6 +273,14 @@ class PagesTest(TestCase):
 
         response = self.client.post(url, {f"sel-{self.other_gallery.pk}": str(self.other_gallery.pk), "publish_galleries": ""})
         self.assertRedirects(response, url, fetch_redirect_response=False)
+        from core.base.setup import Settings
+        from workers.models import TaskQueue
+        from workers.runner import WorkerRunner
+
+        task = TaskQueue.objects.filter(task_type="gallery_batch_worker").latest("pk")
+        task.status = TaskQueue.Status.PROCESSING
+        task.save(update_fields=["status"])
+        WorkerRunner(Settings(load_from_disk=False), enable_schedulers=False).execute_job(task)
         self.other_gallery.refresh_from_db()
         self.assertTrue(self.other_gallery.public)
 
@@ -409,6 +417,14 @@ class PagesTest(TestCase):
 
         response = self.client.post(url, {f"sel-{self.other_gallery.pk}": str(self.other_gallery.pk), "publish_galleries": ""})
         self.assertRedirects(response, url, fetch_redirect_response=False)
+        from core.base.setup import Settings
+        from workers.models import TaskQueue
+        from workers.runner import WorkerRunner
+
+        task = TaskQueue.objects.filter(task_type="gallery_batch_worker").latest("pk")
+        task.status = TaskQueue.Status.PROCESSING
+        task.save(update_fields=["status"])
+        WorkerRunner(Settings(load_from_disk=False), enable_schedulers=False).execute_job(task)
         self.other_gallery.refresh_from_db()
         self.assertTrue(self.other_gallery.public)
 
@@ -444,6 +460,14 @@ class PagesTest(TestCase):
             },
         )
         self.assertRedirects(resp, url, fetch_redirect_response=False)
+        from core.base.setup import Settings
+        from workers.models import TaskQueue
+        from workers.runner import WorkerRunner
+
+        task = TaskQueue.objects.filter(task_type="gallery_batch_worker").latest("pk")
+        task.status = TaskQueue.Status.PROCESSING
+        task.save(update_fields=["status"])
+        WorkerRunner(Settings(load_from_disk=False), enable_schedulers=False).execute_job(task)
         self.assertEqual(GalleryMatchGroup.objects.count(), 1)
 
 
@@ -492,10 +516,13 @@ class RedesignedPagesTest(TestCase):
 
     def test_tools_counts(self):
         Archive.objects.create(title="No thumb", zipped="t.zip", thumbnail="", crc32="", user=self.admin)
+        Archive.objects.create(
+            title="Deleted no thumb", zipped="", thumbnail="", crc32="abc12345", file_deleted=True, user=self.admin
+        )
         response = self.client.get(reverse("viewer:tools"))
         self.assertEqual(response.context["counts"]["missing_thumbs"], 1)
         self.assertEqual(response.context["counts"]["missing_info"], 1)
-        self.assertEqual(response.context["counts"]["unmatched_archives"], 1)
+        self.assertEqual(response.context["counts"]["unmatched_archives"], 2)
         self.assertContains(response, 'data-dm-filter=".dm-tool"')
 
     def test_found_galleries_period_and_source(self):
@@ -541,6 +568,14 @@ class RedesignedPagesTest(TestCase):
             url, {f"sel-{archive.pk}": str(archive.pk), "change_archive_reason": "", "archive_reason": "new reason"}
         )
         self.assertRedirects(response, url, fetch_redirect_response=False)
+        from core.base.setup import Settings
+        from workers.models import TaskQueue
+        from workers.runner import WorkerRunner
+
+        task = TaskQueue.objects.filter(task_type="archive_batch_worker").latest("pk")
+        task.status = TaskQueue.Status.PROCESSING
+        task.save(update_fields=["status"])
+        WorkerRunner(Settings(load_from_disk=False), enable_schedulers=False).execute_job(task)
         archive.refresh_from_db()
         self.assertEqual(archive.reason, "new reason")
 
@@ -566,6 +601,14 @@ class RedesignedPagesTest(TestCase):
         url = reverse("viewer:repeated-archives")
         response = self.client.post(url, {f"del-{diff.pk}": str(diff.pk), "delete_archives": ""})
         self.assertRedirects(response, url, fetch_redirect_response=False)
+        from core.base.setup import Settings
+        from workers.models import TaskQueue
+        from workers.runner import WorkerRunner
+
+        task = TaskQueue.objects.filter(task_type="delete_archive_worker").latest("pk")
+        task.status = TaskQueue.Status.PROCESSING
+        task.save(update_fields=["status"])
+        WorkerRunner(Settings(load_from_disk=False), enable_schedulers=False).execute_job(task)
         self.assertFalse(Archive.objects.filter(pk=diff.pk).exists())
 
         response = self.client.post(url, {"delete_archives": ""})

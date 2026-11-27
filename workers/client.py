@@ -32,29 +32,6 @@ def enqueue(
     """
     args_list = list(args)
 
-    if deduplicate:
-        aliases = get_task_type_aliases(task_type)
-        existing = (
-            TaskQueue.objects.filter(
-                task_type__in=aliases,
-                status__in=[TaskQueue.Status.PENDING, TaskQueue.Status.PROCESSING],
-                args=args_list,
-            )
-            .order_by("created_at", "id")
-            .first()
-        )
-        if existing:
-            if existing.status == TaskQueue.Status.PENDING and priority < existing.priority:
-                existing.priority = priority
-                existing.save(update_fields=["priority"])
-            logger.info(
-                "Task #%d (%s) with identical args is already %s; skipping duplicate enqueue.",
-                existing.pk,
-                existing.task_type,
-                existing.status,
-            )
-            return existing
-
     serialized_options = serialize_settings_options(override_options, base_settings=base_settings)
     if extra_options:
         serialized_options.update(extra_options)
@@ -71,6 +48,33 @@ def enqueue(
 
     task_reason = reason or serialized_options.get("archive_reason") or serialized_options.get("gallery_reason") or ""
     action = event_action or serialized_options.get("event_action") or ""
+    options_hash = TaskQueue.compute_options_hash(serialized_options, user_obj.pk if user_obj is not None else None)
+
+    if deduplicate:
+        # Only a task queued with the same args *and* the same options and user is a duplicate: the same links
+        # crawled with other downloaders, or with favorites to preserve, are not.
+        aliases = get_task_type_aliases(task_type)
+        existing = (
+            TaskQueue.objects.filter(
+                task_type__in=aliases,
+                status__in=[TaskQueue.Status.PENDING, TaskQueue.Status.PROCESSING],
+                args=args_list,
+                options_hash=options_hash,
+            )
+            .order_by("created_at", "id")
+            .first()
+        )
+        if existing:
+            if existing.status == TaskQueue.Status.PENDING and priority < existing.priority:
+                existing.priority = priority
+                existing.save(update_fields=["priority"])
+            logger.info(
+                "Task #%d (%s) with identical args and options is already %s; skipping duplicate enqueue.",
+                existing.pk,
+                existing.task_type,
+                existing.status,
+            )
+            return existing
 
     task = TaskQueue.objects.create(
         task_type=task_type,
@@ -81,6 +85,7 @@ def enqueue(
         event_action=action,
         priority=priority,
         status=TaskQueue.Status.PENDING,
+        options_hash=options_hash,
     )
     logger.info("Enqueued task #%d (%s) with args: %s", task.pk, task_type, args_list)
     return task
@@ -201,6 +206,11 @@ TASK_TYPE_ALIAS_GROUPS: list[set[str]] = [
     {"database_prune", "prune_database"},
     {"archive_file_check"},
     {"auto_wanted_worker"},
+    {"archive_batch_worker"},
+    {"gallery_batch_worker"},
+    {"reconcile_downloads_worker", "reconcile_downloads"},
+    {"update_provider_wanted_worker"},
+    {"send_email_worker"},
 ]
 
 
@@ -306,6 +316,20 @@ def clear_pending_tasks(task_type: str | None = None, mode: str = "delete") -> i
         for bid, created_at_hint in affected_batches.items():
             finalize_crawl_batch_if_done(bid, created_at_hint)
     return affected
+
+
+def cancel_crawl_batch(batch_id: str, include_processing: bool = True) -> dict[str, Any]:
+    """Cancel remaining blocks in a split web-crawler batch."""
+    from workers.crawl_batch import cancel_crawl_batch as _cancel_crawl_batch
+
+    return _cancel_crawl_batch(batch_id, include_processing=include_processing)
+
+
+def reprioritize_crawl_batch(batch_id: str, priority: int) -> dict[str, Any]:
+    """Update priority on all pending blocks in a split web-crawler batch."""
+    from workers.crawl_batch import reprioritize_crawl_batch as _reprioritize_crawl_batch
+
+    return _reprioritize_crawl_batch(batch_id, priority)
 
 
 def is_worker_running(threshold_seconds: int = 30) -> bool:

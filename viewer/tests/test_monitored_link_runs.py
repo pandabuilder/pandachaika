@@ -12,7 +12,7 @@ from core.base.setup import Settings
 from core.providers.chaika.parsers import Parser as ChaikaParser
 from core.providers.panda import constants as panda_constants
 from core.providers.panda.parsers import Parser
-from viewer.models import MonitoredLink, MonitoredLinkRun, ProcessedLinks, Provider
+from viewer.models import Gallery, MonitoredLink, MonitoredLinkRun, ProcessedLinks, Provider
 from viewer.services import monitored_link_stats
 from viewer.services.retention import get_entity_definitions
 from viewer.templatetags.viewer_extras import as_percent, short_duration
@@ -216,7 +216,7 @@ class PandaFeedRunRecordingTests(TestCase):
              patch.object(self.parser, "api_request_function", return_value=None), \
              patch.object(self.parser, "pass_gallery_data_to_downloaders"):
             self.parser.crawl_urls_caller([self.link.url])
-        return MonitoredLinkRun.objects.get(monitored_link=self.link)
+        return MonitoredLinkRun.objects.filter(monitored_link=self.link).latest("pk")
 
     def test_combined_run_records_the_feed_links(self):
         ProcessedLinks.objects.create(
@@ -228,9 +228,37 @@ class PandaFeedRunRecordingTests(TestCase):
         self.assertEqual((run.links_found, run.links_new, run.links_known), (3, 2, 1))
         self.assertEqual(run.stop_reason, MonitoredLinkRun.StopReason.FEED)
         self.assertEqual(run.links_to_process, 3)
+        self.assertEqual(run.pending_loaded, 0)
         rows = ProcessedLinks.objects.filter(monitored_link=self.link)
         self.assertEqual(set(rows.values_list("source_id", flat=True)), {"1001", "1002", "1003"})
-        self.assertFalse(rows.exclude(status=ProcessedLinks.Status.PROCESSED).exists())
+        # The API failed, so the new links weren't processed: they stay pending for the next run.
+        new_rows = rows.filter(source_id__in=["1002", "1003"])
+        self.assertEqual(set(new_rows.values_list("status", "process_attempts")), {(ProcessedLinks.Status.PENDING, 1)})
+
+    def test_banned_run_keeps_unresolved_links_pending_without_an_attempt(self):
+        from core.base.errors import ProviderBannedError
+
+        with patch.object(self.parser, "api_request_function", side_effect=ProviderBannedError("panda", 3600)), \
+             patch.object(self.parser, "crawl_feed", return_value=[gallery_url(1002), gallery_url(1001)]):
+            self.parser.crawl_urls_caller([self.link.url])
+        self.assertIsNotNone(self.parser.provider_ban)
+        rows = ProcessedLinks.objects.filter(monitored_link=self.link)
+        self.assertEqual(set(rows.values_list("status", "process_attempts")), {(ProcessedLinks.Status.PENDING, 0)})
+
+    def test_links_left_pending_are_processed_by_the_next_run(self):
+        self.link.stop_on_seen_link = MonitoredLink.StopOnSeenChoices.ON
+        self.link.save()
+        self.run_feed(1003, 1002)
+        # The next run sees the same links and stops on them, but still processes the pending ones (here, they
+        # were added meanwhile, so they are resolved by the database check without calling the API).
+        for gid in (1002, 1003):
+            Gallery.objects.create(gid=str(gid), token="0123456789", provider="panda", title=f"Gallery {gid}")
+        run = self.run_feed(1003, 1002)
+        self.assertEqual(run.stop_reason, MonitoredLinkRun.StopReason.SEEN_LINK)
+        self.assertEqual(run.pending_loaded, 2)
+        self.assertEqual(run.links_to_process, 2)
+        rows = ProcessedLinks.objects.filter(monitored_link=self.link)
+        self.assertEqual(set(rows.values_list("status", flat=True)), {ProcessedLinks.Status.PROCESSED})
 
     def test_combined_run_stops_at_the_first_seen_feed_link(self):
         self.link.stop_on_seen_link = MonitoredLink.StopOnSeenChoices.ON
@@ -316,6 +344,40 @@ class ChaikaRunRecordingTests(TestCase):
         self.assertEqual(run.stop_reason, MonitoredLinkRun.StopReason.SEEN_LINK)
         self.assertEqual(run.links_to_process, 3)
         self.assertFalse(ProcessedLinks.objects.filter(source_id="panda:1000").exists())
+
+    def test_links_of_a_failed_crawl_are_processed_by_the_next_run(self):
+        self.link.stop_on_seen_link = MonitoredLink.StopOnSeenChoices.ON
+        self.link.save()
+        self.seen(1001)
+        with patch.object(self.parser.general_utils, "discard_by_gallery_data", side_effect=RuntimeError("worker died")):
+            self.crawl(es_page(1003, 1002, 1001))
+        rows = ProcessedLinks.objects.filter(monitored_link=self.link, source_id__in=["panda:1002", "panda:1003"])
+        self.assertEqual(set(rows.values_list("status", "process_attempts")), {(ProcessedLinks.Status.PENDING, 1)})
+
+        # The next run doesn't stop on the links left pending: it processes them again, and stops on 1001.
+        with patch.object(self.parser, "web_request_function", return_value=es_page(1003, 1002, 1001)):
+            galleries = self.parser.crawl_elastic_json_paginated(ES_URL)
+        self.assertEqual({gallery.gid for gallery in galleries}, {"1003", "1002"})
+        self.parser._finish_recorded_links(succeeded=True)
+        self.assertEqual(set(rows.values_list("status", flat=True)), {ProcessedLinks.Status.PROCESSED})
+
+    def test_banned_crawl_leaves_its_links_pending_without_an_attempt(self):
+        from core.base.errors import ProviderBannedError
+
+        with patch.object(
+            self.parser.general_utils, "discard_by_gallery_data", side_effect=ProviderBannedError("chaika_web", 3600)
+        ):
+            run, _ = self.crawl(es_page(1002, 1001))
+        self.assertIsNotNone(self.parser.provider_ban)
+        self.assertIn("temporarily banning", run.error)
+        rows = ProcessedLinks.objects.filter(monitored_link=self.link)
+        self.assertEqual(set(rows.values_list("status", "process_attempts")), {(ProcessedLinks.Status.PENDING, 0)})
+
+    def test_successful_crawl_marks_its_links_as_processed(self):
+        self.crawl(es_page(1002, 1001))
+        rows = ProcessedLinks.objects.filter(monitored_link=self.link)
+        self.assertEqual(rows.count(), 2)
+        self.assertEqual(set(rows.values_list("status", flat=True)), {ProcessedLinks.Status.PROCESSED})
 
     def test_recent_seen_links_on_the_stop_page_are_processed_again(self):
         self.link.stop_on_seen_link = MonitoredLink.StopOnSeenChoices.ON

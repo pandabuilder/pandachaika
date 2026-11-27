@@ -1361,6 +1361,24 @@
               "type": "integer"
             },
             "description": "Gallery ID."
+          },
+          {
+            "name": "include_downloads",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Include download status and progress (download_status) for each archive. Requires authentication and viewer.download_history."
+          },
+          {
+            "name": "downloading_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Only include archives that are currently downloading (incomplete / active download)."
           }
         ],
         "responses": {
@@ -1616,7 +1634,7 @@
                 "type": "string"
               }
             },
-            "description": "Provider GID (repeat the parameter).",
+            "description": "Provider GID (repeat the parameter). At most 100 without authentication.",
             "style": "form",
             "explode": true
           },
@@ -1628,6 +1646,24 @@
               "type": "string"
             },
             "description": "Provider slug, to disambiguate a GID shared by several providers."
+          },
+          {
+            "name": "include_downloads",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Include download status and progress (download_status) for each archive. Requires authentication and viewer.download_history."
+          },
+          {
+            "name": "downloading_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Only include archives that are currently downloading (incomplete / active download)."
           }
         ],
         "responses": {
@@ -1692,6 +1728,24 @@
               "type": "string"
             },
             "description": "Provider slug, to disambiguate a GID shared by several providers."
+          },
+          {
+            "name": "include_downloads",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Include download status and progress (download_status) for each archive. Requires authentication and viewer.download_history."
+          },
+          {
+            "name": "downloading_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Only include archives that are currently downloading (incomplete / active download)."
           }
         ],
         "responses": {
@@ -6250,7 +6304,7 @@
                 "type": "integer"
               }
             },
-            "description": "Wanted gallery IDs (repeat the parameter).",
+            "description": "Wanted gallery IDs (repeat the parameter). At most 100 without authentication.",
             "style": "form",
             "explode": true
           },
@@ -6307,7 +6361,7 @@
           "Wanted galleries"
         ],
         "summary": "Filtered wanted gallery search",
-        "description": "Anonymous callers only see public data.",
+        "description": "Unpaginated. Without authentication, only the first 200 results are returned.\n\nAnonymous callers only see public data.",
         "parameters": [
           {
             "name": "wanted-galleries-search",
@@ -6552,7 +6606,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Comma-separated tags (or repeat the parameter)."
+            "description": "Comma-separated tags (or repeat the parameter). At most 100 without authentication."
           }
         ],
         "responses": {
@@ -6615,7 +6669,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Comma-separated tags (or repeat the parameter)."
+            "description": "Comma-separated tags (or repeat the parameter). At most 100 without authentication."
           }
         ],
         "responses": {
@@ -6799,8 +6853,8 @@
         "tags": [
           "Reader"
         ],
-        "summary": "Extract an archive's images",
-        "description": "Permission: `viewer.expand_archive`.\n\nToken scope: `write`.",
+        "summary": "Queue extraction of an archive's images",
+        "description": "Permission: `viewer.expand_archive`.\n\nToken scope: `write`.\n\nQueues background tasks: poll the returned `status_url`.",
         "parameters": [
           {
             "name": "extract-archive",
@@ -6810,6 +6864,15 @@
               "type": "integer"
             },
             "description": "Archive ID."
+          },
+          {
+            "name": "resized",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Extract resized images when enabled."
           }
         ],
         "responses": {
@@ -6818,9 +6881,13 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": [
-                    "object",
-                    "array"
+                  "allOf": [
+                    {
+                      "type": "object"
+                    },
+                    {
+                      "$ref": "#/components/schemas/TaskReference"
+                    }
                   ]
                 }
               }
@@ -6857,8 +6924,8 @@
         "tags": [
           "Reader"
         ],
-        "summary": "Remove an archive's extracted images",
-        "description": "Permission: `viewer.expand_archive`.\n\nToken scope: `write`.",
+        "summary": "Queue removal of an archive's extracted images",
+        "description": "Permission: `viewer.expand_archive`.\n\nToken scope: `write`.\n\nQueues background tasks: poll the returned `status_url`.",
         "parameters": [
           {
             "name": "reduce-archive",
@@ -6876,9 +6943,13 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": [
-                    "object",
-                    "array"
+                  "allOf": [
+                    {
+                      "type": "object"
+                    },
+                    {
+                      "$ref": "#/components/schemas/TaskReference"
+                    }
                   ]
                 }
               }
@@ -6949,7 +7020,7 @@
         },
         "responses": {
           "200": {
-            "description": "Operations that queue a crawl also return task_id and status_url.",
+            "description": "Operations that queue background tasks (webcrawler, match_archive, match_archive_internally) return task_id and status_url.",
             "content": {
               "application/json": {
                 "schema": {

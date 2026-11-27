@@ -225,20 +225,35 @@ def wanted_gallery(request: HttpRequest, pk: int) -> HttpResponse:
                 return HttpResponseRedirect(referer)
             elif tool == "create-rule-matches-internally":
                 provider = request.POST.get("provider", "")
-                wanted_gallery_instance.create_gallery_matches_internally(provider_filter=provider)
-                logger.info(
-                    "Wanted gallery {} ({}) internal gallery match resulted in {} possible matches.".format(
-                        wanted_gallery_instance,
-                        reverse("viewer:wanted-gallery", args=(wanted_gallery_instance.pk,)),
-                        wanted_gallery_instance.possible_matches.count(),
-                    )
+                client.enqueue(
+                    args=[wanted_gallery_instance.pk],
+                    task_type="wanted_local_search_worker",
+                    override_options={"mode": "rule_matches", "provider_filter": provider},
+                    user=request.user,
                 )
+                logger.info(
+                    "Queued rule-based internal gallery match for wanted gallery %s (%s).",
+                    wanted_gallery_instance,
+                    reverse("viewer:wanted-gallery", args=(wanted_gallery_instance.pk,)),
+                )
+                messages.success(request, "Queued rule-based possible matches search.")
                 return HttpResponseRedirect(referer)
             elif tool == "clear-possible-matches":
                 wanted_gallery_instance.possible_matches.clear()
                 return HttpResponseRedirect(referer)
             elif tool == "create-matches-internally":
-                wanted_gallery_instance.create_found_galleries_internally()
+                client.enqueue(
+                    args=[wanted_gallery_instance.pk],
+                    task_type="wanted_local_search_worker",
+                    override_options={"mode": "found_matches"},
+                    user=request.user,
+                )
+                logger.info(
+                    "Queued internal found-gallery match for wanted gallery %s (%s).",
+                    wanted_gallery_instance,
+                    reverse("viewer:wanted-gallery", args=(wanted_gallery_instance.pk,)),
+                )
+                messages.success(request, "Queued local matches search.")
                 return HttpResponseRedirect(referer)
             elif tool == "backlog-search":
                 urls_to_match = request.POST.getlist("urls-to-match") or request.GET.getlist("urls-to-match", [])

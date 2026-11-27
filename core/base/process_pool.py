@@ -20,16 +20,13 @@ _pool_lock = threading.Lock()
 def _pool_initializer() -> None:
     """Initializer for child processes in the ProcessPoolExecutor.
 
-    Ensures child processes do not share open database connections or handles
-    inherited from the parent process. If fork is used, we must NOT call
-    connection.close() because that sends a Terminate packet over the shared
-    socket to PostgreSQL, killing the connection in the parent process.
-    Instead, disassociate the connection object without closing the socket.
+    The pool uses forkserver where available, so children don't inherit any database connection. Only with fork
+    (no forkserver) could they: then we must NOT call connection.close(), which sends a Terminate packet over the
+    shared socket and kills the parent's connection. The connection object is disassociated from the socket instead.
     """
     try:
         from django import db
         for conn in db.connections.all():
-            setattr(conn, "close_at_end", False)
             conn.connection = None
     except Exception:
         pass
@@ -89,8 +86,12 @@ def shutdown_process_pool(wait: bool = True, cancel_futures: bool = True) -> Non
         if _process_pool is not None:
             try:
                 _process_pool.shutdown(wait=wait, cancel_futures=cancel_futures)
-            except Exception:
-                pass
+            except Exception as e:
+                # At interpreter exit the log handlers (the database one included) may already be closed.
+                try:
+                    logger.warning("Error shutting down ProcessPoolExecutor: %s", e)
+                except Exception:
+                    pass
             finally:
                 _process_pool = None
 

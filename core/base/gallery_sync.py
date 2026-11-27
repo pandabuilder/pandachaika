@@ -3,6 +3,7 @@ import typing
 
 from core.base.types import GalleryData
 from viewer.models import ArchiveManageEntry, Gallery, WantedGallery
+from viewer.services.elasticsearch_index import ElasticsearchIndexService
 
 if typing.TYPE_CHECKING:
     from core.base.setup import Settings
@@ -42,90 +43,94 @@ def sync_gallery_db_entry(
     if settings.gallery_reason:
         gallery_data.reason = settings.gallery_reason
 
-    gallery_db_entry = Gallery.objects.update_or_create_from_values(gallery_data)
-    if not gallery_db_entry:
-        return None
+    with ElasticsearchIndexService.batch_indexing():
+        gallery_db_entry = Gallery.objects.update_or_create_from_values(gallery_data)
+        if not gallery_db_entry:
+            return None
 
-    gallery_db_entry.schedule_index_update()
+        gallery_db_entry.schedule_index_update()
 
-    if settings.link_child is not None:
-        child_gallery = Gallery.objects.filter(gid=settings.link_child, provider=gallery_db_entry.provider).first()
-        if child_gallery:
-            child_gallery.parent_gallery = gallery_db_entry
-            child_gallery.save()
+        if settings.link_child is not None:
+            child_gallery = Gallery.objects.filter(gid=settings.link_child, provider=gallery_db_entry.provider).first()
+            if child_gallery:
+                child_gallery.parent_gallery = gallery_db_entry
+                child_gallery.save()
 
-    if settings.link_newer is not None:
-        newer_gallery = Gallery.objects.filter(gid=settings.link_newer, provider=gallery_db_entry.provider).first()
-        if newer_gallery:
-            newer_gallery.first_gallery = gallery_db_entry
-            newer_gallery.save()
+        if settings.link_newer is not None:
+            newer_gallery = Gallery.objects.filter(gid=settings.link_newer, provider=gallery_db_entry.provider).first()
+            if newer_gallery:
+                newer_gallery.first_gallery = gallery_db_entry
+                if not newer_gallery.first_gallery_gid:
+                    newer_gallery.first_gallery_gid = gallery_db_entry.gid
+                newer_gallery.save()
 
-    # If we are updating a gallery's metadata, and we get a new tag that would have been rejected,
-    # mark the archive. Do the same for a wanted match.
-    wanted_invalidated: list["WantedGallery"] = []
-    banned_result: bool = False
-    banned_reasons: list[str] = []
-    if update_existing:
-        banned_result, banned_reasons = general_utils.discard_by_gallery_data(
-            gallery_db_entry.tag_list(), force_check=True
-        )
-        if settings.recheck_wanted_on_update:
-            wanted_found_qs = WantedGallery.objects.filter(foundgallery__gallery=gallery_db_entry)
-            wanted_found = list(wanted_found_qs)
-            if wanted_found:
-                rematch_wanted = gallery_db_entry.match_against_wanted_galleries(
-                    wanted_filters=wanted_found_qs, skip_already_found=False
-                )
-
-                for single_wanted_found in wanted_found:
-                    if single_wanted_found not in rematch_wanted:
-                        wanted_invalidated.append(single_wanted_found)
-
-    for archive in gallery_db_entry.archive_set.all():
-        if not archive.gallery:
-            continue
-
-        archive.set_titles_from_gallery(archive.gallery)
-
-        if settings.recheck_wanted_on_update:
-            for single_wanted_invalidated in wanted_invalidated:
-                mark_comment = (
-                    "The refreshed Gallery metadata invalidates the previously accepted WantedGallery: (special-link):({})({})"
-                ).format(single_wanted_invalidated.title, single_wanted_invalidated.get_absolute_url())
-
-                if not ArchiveManageEntry.objects.filter(
-                    archive=archive, mark_reason="invalidated_wanted", mark_comment=mark_comment
-                ).exists():
-                    ArchiveManageEntry.objects.update_or_create(
-                        archive=archive,
-                        mark_reason="invalidated_wanted",
-                        mark_comment=mark_comment,
-                        defaults={
-                            "mark_priority": 5.0,
-                            "mark_check": True,
-                            "origin": ArchiveManageEntry.ORIGIN_SYSTEM,
-                        },
+        # If we are updating a gallery's metadata, and we get a new tag that would have been rejected,
+        # mark the archive. Do the same for a wanted match.
+        wanted_invalidated: list["WantedGallery"] = []
+        banned_result: bool = False
+        banned_reasons: list[str] = []
+        if update_existing:
+            banned_result, banned_reasons = general_utils.discard_by_gallery_data(
+                gallery_db_entry.tag_list(), force_check=True
+            )
+            if settings.recheck_wanted_on_update:
+                wanted_found_qs = WantedGallery.objects.filter(foundgallery__gallery=gallery_db_entry)
+                wanted_found = list(wanted_found_qs)
+                if wanted_found:
+                    rematch_wanted = gallery_db_entry.match_against_wanted_galleries(
+                        wanted_filters=wanted_found_qs, skip_already_found=False
                     )
 
-        archive_banned_result: bool = False
+                    for single_wanted_found in wanted_found:
+                        if single_wanted_found not in rematch_wanted:
+                            wanted_invalidated.append(single_wanted_found)
 
-        if banned_result:
-            archive_banned_result, _ = general_utils.discard_by_gallery_data(archive.tag_list(), force_check=True)
+        for archive in gallery_db_entry.archive_set.all():
+            if not archive.gallery:
+                continue
 
-        archive.set_tags_from_gallery(archive.gallery)
+            archive.set_titles_from_gallery(archive.gallery)
 
-        if banned_result and not archive_banned_result:
-            mark_comment = "The refreshed Gallery has added banned data:\n{}".format(banned_reasons)
+            if settings.recheck_wanted_on_update:
+                for single_wanted_invalidated in wanted_invalidated:
+                    mark_comment = (
+                        "The refreshed Gallery metadata invalidates the previously accepted WantedGallery: (special-link):({})({})"
+                    ).format(single_wanted_invalidated.title, single_wanted_invalidated.get_absolute_url())
 
-            ArchiveManageEntry.objects.update_or_create(
-                archive=archive,
-                mark_reason="banned_data",
-                defaults={
-                    "mark_comment": mark_comment,
-                    "mark_priority": 5.0,
-                    "mark_check": True,
-                    "origin": ArchiveManageEntry.ORIGIN_SYSTEM,
-                },
-            )
+                    if not ArchiveManageEntry.objects.filter(
+                        archive=archive, mark_reason="invalidated_wanted", mark_comment=mark_comment
+                    ).exists():
+                        ArchiveManageEntry.objects.update_or_create(
+                            archive=archive,
+                            mark_reason="invalidated_wanted",
+                            mark_comment=mark_comment,
+                            defaults={
+                                "mark_priority": 5.0,
+                                "mark_check": True,
+                                "origin": ArchiveManageEntry.ORIGIN_SYSTEM,
+                            },
+                        )
 
-    return gallery_db_entry
+            archive_banned_result: bool = False
+
+            if banned_result:
+                archive_banned_result, _ = general_utils.discard_by_gallery_data(archive.tag_list(), force_check=True)
+
+            archive.set_tags_from_gallery(archive.gallery)
+            archive.schedule_index_update()
+
+            if banned_result and not archive_banned_result:
+                mark_comment = "The refreshed Gallery has added banned data:\n{}".format(banned_reasons)
+
+                ArchiveManageEntry.objects.update_or_create(
+                    archive=archive,
+                    mark_reason="banned_data",
+                    defaults={
+                        "mark_comment": mark_comment,
+                        "mark_priority": 5.0,
+                        "mark_check": True,
+                        "origin": ArchiveManageEntry.ORIGIN_SYSTEM,
+                    },
+                )
+
+        return gallery_db_entry

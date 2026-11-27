@@ -115,6 +115,9 @@ class ArchiveWorker(object):
                 archive_qs = Archive.objects.all()
 
             activity_cb = getattr(self.settings, "activity_callback", None) if self.settings else None
+            effective_user = user or (getattr(self.settings, "archive_user", None) if self.settings else None)
+            event_action = (getattr(self.settings, "event_action", None) if self.settings else None) or ""
+            reason = (getattr(self.settings, "archive_reason", None) if self.settings else None) or ""
 
             if full:
                 for archive in archive_qs:
@@ -136,6 +139,29 @@ class ArchiveWorker(object):
                     except Exception:
                         logger.critical(
                             "Error recalculating full fileinfo for archive #%s:\n%s",
+                            getattr(archive, "pk", "?"),
+                            traceback.format_exc(),
+                        )
+            elif event_action == "RECALC_ARCHIVE":
+                from viewer.utils.actions import event_log
+
+                for archive in archive_qs:
+                    if activity_cb:
+                        activity_cb()
+                    try:
+                        archive.refresh_from_db()
+                        archive.recalc_fileinfo()
+                        if effective_user:
+                            event_log(
+                                effective_user,
+                                "RECALC_ARCHIVE",
+                                reason=reason,
+                                content_object=archive,
+                                result="success",
+                            )
+                    except Exception:
+                        logger.critical(
+                            "Error recalculating fileinfo for archive #%s:\n%s",
                             getattr(archive, "pk", "?"),
                             traceback.format_exc(),
                         )
@@ -224,7 +250,7 @@ class ArchiveWorker(object):
         """Enqueue or run thumbnail generation for archives missing thumbnails."""
         if archives is None:
             from viewer.models import Archive
-            archives = Archive.objects.filter(thumbnail="")
+            archives = Archive.objects.filter_by_missing_thumbnails()
         return self.regenerate_all_thumbs(archives=archives, user=user, force_local=force_local)
 
     def calculate_missing_info(
@@ -625,8 +651,9 @@ class ArchiveWorker(object):
                                     result="recycled",
                                     reason=user_reason,
                                 )
-                                if old_archive.public:
-                                    old_archive.set_private()
+                            if old_archive.public:
+                                old_archive.set_private()
+                                if effective_user:
                                     event_log(
                                         effective_user,
                                         "UNPUBLISH_ARCHIVE",
@@ -732,8 +759,9 @@ class ArchiveWorker(object):
                                     result="recycled",
                                     reason=user_reason,
                                 )
-                                if old_archive.public:
-                                    old_archive.set_private()
+                            if old_archive.public:
+                                old_archive.set_private()
+                                if effective_user:
                                     event_log(
                                         effective_user,
                                         "UNPUBLISH_ARCHIVE",
@@ -958,8 +986,9 @@ class ArchiveWorker(object):
                                     result="recycled",
                                     reason=user_reason,
                                 )
-                                if archive.public:
-                                    archive.set_private()
+                            if archive.public:
+                                archive.set_private()
+                                if effective_user:
                                     event_log(
                                         effective_user,
                                         "UNPUBLISH_ARCHIVE",
@@ -1063,6 +1092,9 @@ class ArchiveWorker(object):
                         if archive.gallery and not archive.gallery.public:
                             archive.gallery.public = True
                             archive.gallery.save()
+                        continue
+                    if archive.binned:
+                        logger.info("Not publishing Archive in the Recycle Bin: %s", archive.get_absolute_url())
                         continue
                     if activity_cb:
                         setattr(archive, "_activity_callback", activity_cb)

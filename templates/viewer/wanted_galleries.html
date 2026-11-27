@@ -52,6 +52,11 @@
           <i class="fas fa-paper-plane me-1"></i>Submit URL
         </a>
       {% endif %}
+      {% if can_view_internal %}
+        <a class="btn btn-outline-info btn-sm" href="{% url 'viewer:stats-wanted' %}">
+          <i class="fas fa-filter me-1"></i>Funnel stats
+        </a>
+      {% endif %}
       {% if can_add %}
         <button class="btn btn-primary btn-sm" id="add-wanted" data-bs-toggle="collapse"
                 data-bs-target="#add-wanted-card" name="add-wanted" type="button"

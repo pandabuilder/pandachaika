@@ -120,7 +120,7 @@ Fetches multiple WantedGallery entries in a single request.
 
 | Parameter | Type | Required | Description |
 | :--- | :--- | :--- | :--- |
-| `wanted-galleries` | `integer` | Yes (repeatable) | WantedGallery IDs: `wanted-galleries=123&wanted-galleries=456`. |
+| `wanted-galleries` | `integer` | Yes (repeatable) | WantedGallery IDs: `wanted-galleries=123&wanted-galleries=456`. At most 100 without authentication (`400` otherwise). |
 | `include_found_galleries` | `flag` | No | If present, embeds linked found galleries in each entry. |
 
 ### Example Request
@@ -155,6 +155,7 @@ Filters and searches WantedGallery records.
 - **Endpoint**: `/api/`
 - **Method**: `GET`
 - **Query Parameters**: `?wanted-galleries-search=` plus filter parameters below.
+- **Limit**: Unpaginated. Without authentication, only the first 200 results are returned.
 
 ### Filter Parameters Reference
 
@@ -279,7 +280,7 @@ Optimized batch endpoint to verify multiple tags against `WantedGallery.wanted_t
 | :--- | :--- | :--- | :--- |
 | `wanted-tags` | `flag` / `string` | Yes* | Command trigger. Can be empty (`?wanted-tags=`) or contain tags directly (`?wanted-tags=artist:alice,artist:bob`). |
 | `wanted-tags-search`| `flag` / `string`| Yes* | Alias for `wanted-tags`. |
-| `tags` | `string` | No | Comma-separated or repeatable tag list (`tags=artist:alice,artist:bob` or `tags=artist:alice&tags=artist:bob`). |
+| `tags` | `string` | No | Comma-separated or repeatable tag list (`tags=artist:alice,artist:bob` or `tags=artist:alice&tags=artist:bob`). At most 100 tags without authentication (`400` otherwise). |
 | `wanted-not-found` | `flag` | No | Filter to only include unfound wanted galleries (`found=false`). |
 | `wanted-found` | `flag` | No | Filter to only include found wanted galleries (`found=true`). |
 | `full` | `flag` / `boolean` | No | Set to `1` or `true` to return full `WantedGallery` records instead of lightweight summaries. Default is `false` (lean mode). |

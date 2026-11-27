@@ -48,6 +48,8 @@ Fetches a single gallery by the ID assigned to it on the upstream provider site 
 | :--- | :--- | :--- | :--- |
 | `gid` | `string` / `integer` | Yes | Gallery ID on the provider site. |
 | `provider` | `string` | No | Provider slug (e.g. `panda`, `nhentai`). Restricts the lookup to that provider. If omitted, returns the first matching gallery. |
+| `include_downloads` | `boolean` | No | When truthy (e.g. `1` or `true`), includes a `download_status` object (or `null`) on each archive with its active or latest `DownloadEvent` status and progress. Requires authentication (`401`) and the `viewer.download_history` permission (`403`). |
+| `downloading_only` | `boolean` | No | When truthy, filters `archives` to only archives currently downloading (active download event when `include_downloads` is enabled, or incomplete non-recycled archives otherwise). |
 
 ### Example Request
 ```bash
@@ -90,11 +92,37 @@ curl "https://example.chaika.moe/api/?gid=1234567&provider=panda" \
     {
       "id": 42,
       "download": "/archive/42/download/",
-      "recycled": false
+      "recycled": false,
+      "completed": true
     }
   ]
 }
 ```
+
+Each entry in `archives` includes:
+- `id`: Archive internal ID (`integer`)
+- `download`: Relative download URL (`string`)
+- `recycled`: Whether the archive is in the recycle bin (`boolean`)
+- `completed`: Whether the archive file is finished/ingested (non-empty CRC32; `false` corresponds to an incomplete / orange-titled archive in the UI) (`boolean`)
+
+When `include_downloads=1` is passed (requires authentication and `viewer.download_history`), each entry in `archives` also includes `download_status` (`object` or `null` if no `DownloadEvent` exists):
+```json
+{
+  "id": 108,
+  "status": "in_progress",
+  "active": true,
+  "failed": false,
+  "progress": 64.5,
+  "method": "torrent",
+  "total_size": 12453880,
+  "error_message": "",
+  "create_date": 1700000000,
+  "started_date": 1700000005,
+  "completed_date": null,
+  "eta": 1700000120
+}
+```
+Status values: `"queued"`, `"in_progress"`, `"completed"`, `"failed"`, `"cancelled"`.
 
 When authenticated, the response also includes:
 - `status`: `"normal"`, `"denied"`, `"deleted"`, or `"no metadata"`
@@ -122,8 +150,10 @@ Fetches multiple galleries by their provider IDs in a single request.
 
 | Parameter | Type | Required | Description |
 | :--- | :--- | :--- | :--- |
-| `gids` | `string` / `integer` | Yes (repeatable) | One or more provider gallery IDs: `gids=123&gids=456`. |
+| `gids` | `string` / `integer` | Yes (repeatable) | One or more provider gallery IDs: `gids=123&gids=456`. At most 100 without authentication (`400` otherwise). |
 | `provider` | `string` | No | Provider slug applied to all IDs in the request. |
+| `include_downloads` | `boolean` | No | Same as `gid`. Requires authentication and `viewer.download_history`. |
+| `downloading_only` | `boolean` | No | Same as `gid`. Filters each gallery's `archives` list to currently downloading archives. |
 
 ### Example Request
 ```bash
@@ -155,7 +185,7 @@ Returns a JSON array of gallery objects (same schema as `gid`, including `id` an
     "link": "https://...",
     "url": "/gallery/102/",
     "tags": ["female:nekomimi"],
-    "archives": [{"id": 42, "download": "/archive/42/download/", "recycled": false}]
+    "archives": [{"id": 42, "download": "/archive/42/download/", "recycled": false, "completed": true}]
   }
 ]
 ```
@@ -168,7 +198,7 @@ Fetches a single gallery using its internal database primary key.
 
 - **Endpoint**: `/api/`
 - **Method**: `GET`
-- **Query Parameters**: `?gallery=<id>`
+- **Query Parameters**: `?gallery=<id>` (also supports optional `include_downloads` and `downloading_only`, same as `gid`)
 
 ### Example Request
 ```bash
@@ -336,7 +366,7 @@ curl "https://example.chaika.moe/api/?gsp=&page=2&count=48&tags=artist:example&s
 ### 6.5 Matcher Search (`match`)
 Used by internal and external matchers. Returns relational identifiers:
 - **Request**: `GET /api/?match=&crc32=A1B2C3D4`
-- **Additional Response Fields**: `gallery_container`, `parent_gid`, `first_gid`, `magazine`, `thumbnail`, `thumbnail_url`.
+- **Additional Response Fields**: `gallery_container`, `parent_gid`, `first_gid` (the provider's first gallery of the chain, also when it isn't in the database), `magazine`, `thumbnail`, `thumbnail_url`.
 
 ---
 
@@ -392,7 +422,7 @@ These query parameters can be passed to `g`, `gc`, `gs`, `gsp`, and `match`:
 | `expunged` | `boolean` | Indicates if the gallery was deleted/expunged on the provider site |
 | `disowned` | `boolean` | Indicates if the gallery was disowned by its uploader |
 | `hidden` | `boolean` | Indicates if the gallery is marked as hidden |
-| `replaced` | `boolean` | Calculated field indicating whether this gallery has been replaced by a newer version in a chain (i.e. other galleries reference this gallery as `parent_gallery` or `first_gallery`) |
+| `replaced` | `boolean` | Calculated field indicating whether this gallery has been replaced by a newer version in a chain (i.e. other galleries reference this gallery as `parent_gallery` or `first_gallery`, or a newer gallery is in its chain: galleries sharing the provider's first gallery gid) |
 | `rating` | `float` / `string` | Average user rating (0.0 to 5.0) |
 | `fjord` | `boolean` | Internal flagging status |
 | `provider` / `source` | `string` | Provider slug |

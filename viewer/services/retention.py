@@ -330,15 +330,70 @@ def get_retention_counts(settings_obj: Any = None) -> list[dict[str, Any]]:
     return results
 
 
+ALL_ENTITIES = "all"
+HISTORY_ENTITIES = ("history", "historical")
+
+
+def _entity_names(entity: "str | list[str] | tuple[str, ...]") -> list[str]:
+    names = [entity] if isinstance(entity, str) else list(entity)
+    return [part.strip() for name in names for part in str(name).split(",") if part.strip()]
+
+
+def resolve_prune_targets(entity: "str | list[str] | tuple[str, ...]") -> list[dict[str, Any]]:
+    """Entity definitions for ``entity``: "all", "history" (both change logs), an entity key or model name, or a
+    list (or comma-separated string) of those. Raises ValueError for an unknown name, so a typo never widens or
+    silently skips a prune."""
+    entity_defs = get_entity_definitions()
+    names = _entity_names(entity)
+    if not names:
+        raise ValueError("No entity to prune given.")
+    if ALL_ENTITIES in names:
+        return entity_defs
+
+    targets: list[dict[str, Any]] = []
+    for name in names:
+        if name in HISTORY_ENTITIES:
+            matched = [ed for ed in entity_defs if ed["key"].startswith("history_")]
+        else:
+            matched = [ed for ed in entity_defs if ed["key"] == name or ed["model_name"].lower() == name.lower()]
+        if not matched:
+            valid = ", ".join([ALL_ENTITIES, HISTORY_ENTITIES[0], *(ed["key"] for ed in entity_defs)])
+            raise ValueError(f"Unknown entity to prune: '{name}'. Valid entities: {valid}.")
+        for ed in matched:
+            if ed not in targets:
+                targets.append(ed)
+    return targets
+
+
+def validate_prune_request(
+    entity: "str | list[str] | tuple[str, ...]", days_override: int | None
+) -> list[dict[str, Any]]:
+    """Entity definitions targeted by a prune request, or ValueError when it would delete more than intended:
+    unknown entities, or a single days value for every entity at once (each entity keeps its own retention when
+    pruning all)."""
+    targets = resolve_prune_targets(entity)
+    if isinstance(days_override, int) and days_override > 0 and ALL_ENTITIES in _entity_names(entity):
+        raise ValueError(
+            "A days override can't be applied to every entity at once. Pick the entity to prune, "
+            "or prune all of them with their configured retention."
+        )
+    return targets
+
+
 def prune_database(
     settings_obj: Any = None,
-    entity: str = "all",
+    entity: "str | list[str] | tuple[str, ...]" = ALL_ENTITIES,
     days_override: int | dict[str, int] | None = None,
     dry_run: bool = False,
     chunk_size: int | None = None,
     user: Any = None,
 ) -> dict[str, Any]:
-    """Execute pruning on specified entity or all entities according to retention settings."""
+    """Execute pruning on the given entities according to retention settings.
+
+    ``days_override`` is either a single number of days for the targeted entities (refused when targeting all of
+    them), or a dict of days by entity key or config field; entities missing from the dict use their configured
+    retention.
+    """
     start_time = time.time()
     current_settings = get_active_settings(settings_obj)
     retention_cfg = getattr(current_settings, "retention", None)
@@ -346,24 +401,12 @@ def prune_database(
     if chunk_size is None or chunk_size <= 0:
         chunk_size = getattr(retention_cfg, "chunk_size", 5000) if retention_cfg else 5000
 
-    entity_defs = get_entity_definitions()
+    target_defs = validate_prune_request(entity, days_override if isinstance(days_override, int) else None)
     now = timezone.now()
-
-    # Determine which entities to target
-    target_defs = []
-    if entity == "all":
-        target_defs = entity_defs
-    elif entity in ("history", "historical"):
-        target_defs = [ed for ed in entity_defs if ed["key"].startswith("history_")]
-    else:
-        target_defs = [ed for ed in entity_defs if ed["key"] == entity]
-        if not target_defs:
-            # Match by model_name or key prefix
-            target_defs = [ed for ed in entity_defs if ed["model_name"].lower() == entity.lower()]
 
     summary: dict[str, Any] = {
         "dry_run": dry_run,
-        "entity": entity,
+        "entity": entity if isinstance(entity, str) else ",".join(entity),
         "total_deleted": 0,
         "entities": {},
     }
@@ -372,14 +415,15 @@ def prune_database(
         key = ed["key"]
         config_field = ed["config_field"]
 
-        # Determine retention days
-        days: int = 0
+        # Determine retention days: an override for this entity, else its configured retention.
+        configured_days: int = getattr(retention_cfg, config_field, 0) if retention_cfg else 0
+        days: int = configured_days
         if isinstance(days_override, dict):
-            days = days_override.get(key, days_override.get(config_field, 0))
+            override = days_override.get(key, days_override.get(config_field))
+            if override is not None:
+                days = override
         elif isinstance(days_override, int) and days_override > 0:
             days = days_override
-        elif retention_cfg:
-            days = getattr(retention_cfg, config_field, 0)
 
         if days <= 0:
             summary["entities"][key] = {
@@ -424,7 +468,7 @@ def prune_database(
 
     logger.info(
         "Database pruning (%s, dry_run=%s) finished in %.2fs: %d rows affected across %d entities",
-        entity,
+        summary["entity"],
         dry_run,
         duration,
         summary["total_deleted"],
@@ -438,7 +482,7 @@ def prune_database(
             event_log(
                 user,
                 "DATABASE_PRUNE",
-                data=f"entity={entity}, deleted={summary['total_deleted']}, duration={duration}s",
+                data=f"entity={summary['entity']}, deleted={summary['total_deleted']}, duration={duration}s",
                 result="success",
             )
         except Exception:

@@ -1,0 +1,85 @@
+{% comment %}
+Reusable hit-rate breakdown table for the Wanted-Gallery Funnel page (needs dm-pages.css & dm-pages.js).
+  rows        list of breakdown row dicts from build_wanted_funnel
+  label       first column header (e.g. "Publisher", "Category")
+  table_id    unique DOM id & bar group prefix
+  title       card header title
+  icon        FontAwesome icon class (e.g. "fa-building")
+  collapsed   optional truthy value to start collapsed
+{% endcomment %}
+<div class="dm-card" data-dm-filter-section>
+  <div class="dm-card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+    <a class="dm-collapse-toggle text-decoration-none{% if collapsed %} collapsed{% endif %}"
+       data-bs-toggle="collapse" href="#{{ table_id }}-body" role="button"
+       aria-expanded="{% if collapsed %}false{% else %}true{% endif %}" aria-controls="{{ table_id }}-body">
+      <i class="fas fa-chevron-down me-1"></i><i class="fas {{ icon }} text-info me-1"></i>{{ title }}
+    </a>
+    <span class="badge dm-badge-outline text-info">{{ rows|length }} row{{ rows|length|pluralize }}</span>
+  </div>
+  <div class="collapse{% if not collapsed %} show{% endif %}" id="{{ table_id }}-body">
+    <div class="table-responsive">
+      <table class="table table-dm table-hover table-sm dm-sortable mb-0" id="{{ table_id }}">
+        <thead>
+          <tr>
+            <th data-dm-sort="text">{{ label }}</th>
+            <th data-dm-sort="num" class="text-end">Total</th>
+            <th data-dm-sort="num" class="text-end">Found</th>
+            <th data-dm-sort="num" class="text-end">Searching</th>
+            <th data-dm-sort="num" class="text-end">Paused</th>
+            <th data-dm-sort="num" class="text-end">Overdue</th>
+            <th data-dm-sort="num" class="text-end">Archived</th>
+            <th data-dm-sort="num" style="min-width: 11rem;">Hit rate</th>
+            <th data-dm-sort="num" class="text-end" title="Found / (Found + Actively searching), excluding paused unfound">Active hit rate</th>
+            <th data-dm-sort="num" class="text-end" title="Median time to first found gallery">Median TTF</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+            <tr data-dm-filter-row>
+              <td class="dm-wrap">
+                {% if row.funnel_url %}
+                  <a href="{{ row.funnel_url }}" class="{% if not row.key %}dm-dim fst-italic{% endif %}" title="Filter funnel to {{ row.label }}">{{ row.label }}</a>
+                {% elif row.key %}
+                  {{ row.label }}
+                {% else %}
+                  <span class="dm-dim fst-italic">{{ row.label }}</span>
+                {% endif %}
+                {% if row.wanted_url %}
+                  <a href="{{ row.wanted_url }}" class="dm-filter-link" title="Open in Wanted Galleries"><i class="fas fa-external-link-alt"></i></a>
+                {% endif %}
+              </td>
+              <td class="text-end font-monospace" data-dm-value="{{ row.total }}">{{ row.total }}</td>
+              <td class="text-end font-monospace text-success" data-dm-value="{{ row.found }}">{{ row.found }}</td>
+              <td class="text-end font-monospace{% if row.searching %} text-warning{% else %} dm-dim{% endif %}" data-dm-value="{{ row.searching }}">{{ row.searching }}</td>
+              <td class="text-end font-monospace dm-muted" data-dm-value="{{ row.paused }}">{{ row.paused }}</td>
+              <td class="text-end font-monospace{% if row.overdue %} text-danger fw-semibold{% else %} dm-dim{% endif %}" data-dm-value="{{ row.overdue }}">{{ row.overdue }}</td>
+              <td class="text-end font-monospace text-info" data-dm-value="{{ row.archived }}">{{ row.archived }}</td>
+              <td data-dm-value="{{ row.hit_rate|default:-1 }}">
+                <div class="dm-bar-wrap">
+                  <div class="dm-bar-track">
+                    <span class="dm-bar{% if row.hit_rate is not None and row.hit_rate >= 75 %} dm-bar-green{% elif row.hit_rate is not None and row.hit_rate < 40 %} dm-bar-warning{% endif %}"
+                          style="width: {{ row.hit_rate|default:0 }}%;"></span>
+                  </div>
+                  <span class="dm-bar-val">
+                    {% if row.hit_rate is not None %}{{ row.hit_rate|floatformat:1 }}%{% else %}—{% endif %}
+                  </span>
+                </div>
+              </td>
+              <td class="text-end font-monospace small" data-dm-value="{{ row.active_hit_rate|default:-1 }}">
+                {% if row.active_hit_rate is not None %}{{ row.active_hit_rate|floatformat:1 }}%{% else %}<span class="dm-dim">—</span>{% endif %}
+              </td>
+              <td class="text-end font-monospace small text-nowrap" data-dm-value="{{ row.median_ttf_seconds|default:-1 }}"
+                  {% if row.ttf_sample_count %}title="Avg: {{ row.avg_ttf_display }} ({{ row.ttf_sample_count }} found with timestamps)"{% endif %}>
+                {{ row.median_ttf_display }}
+              </td>
+            </tr>
+          {% empty %}
+            <tr class="dm-sort-fixed">
+              <td colspan="10" class="dm-empty"><i class="fas fa-chart-bar"></i>No wanted galleries in this breakdown.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>

@@ -300,6 +300,14 @@ class GeneralPagesTest(TestCase):
         )
         # Bulk actions redirect back to the listing (post/redirect/get).
         self.assertRedirects(response, reverse("viewer:repeated-archives"), fetch_redirect_response=False)
+        from core.base.setup import Settings
+        from workers.models import TaskQueue
+        from workers.runner import WorkerRunner
+
+        task = TaskQueue.objects.filter(task_type="delete_archive_worker").latest("pk")
+        task.status = TaskQueue.Status.PROCESSING
+        task.save(update_fields=["status"])
+        WorkerRunner(Settings(load_from_disk=False), enable_schedulers=False).execute_job(task)
         self.assertEqual(Archive.objects.count(), 5)
         response = c.get(reverse("viewer:repeated-archives"), {"title": "gallery"})
         self.assertEqual(len(response.context["results"]), 1)

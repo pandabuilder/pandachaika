@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import json
 from datetime import timedelta
+from unittest.mock import patch
 
 import django.utils.timezone as django_tz
 from django.contrib.auth import get_user_model
@@ -473,7 +474,10 @@ class WorkersDashboardAPITests(TestCase):
             },
         )
 
-        res = self.staff_client.get("/api/workers/status/")
+        # The view takes the time again: pin it to the same instant, or a slow runner sees 499.x seconds left and
+        # formats them as "8m 19s".
+        with patch("viewer.views.workers_dashboard.django_tz.now", return_value=now):
+            res = self.staff_client.get("/api/workers/status/")
         self.assertEqual(res.status_code, 200)
         data = res.json()
         sched_map = {s["name"]: s for s in data["schedulers"]}
@@ -497,7 +501,7 @@ class WorkersDashboardAPITests(TestCase):
         s_future = sched_map["auto_wanted"]
         self.assertTrue(s_future["is_active"])
         self.assertIsNotNone(s_future["next_run_in_seconds"])
-        self.assertGreater(s_future["next_run_in_seconds"], 490)
+        self.assertEqual(s_future["next_run_in_seconds"], 500.0)
         self.assertEqual(s_future["next_run_in_formatted"], "8m 20s")
 
     def test_workers_status_download_speed_aggregation(self):
@@ -652,3 +656,442 @@ class WorkersDashboardAPITests(TestCase):
         self.assertEqual(data["downloads"][0]["type"], "archive")
         self.assertEqual(data["downloads"][0]["type_label"], "Archive")
         self.assertEqual(data["summary"]["shown_downloads_count"], 6)
+
+    def _create_batch_block(
+        self,
+        batch_id: str,
+        index: int,
+        total: int,
+        *,
+        status: str = "pending",
+        priority: int = 10,
+        total_links: int = 10,
+        args: list[str] | None = None,
+        providers_stats: dict | None = None,
+        reason: str = "",
+        error_message: str = "",
+        traceback_text: str = "",
+        finished_at=None,
+        started_at=None,
+        user=None,
+    ):
+        from workers.models import TaskQueue
+
+        now = django_tz.now()
+        options: dict = {
+            "crawl_batch": {
+                "id": batch_id,
+                "index": index,
+                "total": total,
+                "total_links": total_links,
+                "created_at": now.isoformat(),
+            }
+        }
+        if providers_stats is not None:
+            options["crawl_batch_stats"] = {"providers": providers_stats}
+
+        return TaskQueue.objects.create(
+            task_type="web_crawler",
+            args=args or [f"https://e-hentai.org/g/{index}01/aaa/", f"https://e-hentai.org/g/{index}02/bbb/"],
+            options=options,
+            user=user or self.staff_user,
+            reason=reason,
+            priority=priority,
+            status=status,
+            started_at=started_at,
+            finished_at=finished_at,
+            error_message=error_message,
+            traceback=traceback_text,
+        )
+
+    def test_workers_status_groups_split_crawl_batches_and_aggregates_provider_stats(self):
+        from workers.models import TaskQueue
+
+        now = django_tz.now()
+        active_bid = "batchlive001"
+        done_bid = "batchdone002"
+
+        # Active batch: 4 blocks (1 completed, 1 processing with live stats, 2 pending)
+        self._create_batch_block(
+            active_bid,
+            1,
+            4,
+            status=TaskQueue.Status.COMPLETED,
+            priority=8,
+            total_links=8,
+            reason="Nightly import",
+            started_at=now - timedelta(seconds=40),
+            finished_at=now - timedelta(seconds=20),
+            providers_stats={
+                "panda": {
+                    "db_total": 2,
+                    "db_existing": 1,
+                    "db_discarded": 1,
+                    "db_to_update": 0,
+                    "meta_evaluated": 1,
+                    "meta_accepted": 1,
+                    "meta_matched_wanted": 1,
+                    "to_download": 1,
+                    "dispatched_galleries": 1,
+                    "dispatched_tasks": 1,
+                }
+            },
+        )
+        t_proc = self._create_batch_block(
+            active_bid,
+            2,
+            4,
+            status=TaskQueue.Status.PROCESSING,
+            priority=8,
+            total_links=8,
+            reason="Nightly import",
+            started_at=now - timedelta(seconds=15),
+            providers_stats={
+                "panda": {
+                    "db_total": 2,
+                    "db_existing": 0,
+                    "meta_evaluated": 2,
+                    "meta_accepted": 1,
+                    "meta_banned": 1,
+                    "to_download": 1,
+                },
+                "nhentai": {
+                    "db_total": 3,
+                    "db_existing": 1,
+                    "db_to_update": 1,
+                    "meta_evaluated": 2,
+                    "meta_accepted": 2,
+                    "to_download": 2,
+                    "dispatched_galleries": 2,
+                    "dispatched_tasks": 1,
+                },
+            },
+        )
+        t_pend1 = self._create_batch_block(
+            active_bid, 3, 4, status=TaskQueue.Status.PENDING, priority=8, total_links=8, reason="Nightly import"
+        )
+        self._create_batch_block(
+            active_bid, 4, 4, status=TaskQueue.Status.PENDING, priority=8, total_links=8, reason="Nightly import"
+        )
+
+        # Recently finished batch (2 completed blocks)
+        self._create_batch_block(
+            done_bid,
+            1,
+            2,
+            status=TaskQueue.Status.COMPLETED,
+            total_links=4,
+            started_at=now - timedelta(minutes=5),
+            finished_at=now - timedelta(minutes=4),
+            providers_stats={"panda": {"db_total": 2, "db_existing": 2, "db_discarded": 2}},
+        )
+        self._create_batch_block(
+            done_bid,
+            2,
+            2,
+            status=TaskQueue.Status.COMPLETED,
+            total_links=4,
+            started_at=now - timedelta(minutes=4),
+            finished_at=now - timedelta(minutes=3),
+            providers_stats={"panda": {"db_total": 2, "db_existing": 0, "to_download": 2}},
+        )
+
+        # Even with pending_limit=1, the entire active batch (all 4 blocks) is aggregated accurately.
+        res = self.staff_client.get("/api/workers/status/?pending_limit=1")
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+
+        self.assertEqual(data["summary"]["active_crawl_batches_count"], 1)
+        self.assertEqual(data["summary"]["total_crawl_batches_count"], 2)
+
+        batches = data["crawl_batches"]
+        self.assertEqual([b["batch_id"] for b in batches], [active_bid, done_bid])
+
+        active = batches[0]
+        self.assertTrue(active["is_active"])
+        self.assertEqual(active["status"], "processing")
+        self.assertEqual(active["completed_blocks"], 1)
+        self.assertEqual(active["processing_blocks"], 1)
+        self.assertEqual(active["pending_blocks"], 2)
+        self.assertEqual(active["remaining_blocks"], 3)
+        self.assertEqual(active["total_blocks"], 4)
+        self.assertEqual(active["total_links"], 8)
+        self.assertEqual(active["progress_percent"], 25.0)
+        self.assertEqual(active["priority"], 8)
+        self.assertEqual(active["reason"], "Nightly import")
+        self.assertEqual([blk["index"] for blk in active["blocks"]], [1, 2, 3, 4])
+
+        # Verify aggregated provider stats across blocks
+        panda = active["providers"]["panda"]
+        self.assertEqual(panda["db_total"], 4)
+        self.assertEqual(panda["db_existing"], 1)
+        self.assertEqual(panda["db_new"], 3)
+        self.assertEqual(panda["meta_evaluated"], 3)
+        self.assertEqual(panda["meta_accepted"], 2)
+        self.assertEqual(panda["meta_banned"], 1)
+        self.assertEqual(panda["to_download"], 2)
+        self.assertEqual(panda["dispatched_galleries"], 1)
+        self.assertEqual(panda["dispatched_tasks"], 1)
+
+        nhentai = active["providers"]["nhentai"]
+        self.assertEqual(nhentai["db_total"], 3)
+        self.assertEqual(nhentai["db_new"], 2)
+        self.assertEqual(nhentai["db_to_update"], 1)
+        self.assertEqual(nhentai["dispatched_galleries"], 2)
+
+        # Verify overall totals across both providers
+        self.assertEqual(active["totals"]["db_total"], 7)
+        self.assertEqual(active["totals"]["db_new"], 5)
+        self.assertEqual(active["totals"]["to_download"], 4)
+
+        # Verify finished batch
+        done = batches[1]
+        self.assertFalse(done["is_active"])
+        self.assertEqual(done["status"], "completed")
+        self.assertEqual(done["completed_blocks"], 2)
+        self.assertEqual(done["total_blocks"], 2)
+        self.assertEqual(done["progress_percent"], 100.0)
+        self.assertEqual(done["providers"]["panda"]["db_total"], 4)
+        self.assertEqual(done["providers"]["panda"]["db_new"], 2)
+
+        # Verify flat task lists carry batch reference metadata
+        proc_item = next(t for t in data["active_tasks"] if t["id"] == t_proc.pk)
+        self.assertEqual(proc_item["batch_id"], active_bid)
+        self.assertEqual(proc_item["batch_index"], 2)
+        self.assertEqual(proc_item["batch_total"], 4)
+
+        pend_item = next(t for t in data["pending_tasks"] if t["id"] == t_pend1.pk)
+        self.assertEqual(pend_item["batch_id"], active_bid)
+        self.assertEqual(pend_item["batch_index"], 3)
+        self.assertEqual(pend_item["batch_total"], 4)
+
+        # Verify SSR HTML renders collapsible batch card and controls
+        res_html = self.staff_client.get("/stats/workers/")
+        self.assertEqual(res_html.status_code, 200)
+        self.assertContains(res_html, active_bid)
+        self.assertContains(res_html, "1 / 4")
+        self.assertContains(res_html, "Cancel remaining blocks")
+        self.assertContains(res_html, "Reprioritize batch")
+
+    def test_crawl_batch_collector_persists_live_stats_while_processing(self):
+        from workers.crawl_batch import CrawlBatchCollector
+        from workers.models import TaskQueue
+
+        batch_id = "batchliveflush"
+        task = self._create_batch_block(
+            batch_id,
+            1,
+            2,
+            status=TaskQueue.Status.PROCESSING,
+            started_at=django_tz.now(),
+        )
+        self._create_batch_block(batch_id, 2, 2, status=TaskQueue.Status.PENDING)
+
+        collector = CrawlBatchCollector(batch_id, task_pk=task.pk)
+        collector.record_db_check("panda", total=5, existing=2, discarded=1, to_update=1)
+        collector.record_metadata_check("panda", total_evaluated=4, accepted=3, banned=1)
+        collector.record_download_dispatch("panda", gallery_count=3, dispatched=True)
+
+        data = self.staff_client.get("/api/workers/status/").json()
+        batch = next(b for b in data["crawl_batches"] if b["batch_id"] == batch_id)
+        panda = batch["providers"]["panda"]
+        self.assertEqual(panda["db_total"], 5)
+        self.assertEqual(panda["db_new"], 3)
+        self.assertEqual(panda["meta_evaluated"], 4)
+        self.assertEqual(panda["meta_accepted"], 3)
+        self.assertEqual(panda["meta_banned"], 1)
+        self.assertEqual(panda["to_download"], 3)
+        self.assertEqual(panda["dispatched_galleries"], 3)
+        self.assertEqual(panda["dispatched_tasks"], 1)
+
+    def test_workers_action_api_batch_cancel(self):
+        from workers.models import TaskQueue
+
+        batch_id = "batchcancel99"
+        now = django_tz.now()
+
+        t_done = self._create_batch_block(
+            batch_id,
+            1,
+            4,
+            status=TaskQueue.Status.COMPLETED,
+            finished_at=now - timedelta(seconds=10),
+            providers_stats={"panda": {"db_total": 2, "db_existing": 0}},
+        )
+        t_proc = self._create_batch_block(batch_id, 2, 4, status=TaskQueue.Status.PROCESSING, started_at=now)
+        t_pend1 = self._create_batch_block(batch_id, 3, 4, status=TaskQueue.Status.PENDING)
+        t_pend2 = self._create_batch_block(batch_id, 4, 4, status=TaskQueue.Status.PENDING)
+        unrelated = TaskQueue.objects.create(
+            task_type="web_crawler", args=["https://example.com/solo/"], status=TaskQueue.Status.PENDING
+        )
+
+        # Non-staff user rejected
+        res_forbidden = self.user_client.post(
+            "/api/workers/action/",
+            data=json.dumps({"action": "batch_cancel", "batch_id": batch_id}),
+            content_type="application/json",
+        )
+        self.assertEqual(res_forbidden.status_code, 403)
+
+        # Unknown batch -> 404
+        res_404 = self.staff_client.post(
+            "/api/workers/action/",
+            data=json.dumps({"action": "batch_cancel", "batch_id": "nonexistent123"}),
+            content_type="application/json",
+        )
+        self.assertEqual(res_404.status_code, 404)
+
+        # Cancel remaining blocks (pending + processing) and verify grouped summary log emitted
+        with patch("workers.crawl_batch.logger") as mock_batch_logger:
+            res = self.staff_client.post(
+                "/api/workers/action/",
+                data=json.dumps({"action": "batch_cancel", "batch_id": batch_id}),
+                content_type="application/json",
+            )
+            self.assertEqual(res.status_code, 200)
+            body = res.json()
+            self.assertTrue(body["success"])
+            self.assertEqual(body["cancelled_count"], 3)
+            self.assertEqual(body["cancelled_pending"], 2)
+            self.assertEqual(body["cancelled_processing"], 1)
+            self.assertGreater(mock_batch_logger.info.call_count, 0)
+
+        t_done.refresh_from_db()
+        t_proc.refresh_from_db()
+        t_pend1.refresh_from_db()
+        t_pend2.refresh_from_db()
+        unrelated.refresh_from_db()
+
+        self.assertEqual(t_done.status, TaskQueue.Status.COMPLETED)
+        self.assertEqual(t_proc.status, TaskQueue.Status.CANCELLED)
+        self.assertEqual(t_pend1.status, TaskQueue.Status.CANCELLED)
+        self.assertEqual(t_pend2.status, TaskQueue.Status.CANCELLED)
+        self.assertIsNotNone(t_pend1.finished_at)
+        self.assertEqual(unrelated.status, TaskQueue.Status.PENDING)
+
+        # Calling again when no remaining blocks exist returns 400
+        res_again = self.staff_client.post(
+            "/api/workers/action/",
+            data=json.dumps({"action": "batch_cancel", "batch_id": batch_id}),
+            content_type="application/json",
+        )
+        self.assertEqual(res_again.status_code, 400)
+
+    def test_workers_action_api_batch_cancel_pending_only(self):
+        from workers.models import TaskQueue
+
+        batch_id = "batchpendonly"
+        t_proc = self._create_batch_block(
+            batch_id, 1, 2, status=TaskQueue.Status.PROCESSING, started_at=django_tz.now()
+        )
+        t_pend = self._create_batch_block(batch_id, 2, 2, status=TaskQueue.Status.PENDING)
+
+        res = self.staff_client.post(
+            "/api/workers/action/",
+            data=json.dumps({"action": "batch_cancel", "batch_id": batch_id, "include_processing": False}),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 200)
+        body = res.json()
+        self.assertEqual(body["cancelled_count"], 1)
+        self.assertEqual(body["cancelled_pending"], 1)
+        self.assertEqual(body["cancelled_processing"], 0)
+
+        t_proc.refresh_from_db()
+        t_pend.refresh_from_db()
+        self.assertEqual(t_proc.status, TaskQueue.Status.PROCESSING)
+        self.assertEqual(t_pend.status, TaskQueue.Status.CANCELLED)
+
+    def test_workers_action_api_batch_reprioritize(self):
+        from workers.models import TaskQueue
+
+        batch_id = "batchprio001"
+        t_done = self._create_batch_block(
+            batch_id, 1, 4, status=TaskQueue.Status.COMPLETED, priority=10, finished_at=django_tz.now()
+        )
+        t_proc = self._create_batch_block(
+            batch_id, 2, 4, status=TaskQueue.Status.PROCESSING, priority=10, started_at=django_tz.now()
+        )
+        t_pend1 = self._create_batch_block(batch_id, 3, 4, status=TaskQueue.Status.PENDING, priority=10)
+        t_pend2 = self._create_batch_block(batch_id, 4, 4, status=TaskQueue.Status.PENDING, priority=9)
+        other_batch = self._create_batch_block("otherbatch99", 1, 2, status=TaskQueue.Status.PENDING, priority=10)
+
+        # Validation errors
+        for bad_priority in (0, 11, -1, "abc", 2.5, True, None):
+            res_bad = self.staff_client.post(
+                "/api/workers/action/",
+                data=json.dumps({"action": "batch_reprioritize", "batch_id": batch_id, "priority": bad_priority}),
+                content_type="application/json",
+            )
+            self.assertEqual(res_bad.status_code, 400, f"Expected 400 for priority={bad_priority!r}")
+
+        # Unknown batch -> 404
+        res_404 = self.staff_client.post(
+            "/api/workers/action/",
+            data=json.dumps({"action": "batch_reprioritize", "batch_id": "missingbatch", "priority": 2}),
+            content_type="application/json",
+        )
+        self.assertEqual(res_404.status_code, 404)
+
+        # Valid reprioritize updates only PENDING blocks in the target batch
+        res_ok = self.staff_client.post(
+            "/api/workers/action/",
+            data=json.dumps({"action": "batch_reprioritize", "batch_id": batch_id, "priority": 2}),
+            content_type="application/json",
+        )
+        self.assertEqual(res_ok.status_code, 200)
+        body = res_ok.json()
+        self.assertTrue(body["success"])
+        self.assertEqual(body["priority"], 2)
+        self.assertEqual(body["updated_count"], 2)
+
+        t_done.refresh_from_db()
+        t_proc.refresh_from_db()
+        t_pend1.refresh_from_db()
+        t_pend2.refresh_from_db()
+        other_batch.refresh_from_db()
+
+        self.assertEqual(t_done.priority, 10)
+        self.assertEqual(t_proc.priority, 10)
+        self.assertEqual(t_pend1.priority, 2)
+        self.assertEqual(t_pend2.priority, 2)
+        self.assertEqual(other_batch.priority, 10)
+
+        # Batch with no pending blocks returns 400
+        t_pend1.status = TaskQueue.Status.COMPLETED
+        t_pend2.status = TaskQueue.Status.COMPLETED
+        t_pend1.save(update_fields=["status"])
+        t_pend2.save(update_fields=["status"])
+        res_none = self.staff_client.post(
+            "/api/workers/action/",
+            data=json.dumps({"action": "batch_reprioritize", "batch_id": batch_id, "priority": 1}),
+            content_type="application/json",
+        )
+        self.assertEqual(res_none.status_code, 400)
+
+    def test_task_retry_clears_transient_crawl_batch_stats(self):
+        from workers.models import TaskQueue
+
+        failed_block = self._create_batch_block(
+            "batchretry01",
+            1,
+            2,
+            status=TaskQueue.Status.FAILED,
+            finished_at=django_tz.now(),
+            providers_stats={"panda": {"db_total": 2, "db_existing": 0}},
+            error_message="Connection reset",
+        )
+        failed_block.options["crawl_batch_summary_logged"] = True
+        failed_block.save(update_fields=["options"])
+
+        res = self.staff_client.post(
+            "/api/workers/action/",
+            data=json.dumps({"action": "task_retry", "target": failed_block.pk}),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 200)
+        retried = TaskQueue.objects.filter(status=TaskQueue.Status.PENDING).order_by("-id").first()
+        self.assertIsNotNone(retried)
+        self.assertIn("crawl_batch", retried.options)
+        self.assertNotIn("crawl_batch_stats", retried.options)
+        self.assertNotIn("crawl_batch_summary_logged", retried.options)

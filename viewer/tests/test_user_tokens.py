@@ -1,4 +1,3 @@
-import re
 from datetime import timedelta
 from io import StringIO
 
@@ -240,12 +239,25 @@ class TokenManagementViewTests(TestCase):
         )
         self.assertTrue(EventLog.objects.filter(action="CREATE_USER_TOKEN", user=self.user).exists())
 
-        # The secret is shown exactly once, in the flash message, and works.
+        # The secret is shown on the next profile page load only, never in a flash message, and works.
         page = self.client.get(reverse("viewer:change-profile"))
-        shown = [str(m) for m in page.context["messages"]]
-        self.assertEqual(len(shown), 1)
-        secret = re.search(r"<([^<>]+)>", shown[0]).group(1)
+        self.assertEqual(list(page.context["messages"]), [])
+        new_token = page.context["new_token"]
+        secret = new_token["secret"]
+        self.assertEqual(new_token["id"], token.pk)
         self.assertEqual(UserLongLivedToken.create_salted_key_from_key(secret), token.key)
+        self.assertContains(page, secret, count=1)
+        self.assertIn("no-store", page["Cache-Control"])
+
+        again = self.client.get(reverse("viewer:change-profile"))
+        self.assertIsNone(again.context["new_token"])
+        self.assertNotContains(again, secret)
+        self.assertNotIn("no-store", again.get("Cache-Control", ""))
+
+    def test_failed_create_shows_no_secret(self):
+        self._create(name="", expiry_days="30", scopes=["read"])
+        page = self.client.get(reverse("viewer:change-profile"))
+        self.assertIsNone(page.context["new_token"])
 
     def test_create_never_expiring_token(self):
         self._create(name="forever", expiry_days="0", scopes=["read"])
