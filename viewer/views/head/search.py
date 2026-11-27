@@ -710,6 +710,9 @@ def filter_archives_simple(
     if "hidden" in params and params["hidden"]:
         results = results.filter(gallery__hidden=True)
 
+    if "expunged" in params and params["expunged"]:
+        results = results.filter(gallery__expunged=True)
+
     if not show_binned:
         results = results.filter(binned=False)
 

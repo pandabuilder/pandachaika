@@ -8,7 +8,7 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import permission_required, login_required
 from django.core.paginator import Paginator, InvalidPage, EmptyPage
-from django.db.models import Prefetch, Count, Case, When, Q, Exists, OuterRef
+from django.db.models import Prefetch, Count, Case, When, Q, Exists, OuterRef, QuerySet
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect, Http404, JsonResponse
 from django.shortcuts import render
 from django.urls import reverse
@@ -97,14 +97,17 @@ def manage_galleries(request: HttpRequest) -> HttpResponse:
             if "sort_by" in get:
                 params["sort_by"] = get.get("sort_by", "")
 
-            results_gallery = filter_galleries_simple(params)
+            results_gallery: QuerySet[Gallery] = filter_galleries_simple(params)
             if "is-not-in-groups" in get:
                 results_gallery = results_gallery.annotate(gallery_groups=Count("gallery_group")).filter(gallery_groups=0)
             if "is-in-single-group" in get:
                 results_gallery = results_gallery.annotate(galleries_in_group=Count("gallery_group__galleries")).filter(galleries_in_group=1)
         else:
-            preserved = Case(*[When(pk=pk, then=pos) for pos, pk in enumerate(pks)])
-            results_gallery = Gallery.objects.filter(id__in=pks).order_by(preserved)
+            if pks:
+                preserved = Case(*[When(pk=pk, then=pos) for pos, pk in enumerate(pks)])
+                results_gallery = Gallery.objects.filter(id__in=pks).order_by(preserved)
+            else:
+                results_gallery = Gallery.objects.none()
 
         if "delete_galleries" in p and request.user.has_perm("viewer.mark_delete_gallery"):
             gallery_pks = list(results_gallery.values_list("pk", flat=True))
@@ -120,6 +123,8 @@ def manage_galleries(request: HttpRequest) -> HttpResponse:
                 message = "Queued marking {} gallery(ies) as deleted".format(len(gallery_pks))
                 logger.info("User %s: %s", request.user.username, message)
                 messages.success(request, message)
+            elif not json_request:
+                messages.warning(request, "No galleries were selected.")
         elif "real_delete_galleries" in p and request.user.has_perm("viewer.delete_gallery"):
             gallery_pks = list(results_gallery.values_list("pk", flat=True))
             if gallery_pks:
@@ -134,6 +139,8 @@ def manage_galleries(request: HttpRequest) -> HttpResponse:
                 message = "Queued deleting {} gallery(ies)".format(len(gallery_pks))
                 logger.info("User %s: %s", request.user.username, message)
                 messages.success(request, message)
+            elif not json_request:
+                messages.warning(request, "No galleries were selected.")
         elif "publish_galleries" in p and request.user.has_perm("viewer.publish_gallery"):
             gallery_pks = list(results_gallery.values_list("pk", flat=True))
             if gallery_pks:
@@ -148,6 +155,8 @@ def manage_galleries(request: HttpRequest) -> HttpResponse:
                 message = "Queued publishing {} gallery(ies)".format(len(gallery_pks))
                 logger.info("User %s: %s", request.user.username, message)
                 messages.success(request, message)
+            elif not json_request:
+                messages.warning(request, "No galleries were selected.")
         elif "private_galleries" in p and request.user.has_perm("viewer.private_gallery"):
             gallery_pks = list(results_gallery.values_list("pk", flat=True))
             if gallery_pks:
@@ -162,8 +171,12 @@ def manage_galleries(request: HttpRequest) -> HttpResponse:
                 message = "Queued making {} gallery(ies) private".format(len(gallery_pks))
                 logger.info("User %s: %s", request.user.username, message)
                 messages.success(request, message)
+            elif not json_request:
+                messages.warning(request, "No galleries were selected.")
         elif "download_galleries" in p and request.user.has_perm("viewer.download_gallery"):
+            queued_any = False
             for gallery in results_gallery:
+                queued_any = True
                 message = "Queueing gallery: {}, link: {}".format(gallery.title, gallery.get_link())
                 logger.info(message)
                 messages.success(request, message)
@@ -193,15 +206,20 @@ def manage_galleries(request: HttpRequest) -> HttpResponse:
                     reason=reason,
                     event_action="DOWNLOAD",
                 )
+            if not queued_any and not json_request:
+                messages.warning(request, "No galleries were selected.")
         elif "recall_api" in p and request.user.has_perm("viewer.update_metadata"):
-            message = "Recalling API for {} galleries".format(results_gallery.count())
-            logger.info(message)
-            messages.success(request, message)
-
             gallery_links = [x.get_link() for x in results_gallery]
-            gallery_providers = list(results_gallery.values_list("provider", flat=True).distinct())
+            if gallery_links:
+                message = "Recalling API for {} galleries".format(len(gallery_links))
+                logger.info(message)
+                messages.success(request, message)
 
-            galleries_update_metadata(gallery_links, gallery_providers, request.user, reason, crawler_settings)
+                gallery_providers = list(results_gallery.values_list("provider", flat=True).distinct())
+
+                galleries_update_metadata(gallery_links, gallery_providers, request.user, reason, crawler_settings)
+            elif not json_request:
+                messages.warning(request, "No galleries were selected.")
         elif "create_gallery_match_groups" in p and request.user.has_perm("viewer.add_gallerymatchgroup"):
             if thread_exists_in_db("match_unmatched_gallery_groups_worker"):
                 return render_error(request, "Gallery Groups matching worker is already running.")
@@ -240,6 +258,8 @@ def manage_galleries(request: HttpRequest) -> HttpResponse:
                     "(cutoff: {}, max matches: {}) "
                     'using provider filter "{}" and methods filter: {}'.format(cutoff, max_matches, provider, methods),
                 )
+            elif not json_request:
+                messages.warning(request, "No galleries were selected.")
         elif "delete_gallery_match_groups" in p and request.user.has_perm("viewer.delete_gallerymatchgroup"):
             delete_result = GalleryMatchGroup.objects.filter(galleries__in=results_gallery).delete()
             logger.info("User {}: Deleting {} Gallery Match Groups for galleries".format(request.user.username, delete_result[0]))
@@ -261,6 +281,8 @@ def manage_galleries(request: HttpRequest) -> HttpResponse:
                         len(gallery_pks)
                     ),
                 )
+            elif not json_request:
+                messages.warning(request, "No galleries were selected.")
         if json_request:
             return HttpResponse("", content_type="application/json; charset=utf-8")
         return HttpResponseRedirect(request.get_full_path())

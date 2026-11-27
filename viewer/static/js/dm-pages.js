@@ -54,6 +54,8 @@ window.DM = (function () {
    * @param {Element} opts.root           container of the checkboxes
    * @param {string}  opts.checkbox       selector of the row checkboxes
    * @param {Element} [opts.toggleAll]    header checkbox
+   * @param {Element} [opts.runAll]       optional "all N matching" checkbox
+   * @param {number}  [opts.totalCount]   total matching count when opts.runAll is checked
    * @param {string}  [opts.row]          selector of the row element to highlight (default "tr")
    * @param {boolean} [opts.rowClick]     clicking on an empty part of a row toggles it
    * @param {Function} [opts.onChange]    called with the list of checked checkboxes
@@ -62,14 +64,19 @@ window.DM = (function () {
     const root = opts.root;
     if (!root) return null;
     const rowSelector = opts.row || 'tr';
+    const totalCount = typeof opts.totalCount === 'number' ? opts.totalCount : 0;
     let lastClicked = null;
 
     function boxes() { return Array.from(root.querySelectorAll(opts.checkbox)); }
     function checked() { return boxes().filter(function (cb) { return cb.checked; }); }
+    function isRunAll() { return Boolean(opts.runAll && opts.runAll.checked); }
+    function activeCount() { return isRunAll() ? totalCount : checked().length; }
 
     function refresh() {
       const all = boxes();
       const sel = all.filter(function (cb) { return cb.checked; });
+      const runAllActive = isRunAll();
+      const count = runAllActive ? totalCount : sel.length;
       all.forEach(function (cb) {
         const row = cb.closest(rowSelector);
         if (row) row.classList.toggle('dm-selected', cb.checked);
@@ -79,13 +86,14 @@ window.DM = (function () {
         opts.toggleAll.indeterminate = sel.length > 0 && sel.length < all.length;
       }
       document.querySelectorAll('[data-dm-sel-count]').forEach(function (el) {
-        el.textContent = sel.length === 0 ? 'None selected' : sel.length + ' selected';
+        if (runAllActive) el.textContent = 'All ' + totalCount + ' matching';
+        else el.textContent = sel.length === 0 ? 'None selected' : sel.length + ' selected';
       });
       document.querySelectorAll('[data-dm-needs-selection]').forEach(function (el) {
-        el.disabled = sel.length === 0;
+        el.disabled = count === 0;
       });
       document.querySelectorAll('.dm-actionbar').forEach(function (el) {
-        el.classList.toggle('has-selection', sel.length > 0);
+        el.classList.toggle('has-selection', count > 0);
       });
       if (opts.onChange) opts.onChange(sel);
     }
@@ -127,8 +135,11 @@ window.DM = (function () {
     if (opts.toggleAll) {
       opts.toggleAll.addEventListener('change', function () { setAll(opts.toggleAll.checked); });
     }
+    if (opts.runAll) {
+      opts.runAll.addEventListener('change', refresh);
+    }
     refresh();
-    return { checked: checked, refresh: refresh, setAll: setAll, count: function () { return checked().length; } };
+    return { checked: checked, refresh: refresh, setAll: setAll, count: activeCount, isRunAll: isRunAll };
   }
 
   // --- Auto refresh ------------------------------------------------------------------------------
@@ -302,12 +313,21 @@ window.DM = (function () {
 
   // --- Declarative wiring ------------------------------------------------------------------------
   let currentSelectionCount = function () { return 0; };
+  let currentSelectionIsRunAll = function () { return false; };
+
+  function formatConfirmMessage(template) {
+    const count = currentSelectionCount();
+    if (currentSelectionIsRunAll()) {
+      return template.replace(/\{n\}\s+selected\b/g, 'ALL ' + count + ' matching').replace(/\{n\}/g, String(count));
+    }
+    return template.replace(/\{n\}/g, String(count));
+  }
 
   function wireConfirms() {
     document.addEventListener('click', function (e) {
       const el = e.target.closest('[data-dm-confirm]');
       if (!el || el.tagName === 'FORM') return;
-      const msg = el.dataset.dmConfirm.replace('{n}', String(currentSelectionCount()));
+      const msg = formatConfirmMessage(el.dataset.dmConfirm);
       if (!window.confirm(msg)) { e.preventDefault(); e.stopImmediatePropagation(); }
     }, true);
     document.addEventListener('submit', function (e) {
@@ -472,7 +492,10 @@ window.DM = (function () {
     initPopovers: initPopovers,
     selection: function (opts) {
       const sel = selection(opts);
-      if (sel) currentSelectionCount = sel.count;
+      if (sel) {
+        currentSelectionCount = sel.count;
+        currentSelectionIsRunAll = sel.isRunAll;
+      }
       return sel;
     },
     autoRefresh: autoRefresh,

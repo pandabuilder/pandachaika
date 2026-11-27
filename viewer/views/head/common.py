@@ -282,6 +282,7 @@ archive_filter_keys = [
     "category",
     "provider",
     "hidden",
+    "expunged",
     "qsearch",
     "extracted",
 ]

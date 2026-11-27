@@ -162,6 +162,7 @@ def archive_manage_results_to_json(
                     "rating": archive.gallery.rating,
                     "link": archive.gallery.get_link(),
                     "hidden": archive.gallery.hidden,
+                    "expunged": archive.gallery.expunged,
                     "url": request.build_absolute_uri(reverse("viewer:gallery", args=(archive.gallery.pk,))),
                     "provider": archive.gallery.provider,
                     "filecount": archive.gallery.filecount,

@@ -369,6 +369,25 @@ class CollaboratorBatchOperationsAsyncTests(TestCase):
         _run_task(TaskQueue.objects.filter(task_type="gallery_batch_worker").latest("pk"))
         self.assertFalse(Gallery.objects.filter(pk=g1.pk).exists())
 
+    def test_gallery_batch_worker_chunks_large_pk_lists_and_deduplicates(self):
+        galleries = [
+            Gallery.objects.create(gid=f"chunk-{i}", token="t", provider="panda", title=f"C{i}", public=False)
+            for i in range(5)
+        ]
+        # Pass duplicate PKs and force a small chunk size to verify chunking & deduplication.
+        pks = [galleries[4].pk, galleries[2].pk, galleries[0].pk, galleries[2].pk, galleries[3].pk, galleries[1].pk]
+        task = TaskQueue.objects.create(
+            task_type="gallery_batch_worker",
+            args=pks,
+            options={"operation": "publish"},
+            user=self.admin,
+        )
+        with patch("workers.batch_tasks.BATCH_FETCH_CHUNK_SIZE", 2):
+            _run_task(task)
+        self.assertEqual(task.status, TaskQueue.Status.COMPLETED)
+        self.assertEqual(task.result, {"operation": "publish", "processed": 5, "skipped": 0})
+        self.assertEqual(Gallery.objects.filter(pk__in=[g.pk for g in galleries], public=True).count(), 5)
+
 
 class ExternalAndMaintenanceViewsAsyncTests(TestCase):
     def setUp(self):

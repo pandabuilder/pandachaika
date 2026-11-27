@@ -344,36 +344,37 @@
 
         <div class="ms-auto d-flex flex-wrap gap-2">
           {% if perms.viewer.download_gallery %}
-            <button name="download_galleries" class="btn btn-sm btn-success" data-dm-needs-selection disabled title="Force queue selected galleries for download">
+            <button type="submit" name="download_galleries" class="btn btn-sm btn-success" data-dm-needs-selection disabled title="Force queue selected galleries for download">
               <i class="fas fa-download me-1"></i>Download
             </button>
           {% endif %}
           {% if perms.viewer.update_metadata %}
-            <button name="recall_api" class="btn btn-sm btn-outline-info" data-dm-needs-selection disabled title="Refresh metadata from provider API">
+            <button type="submit" name="recall_api" class="btn btn-sm btn-outline-info" data-dm-needs-selection disabled title="Refresh metadata from provider API">
               <i class="fas fa-sync-alt me-1"></i>Recall API
             </button>
           {% endif %}
           {% if perms.viewer.publish_gallery %}
-            <button name="publish_galleries" class="btn btn-sm btn-outline-success" data-dm-needs-selection disabled
+            <button type="submit" name="publish_galleries" class="btn btn-sm btn-outline-success" data-dm-needs-selection disabled
                     data-dm-confirm="Publish {n} selected galler(ies)?">
               <i class="fas fa-globe me-1"></i>Publish
             </button>
           {% endif %}
           {% if perms.viewer.private_gallery %}
-            <button name="private_galleries" class="btn btn-sm btn-outline-warning" data-dm-needs-selection disabled
+            <button type="submit" name="private_galleries" class="btn btn-sm btn-outline-warning" data-dm-needs-selection disabled
                     data-dm-confirm="Make {n} selected galler(ies) private?">
               <i class="fas fa-lock me-1"></i>Private
             </button>
           {% endif %}
           {% if perms.viewer.mark_delete_gallery %}
-            <button name="delete_galleries" class="btn btn-sm btn-outline-danger" data-dm-needs-selection disabled
+            <button type="submit" name="delete_galleries" class="btn btn-sm btn-outline-danger" data-dm-needs-selection disabled
                     data-dm-confirm="Mark {n} selected galler(ies) as deleted?">
               <i class="fas fa-ban me-1"></i>Mark Deleted
             </button>
           {% endif %}
           {% if perms.viewer.delete_gallery %}
-            <button name="real_delete_galleries" class="btn btn-sm btn-danger" data-dm-needs-selection disabled
-                    data-dm-confirm="PERMANENTLY DELETE {n} selected galler(ies)? This cannot be undone.">
+            <button type="submit" name="real_delete_galleries" class="btn btn-sm btn-danger" data-dm-needs-selection disabled
+                    title="Permanently delete the gallery entries only (linked archives and files are kept, unmatched)"
+                    data-dm-confirm="PERMANENTLY DELETE {n} selected galler(ies)? Linked archives and their files are kept (unmatched). This cannot be undone.">
               <i class="fas fa-trash-alt me-1"></i>Delete
             </button>
           {% endif %}
@@ -436,37 +437,14 @@
       const titleInput = document.getElementById('{{ form.title.id_for_label }}');
       if (titleInput) titleInput.dataset.dmHotkey = '/';
 
-      const runAll = document.getElementById('run-for-all');
-      const totalMatching = {{ results.paginator.count }};
-
-      function syncRunAll(selected) {
-        if (!runAll) return;
-        if (runAll.checked) {
-          document.querySelectorAll('[data-dm-sel-count]').forEach(function (el) {
-            el.textContent = 'All ' + totalMatching + ' matching';
-          });
-          document.querySelectorAll('[data-dm-needs-selection]').forEach(function (el) {
-            el.disabled = totalMatching === 0;
-          });
-          document.querySelectorAll('.dm-actionbar').forEach(function (el) {
-            el.classList.toggle('has-selection', totalMatching > 0);
-          });
-        }
-      }
-
-      const sel = DM.selection({
+      DM.selection({
         root: document.getElementById('galleries-table'),
         checkbox: '.gallery-checkbox',
         toggleAll: document.getElementById('toggle-all'),
+        runAll: document.getElementById('run-for-all'),
+        totalCount: {{ results.paginator.count }},
         rowClick: true,
-        onChange: syncRunAll,
       });
-
-      if (runAll) {
-        runAll.addEventListener('change', function () {
-          sel.refresh();
-        });
-      }
 
       DM.filterChips(document.getElementById('filter-form'), document.getElementById('filter-chips'), {
         ignore: ['size'],

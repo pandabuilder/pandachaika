@@ -53,6 +53,7 @@ FLAG_FILTERS = [
     "non_public",
     "public",
     "hidden",
+    "expunged",
     "extracted",
     "downloading",
     "diff-filesize",

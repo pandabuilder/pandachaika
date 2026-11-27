@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.2] - 2026-11-27
+
+### Added
+
+- **Expunged gallery filter on `/manage-archives/`**: Added an `Expunged gallery` flag filter (`expunged=1`, matching `gallery__expunged=True`) and an `Expunged` row badge on `/manage-archives/`, wired into `archive_filter_keys`, `filter_archives_simple`, `viewer.services.archive_selection` (including `run_for_all`, `/archive-manager/?json=1`, and `/api/archive-picker/`), and exposed `gallery.expunged` in `archive_manage_results_to_json`.
+
+### Fixed
+
+- **Bulk action "All N matching" (`run_for_all`) confirmation counts**: Updated `DM.selection()` and `wireConfirms()` in `js/dm-pages.js` (used by `/manage-galleries/` and `/manage-archives/`) to track the `run-for-all` toggle and display `ALL <N> matching` instead of `0 selected` (or only the page-checked count) in confirmation dialogs.
+- **Large gallery/archive batch worker PK limits**: Replaced single-query `Case(When(...))` ordering in `workers/batch_tasks.py` (`_ordered_galleries` and `_ordered_archives`) with deduplicated 500-PK `in_bulk()` chunks preserving order, preventing PostgreSQL bind-parameter limit errors and unbounded memory use on large `run_for_all` batches.
+- **`/manage-galleries/` action buttons and delete wording**: Added explicit `type="submit"` to the primary bulk action buttons, added a warning message instead of a silent redirect when an action is posted with no matching galleries, and clarified in the `Delete` tooltip and confirmation prompt that deleting galleries keeps linked archives and their files intact (unmatched).
+
 ## [1.7.1] - 2026-11-27
 
 ### Added

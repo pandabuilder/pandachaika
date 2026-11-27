@@ -203,6 +203,16 @@ class FilterArchivesTests(TestCase):
         staff = make_user("s_child", staff=True)
         self.assertEqual(clean_filter({"gallery-has-child": "on"}, staff), {"gallery-has-child": "1"})
 
+    def test_expunged_gallery_filter(self):
+        expunged_gallery = GalleryFactory.create(expunged=True)
+        normal_gallery = GalleryFactory.create(expunged=False)
+        expunged_archive = ArchiveFactory.create(gallery=expunged_gallery, title="Expunged archive")
+        ArchiveFactory.create(gallery=normal_gallery, title="Normal archive")
+
+        self.assertEqual(self.ids(filter_archives({"expunged": "1"})), {expunged_archive.pk})
+        manager = make_user("m_expunged", "manage_archive")
+        self.assertEqual(clean_filter({"expunged": "on"}, manager), {"expunged": "1"})
+
     def test_excluded_reason(self):
         self.normal.reason = "backup"
         self.normal.save()
@@ -339,6 +349,18 @@ class ArchiveManagerListingTests(TestCase):
 
         data = json.loads(self.client.get(url, {"json": "1", "title": "New archive"}).content)
         self.assertEqual(data["results"][0]["gallery"]["children"], [])
+
+    def test_json_listing_filters_by_expunged_and_exposes_flag(self):
+        expunged_gallery = GalleryFactory.create(expunged=True)
+        normal_gallery = GalleryFactory.create(expunged=False)
+        expunged_archive = ArchiveFactory.create(gallery=expunged_gallery, title="Expunged one")
+        ArchiveFactory.create(gallery=normal_gallery, title="Normal one")
+        url = reverse("viewer:archive-manager")
+
+        self.client.force_login(make_user("manager", "manage_archive"))
+        data = json.loads(self.client.get(url, {"json": "1", "expunged": "1"}).content)
+        self.assertEqual([r["id"] for r in data["results"]], [expunged_archive.pk])
+        self.assertTrue(data["results"][0]["gallery"]["expunged"])
 
     def test_run_for_all_uses_the_listing_filters(self):
         shared = GalleryFactory.create()

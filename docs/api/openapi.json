@@ -536,6 +536,15 @@
             "description": "Filter, same as the search page."
           },
           {
+            "name": "expunged",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter, same as the search page."
+          },
+          {
             "name": "qsearch",
             "in": "query",
             "required": false,
@@ -2303,6 +2312,15 @@
           },
           {
             "name": "hidden",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter, same as the search page."
+          },
+          {
+            "name": "expunged",
             "in": "query",
             "required": false,
             "schema": {
@@ -4959,6 +4977,15 @@
           },
           {
             "name": "hidden",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter, same as the search page."
+          },
+          {
+            "name": "expunged",
             "in": "query",
             "required": false,
             "schema": {

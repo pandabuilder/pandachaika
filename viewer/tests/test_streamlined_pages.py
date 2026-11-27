@@ -330,6 +330,42 @@ class PagesTest(TestCase):
         response = self.client.get(reverse("gallery-dl-type-autocomplete"))
         self.assertNotContains(response, "manual")
 
+    def test_manage_galleries_expunged_run_for_all_delete_keeps_archives(self):
+        self.gallery.expunged = True
+        self.gallery.save()
+        linked_archive = Archive.objects.create(
+            title="Linked Archive", zipped="linked.zip", gallery=self.gallery, user=self.admin
+        )
+
+        url = reverse("viewer:manage-galleries") + "?expunged=1"
+        page = self.client.get(url)
+        self.assertEqual([g.pk for g in page.context["results"]], [self.gallery.pk])
+        self.assertContains(page, 'type="submit" name="real_delete_galleries"')
+        self.assertContains(page, "Linked archives and their files are kept")
+        self.assertContains(page, "runAll: document.getElementById('run-for-all')")
+
+        # Empty selection warns instead of silently doing nothing.
+        empty_resp = self.client.post(url, {"real_delete_galleries": ""}, follow=True)
+        self.assertContains(empty_resp, "No galleries were selected.")
+
+        resp = self.client.post(url, {"run_for_all": "1", "real_delete_galleries": ""})
+        self.assertRedirects(resp, url, fetch_redirect_response=False)
+
+        from core.base.setup import Settings
+        from workers.models import TaskQueue
+        from workers.runner import WorkerRunner
+
+        task = TaskQueue.objects.filter(task_type="gallery_batch_worker").latest("pk")
+        self.assertEqual(task.args, [self.gallery.pk])
+        task.status = TaskQueue.Status.PROCESSING
+        task.save(update_fields=["status"])
+        WorkerRunner(Settings(load_from_disk=False), enable_schedulers=False).execute_job(task)
+
+        self.assertFalse(Gallery.objects.filter(pk=self.gallery.pk).exists())
+        self.assertTrue(Gallery.objects.filter(pk=self.other_gallery.pk).exists())
+        linked_archive.refresh_from_db()
+        self.assertIsNone(linked_archive.gallery)
+
     def test_wanted_galleries_stats_public_and_staff(self):
         WantedGallery.objects.create(title="Public Wanted", search_title="pub", public=True, should_search=True, found=False)
         WantedGallery.objects.create(title="Private Found", search_title="priv", public=False, should_search=False, found=True)
@@ -578,6 +614,45 @@ class RedesignedPagesTest(TestCase):
         WorkerRunner(Settings(load_from_disk=False), enable_schedulers=False).execute_job(task)
         archive.refresh_from_db()
         self.assertEqual(archive.reason, "new reason")
+
+    def test_manage_archives_expunged_filter_and_run_for_all_delete(self):
+        self.gallery.expunged = True
+        self.gallery.save()
+        expunged_archive = Archive.objects.create(
+            title="Expunged", zipped="e.zip", gallery=self.gallery, crc32="a", user=self.admin
+        )
+        normal_archive = Archive.objects.create(
+            title="Normal", zipped="n.zip", gallery=self.other_gallery, crc32="b", user=self.admin
+        )
+
+        url = reverse("viewer:manage-archives") + "?expunged=1"
+        response = self.client.get(url)
+        self.assertEqual([a.pk for a in response.context["results"]], [expunged_archive.pk])
+        self.assertContains(response, 'id="f-expunged"')
+        self.assertContains(response, "Expunged gallery")
+        self.assertContains(response, "runAll: document.getElementById('run-for-all')")
+
+        with patch.object(Archive, "delete_all_files"), patch.object(Archive, "delete_files_but_archive"):
+            resp = self.client.post(
+                url, {"run_for_all": "1", "delete_archives": "", "delete_galleries": "1"}
+            )
+            self.assertRedirects(resp, url, fetch_redirect_response=False)
+
+            from core.base.setup import Settings
+            from workers.models import TaskQueue
+            from workers.runner import WorkerRunner
+
+            task = TaskQueue.objects.filter(task_type="delete_archive_worker").latest("pk")
+            self.assertEqual(task.args, [expunged_archive.pk])
+            self.assertTrue(task.options["delete_gallery"])
+            task.status = TaskQueue.Status.PROCESSING
+            task.save(update_fields=["status"])
+            WorkerRunner(Settings(load_from_disk=False), enable_schedulers=False).execute_job(task)
+
+        self.assertFalse(Archive.objects.filter(pk=expunged_archive.pk).exists())
+        self.assertFalse(Gallery.objects.filter(pk=self.gallery.pk).exists())
+        self.assertTrue(Archive.objects.filter(pk=normal_archive.pk).exists())
+        self.assertTrue(Gallery.objects.filter(pk=self.other_gallery.pk).exists())
 
     def test_repeated_and_different_filesize_archives(self):
         same = Archive.objects.create(title="A1", zipped="a1.zip", filesize=1000, filecount=10, gallery=self.gallery, user=self.admin)

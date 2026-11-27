@@ -134,6 +134,8 @@
           <label class="btn btn-outline-secondary" for="f-public">Public</label>
           <input id="f-hidden" class="btn-check" type="checkbox" name="hidden" value="1" autocomplete="off"{% if request.GET.hidden == '1' %} checked{% endif %}>
           <label class="btn btn-outline-secondary" for="f-hidden" title="The archive's gallery is hidden">Hidden gallery</label>
+          <input id="f-expunged" class="btn-check" type="checkbox" name="expunged" value="1" autocomplete="off"{% if request.GET.expunged == '1' %} checked{% endif %}>
+          <label class="btn btn-outline-secondary" for="f-expunged" title="The archive's gallery is expunged">Expunged gallery</label>
           <input id="f-downloading" class="btn-check" type="checkbox" name="downloading" value="1" autocomplete="off"{% if request.GET.downloading == '1' %} checked{% endif %}>
           <label class="btn btn-outline-secondary" for="f-downloading" title="No CRC32 yet">Downloading</label>
           <input id="f-extracted" class="btn-check" type="checkbox" name="extracted" value="1" autocomplete="off"{% if request.GET.extracted == '1' %} checked{% endif %}>
@@ -325,6 +327,7 @@
                       <span class="badge dm-badge-outline text-secondary">Private</span>
                     {% endif %}
                     {% if archive.gallery and archive.gallery.hidden %}<span class="badge bg-dark border border-secondary" title="The gallery is hidden">Hidden</span>{% endif %}
+                    {% if archive.gallery and archive.gallery.expunged %}<span class="badge bg-danger" title="The gallery is expunged">Expunged</span>{% endif %}
                     {% if archive.extracted %}<span class="badge bg-info text-dark">Extracted</span>{% endif %}
                     {% if not archive.crc32 %}<span class="badge bg-warning text-dark" title="No CRC32 yet">Downloading</span>{% endif %}
                     {% if archive.binned %}<span class="badge bg-danger" title="In the Recycle Bin">Recycled</span>{% endif %}
@@ -512,30 +515,14 @@
       const titleInput = document.getElementById('{{ form.title.id_for_label }}');
       if (titleInput) titleInput.dataset.dmHotkey = '/';
 
-      const runAll = document.getElementById('run-for-all');
-      const totalMatching = {{ results.paginator.count }};
-
-      function syncRunAll() {
-        if (!runAll || !runAll.checked) return;
-        document.querySelectorAll('[data-dm-sel-count]').forEach(function (el) {
-          el.textContent = 'All ' + totalMatching + ' matching';
-        });
-        document.querySelectorAll('[data-dm-needs-selection]').forEach(function (el) {
-          el.disabled = totalMatching === 0;
-        });
-        document.querySelectorAll('.dm-actionbar').forEach(function (el) {
-          el.classList.toggle('has-selection', totalMatching > 0);
-        });
-      }
-
-      const sel = DM.selection({
+      DM.selection({
         root: document.getElementById('archives-table'),
         checkbox: '.archive-checkbox',
         toggleAll: document.getElementById('toggle-all'),
+        runAll: document.getElementById('run-for-all'),
+        totalCount: {{ results.paginator.count }},
         rowClick: true,
-        onChange: syncRunAll,
       });
-      if (runAll) runAll.addEventListener('change', function () { sel.refresh(); });
 
       DM.filterChips(document.getElementById('filter-form'), document.getElementById('filter-chips'), {
         ignore: ['size'],

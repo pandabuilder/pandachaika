@@ -37,18 +37,34 @@ def _touch_activity(settings_obj: Any) -> None:
         activity_cb()
 
 
-def _ordered_archives(pks: list[int]):
-    if not pks:
-        return Archive.objects.none()
-    preserved = Case(*[When(pk=pk, then=pos) for pos, pk in enumerate(pks)])
-    return Archive.objects.filter(pk__in=pks).order_by(preserved)
+BATCH_FETCH_CHUNK_SIZE = 500
+
+
+def _ordered_archives(pks: list[int], *, select_related: tuple[str, ...] = ()):
+    """Yield Archive rows in the order of ``pks``, fetched in bounded chunks without large SQL CASE expressions."""
+    unique_pks = list(dict.fromkeys(pks))
+    for start in range(0, len(unique_pks), BATCH_FETCH_CHUNK_SIZE):
+        chunk = unique_pks[start : start + BATCH_FETCH_CHUNK_SIZE]
+        qs = Archive.objects.filter(pk__in=chunk)
+        if select_related:
+            qs = qs.select_related(*select_related)
+        by_pk = qs.in_bulk()
+        for pk in chunk:
+            archive = by_pk.get(pk)
+            if archive is not None:
+                yield archive
 
 
 def _ordered_galleries(pks: list[int]):
-    if not pks:
-        return Gallery.objects.none()
-    preserved = Case(*[When(pk=pk, then=pos) for pos, pk in enumerate(pks)])
-    return Gallery.objects.filter(pk__in=pks).order_by(preserved)
+    """Yield Gallery rows in the order of ``pks``, fetched in bounded chunks without large SQL CASE expressions."""
+    unique_pks = list(dict.fromkeys(pks))
+    for start in range(0, len(unique_pks), BATCH_FETCH_CHUNK_SIZE):
+        chunk = unique_pks[start : start + BATCH_FETCH_CHUNK_SIZE]
+        by_pk = Gallery.objects.in_bulk(chunk)
+        for pk in chunk:
+            gallery = by_pk.get(pk)
+            if gallery is not None:
+                yield gallery
 
 
 def run_archive_batch_task(
@@ -84,7 +100,7 @@ def run_archive_batch_task(
             processed += 1
 
     elif operation == "release_gallery":
-        for archive in _ordered_archives(pks).select_related("gallery"):
+        for archive in _ordered_archives(pks, select_related=("gallery",)):
             _check_cancelled(settings_obj, "Release gallery batch cancelled")
             _touch_activity(settings_obj)
             if not archive.gallery:
@@ -102,7 +118,7 @@ def run_archive_batch_task(
             processed += 1
 
     elif operation == "gallery_to_alternative":
-        for archive in _ordered_archives(pks).select_related("gallery"):
+        for archive in _ordered_archives(pks, select_related=("gallery",)):
             _check_cancelled(settings_obj, "Move gallery to alternative batch cancelled")
             _touch_activity(settings_obj)
             if not archive.gallery:
